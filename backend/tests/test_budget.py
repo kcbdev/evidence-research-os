@@ -9,6 +9,9 @@ from app.graph.build import build_graph
 from app.models.evidence import BudgetState
 from app.graph.state import LabProjectState
 
+COUNCIL = {"scientist": "m-sci", "investigator": "m-inv", "skeptic": "m-ske"}
+JUDGE = "m-judge"
+
 
 def make_state(budget: BudgetState) -> LabProjectState:
     return {
@@ -34,7 +37,7 @@ def test_helpers_consume_and_detect():
 
 def test_exhausted_rounds_end_run_cleanly(tmp_path):
     proj = tmp_path / "proj"
-    graph = build_graph(proj)
+    graph = build_graph(proj, COUNCIL, JUDGE)
     config = {"configurable": {"thread_id": "t1"}}
     budget = BudgetState(max_model_calls=50, max_research_rounds=5,
                          rounds_used=5)
@@ -46,7 +49,7 @@ def test_exhausted_rounds_end_run_cleanly(tmp_path):
 
 def test_exhausted_calls_end_run_cleanly(tmp_path):
     proj = tmp_path / "proj"
-    graph = build_graph(proj)
+    graph = build_graph(proj, COUNCIL, JUDGE)
     config = {"configurable": {"thread_id": "t1"}}
     budget = BudgetState(max_model_calls=50, max_research_rounds=5,
                          calls_used=50)
@@ -58,7 +61,7 @@ def test_exhausted_calls_end_run_cleanly(tmp_path):
 
 def test_fresh_budget_still_escalates(tmp_path):
     proj = tmp_path / "proj"
-    graph = build_graph(proj)
+    graph = build_graph(proj, COUNCIL, JUDGE)
     config = {"configurable": {"thread_id": "t1"}}
     graph.invoke(make_state(BudgetState()), config)
     assert (proj / "plan" / "research-plan.yaml").is_file()

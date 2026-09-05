@@ -25,9 +25,10 @@ def test_build_graph_overlap_creates_nothing(tmp_path):
     assert not proj.exists()  # refused before any node, dir, or sqlite
 
 
-def test_build_graph_without_models_keeps_skeleton_shape(tmp_path):
-    graph = build_graph(tmp_path / "proj")  # PBI-006 call shape still works
-    assert "human_checkpoint" in graph.get_graph().nodes
+def test_build_graph_requires_model_assignment(tmp_path):
+    with pytest.raises(TypeError):
+        build_graph(tmp_path / "proj")  # type: ignore[call-arg]
+    # Fail-closed: no bare construction site may skip the judge check.
 
 
 def test_prompt_files_present_and_on_role():

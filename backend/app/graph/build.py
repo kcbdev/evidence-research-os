@@ -15,14 +15,13 @@ from app.graph import nodes
 
 
 def build_graph(lab_project_path: Path,
-                council_models: dict[str, str] | None = None,
-                judge_model: str | None = None):
+                council_models: dict[str, str],
+                judge_model: str):
     # Hard startup check FIRST: nothing (no dirs, no sqlite) is created
-    # when the assignment is invalid. PBI-014 always supplies both, making
-    # the check unconditional on the run path; bare calls (tests, shells)
-    # skip it. Optional params preserve PBI-006's call shape.
-    if council_models is not None and judge_model is not None:
-        validate_model_assignment(council_models, judge_model)
+    # when the assignment is invalid. Params are REQUIRED (fail-closed):
+    # every construction site — tests, shells, PBI-014 run start —
+    # supplies the project.yaml model assignment explicitly.
+    validate_model_assignment(council_models, judge_model)
     lab_project_path = Path(lab_project_path)
     lab_project_path.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(

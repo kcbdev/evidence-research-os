@@ -38,8 +38,8 @@ ordering only.
 | PBI-005 | In Review | PBI-015 | Proposed |
 | PBI-006 | Done | PBI-016 | Proposed |
 | PBI-007 | Done | PBI-017 | Proposed |
-| PBI-008 | Active | PBI-018 | Proposed |
-| PBI-009 | Proposed | PBI-019 | Proposed |
+| PBI-008 | Done | PBI-018 | Proposed |
+| PBI-009 | Active | PBI-019 | Proposed |
 | PBI-010 | Proposed | | |
 
 ## Dependency graph
