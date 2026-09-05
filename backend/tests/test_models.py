@@ -5,6 +5,7 @@ D-011) so drift between spec text and schema fails loudly here.
 """
 import pytest
 import yaml
+from pydantic import ValidationError
 from app.models.evidence import (
     Source, Claim, Evidence, Idea, Task, Decision,
     BudgetState, ProjectMeta,
@@ -31,7 +32,7 @@ def test_source_roundtrip():
 
 
 def test_source_rejects_bad_tier():
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         Source(id="S-x", kind="journalism", url="https://e.org",
                title="t", retrieved_at="2026-09-05T10:00:00Z",
                quality_tier=10)
@@ -56,7 +57,7 @@ def test_claim_roundtrip():
 
 
 def test_claim_rejects_bad_status():
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         Claim(id="C-x", statement="s", status="MAYBE")
 
 

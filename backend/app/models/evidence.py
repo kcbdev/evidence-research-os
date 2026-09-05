@@ -1,11 +1,16 @@
 """Pydantic v2 domain models — the schema contract (spec §4.2, guide §1.1).
 
 Adapted from the implementation guide §1.1 plus the Idea schema from
-spec §4.2 (I-008). Contradiction/Experiment object types (§2.3) are
+spec §4.2 (I-008). Contradiction/Experiment object types (spec §2.3) are
 deliberately absent: Phase 1 tracks contradictions as Task objects +
 state ids (guide §2.3), and experiments nest inside Idea until
 Phase 2 gives them their own lifecycle. Their models arrive with
 their consumer PBIs — not here.
+
+Micro-decisions: Idea carries a `type` discriminator like the other
+objects (spec I-008 omits the line; added for uniformity);
+novelty_check/proposed_experiment are Optional (an idea exists before
+it is novelty-checked).
 """
 from pydantic import BaseModel, Field
 from typing import Literal, Optional
