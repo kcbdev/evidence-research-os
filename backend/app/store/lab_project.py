@@ -2,12 +2,14 @@
 
 Every Lab Project write goes through LabProjectStore; agents, graph
 nodes, and API routers never touch object YAML directly (PBI-003
-verification proves this by grep). Git audit behavior (init per
-project, commit per write) arrives in PBI-004 — this module is plain
-filesystem persistence only.
+verification proves this by grep). Every write is one git commit in
+the Lab Project repo (plan task 5): `Repo.init` on creation,
+`index.add` + `index.commit` on every `_write`/`write_meta` with a
+descriptive message — `git log` reads as the project's history.
 """
 import yaml
 from pathlib import Path
+from git import Repo
 from app.models.evidence import (
     Source, Claim, Evidence, Idea, Task, Decision, ProjectMeta,
 )
@@ -25,15 +27,23 @@ class LabProjectStore:
     def __init__(self, root: Path, project_id: str):
         self.path = Path(root) / project_id
         self._ensure_layout()
+        gitdir = self.path / ".git"
+        self.repo = Repo(self.path) if gitdir.exists() else Repo.init(self.path)
+        # Commits need a git identity: production relies on the machine's
+        # git config (standard behavior); tests set a repo-local identity.
 
     def _ensure_layout(self):
         for sub in LAYOUT_SUBDIRS:
             (self.path / sub).mkdir(parents=True, exist_ok=True)
 
+    def _commit(self, rel_path: Path, msg: str):
+        self.repo.index.add([str(rel_path)])
+        self.repo.index.commit(msg)
+
     def _write(self, subdir: str, obj_id: str, model, commit_msg: str):
-        del commit_msg  # PBI-004 wires this into a git commit message.
         p = self.path / subdir / f"{obj_id}.yaml"
         p.write_text(yaml.safe_dump(model.model_dump(mode="json")))
+        self._commit(p.relative_to(self.path), commit_msg)
 
     def _read(self, subdir: str, obj_id: str, model_cls):
         p = self.path / subdir / f"{obj_id}.yaml"
@@ -47,6 +57,7 @@ class LabProjectStore:
     def write_meta(self, m: ProjectMeta):
         p = self.path / "project.yaml"
         p.write_text(yaml.safe_dump(m.model_dump(mode="json")))
+        self._commit(p.relative_to(self.path), f"meta: {m.id}")
 
     def read_meta(self) -> ProjectMeta:
         return ProjectMeta(

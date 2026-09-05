@@ -10,14 +10,58 @@ TS = "2026-09-05T10:00:00Z"
 
 
 def make_store(tmp_path: Path) -> LabProjectStore:
-    return LabProjectStore(tmp_path, "lp-test")
+    store = LabProjectStore(tmp_path, "lp-test")
+    with store.repo.config_writer() as cfg:  # repo-local test identity
+        cfg.set_value("user", "name", "test")
+        cfg.set_value("user", "email", "test@example.org")
+    return store
 
 
 def test_layout_created(tmp_path):
     store = make_store(tmp_path)
     for sub in LAYOUT_SUBDIRS:
         assert (store.path / sub).is_dir(), f"missing subdir {sub}"
-    assert not (store.path / ".git").exists()  # PBI-004 owns git
+    assert (store.path / ".git").is_dir()  # PBI-004: git from creation
+
+
+def test_reuses_existing_repo(tmp_path):
+    first = make_store(tmp_path)
+    first.write_claim(Claim(id="C-1", statement="s"))
+    second = LabProjectStore(tmp_path, "lp-test")
+    assert second.read_claim("C-1").statement == "s"
+    assert len(list(second.repo.iter_commits())) == 1
+
+
+def test_git_audit_trail_one_commit_per_write(tmp_path):
+    store = make_store(tmp_path)
+    meta = ProjectMeta(id="lp-test", title="t", question="q",
+                       created_at=TS,
+                       council_models={"scientist": "m1"},
+                       judge_model="mj")
+    store.write_meta(meta)
+    store.write_source(Source(id="S-1", kind="journalism",
+                              url="https://e.org", title="t",
+                              retrieved_at=TS, quality_tier=5))
+    store.write_claim(Claim(id="C-1", statement="s", status="SUPPORTED"))
+    store.write_evidence(Evidence(id="E-1", source_id="S-1",
+                                  location={"page": 1, "section": "s"},
+                                  text_reference="t",
+                                  evidence_type="analogical",
+                                  strength="low"))
+    store.write_idea(Idea(id="I-1", statement="s"))
+    store.write_task(Task(id="T-1", question="q", reason="r",
+                          assigned_agent="scientist"))
+    store.write_decision(Decision(id="D-1", what="w", why="y",
+                                  timestamp=TS))
+    commits = list(store.repo.iter_commits())
+    assert len(commits) == 7  # meta + 6 types, one commit per write
+    messages = " ".join(c.message for c in commits)
+    for needle in ["meta: lp-test", "source: S-1", "claim: C-1",
+                   "evidence: E-1", "idea: I-1", "task: T-1",
+                   "decision: w"]:  # decision msg carries what[:60], not id
+        assert needle in messages, f"missing commit for {needle}"
+    shown = store.repo.git.show("--stat", "HEAD~6").splitlines()
+    assert any("project.yaml" in line for line in shown)
 
 
 def test_meta_roundtrip(tmp_path):

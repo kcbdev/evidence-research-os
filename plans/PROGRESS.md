@@ -62,3 +62,16 @@
   YAML-text vs model-== wording, Task/Meta fixtures are guide-only.
 - Sort: gate-proven + critic-approved, no human judgment → agentic.
 - Chained: PBI-003 → Active.
+
+## 2026-09-05 — PBI-003 Done (review: agentic)
+
+- `LabProjectStore`: layout + typed CRUD for 6 types + meta; zero git.
+- Failed approach (do not repeat): guide §1.2 layout omits `ideas/`
+  but spec §4.1 requires it and `write_idea` needs the dir — added
+  with NOTE comment (spec wins over guide; critic concurred).
+- Gates: 20 passed; only-writer grep confirmed (2 hits, both in store).
+  Critic APPROVE; nits fixed (sorted-comment, assert style) in 5ae10b9.
+- Handoff note written into PBI-004: `write_meta` bypasses `_write`
+  (needs its own commit path) + no-`.git` test assertion must flip.
+- Sort: gate-proven + critic-approved → agentic.
+- Chained: PBI-004 → Active.
