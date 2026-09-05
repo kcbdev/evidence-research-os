@@ -8,8 +8,10 @@ node_modules/
 .next/
 # Evidence Research OS derived indices (regeneratable, never committed)
 .index/
-# Lab Project data volume (separate git remote per Lab Project, own history)
-lab-projects/
+# Lab Project data volume (separate git remote per Lab Project, own history;
+# only the .gitkeep placeholder is tracked so clones reproduce the layout)
+lab-projects/*
+!lab-projects/.gitkeep
 # OS / editors
 .DS_Store
 Thumbs.db

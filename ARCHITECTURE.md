@@ -4,9 +4,10 @@
 > changeable via ADR (`docs/adrs/`); dead structure found later is corrected
 > here, never silently in code.
 
-**Snapshot date:** 2026-09-05 (ASDLC onboarding).
-**State:** docs-only repo. No `backend/`, no `frontend/`, no `lab-projects/`
-yet — all arrive via asdlc-plan PBIs (Phase 0 scaffold first).
+**Snapshot date:** 2026-09-05 (ASDLC onboarding + PBI-001).
+**State:** scaffold landed (PBI-001): `backend/` skeleton + `uv.lock`,
+`frontend/` Next 16 shell, `lab-projects/` placeholder. No domain code
+yet — models/store/graph/agents/tools/api/routers/pages arrive via PBI-002+.
 
 ## Modules (planned per DOCS v1 — none implemented yet)
 

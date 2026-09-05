@@ -33,9 +33,9 @@ source of truth; every derived index is regeneratable and gitignored.
 | Scope | Command | Status |
 |---|---|---|
 | Repo smoke | `python -m pytest tests/ -q` | LIVE (3 tests, onboarding seed) |
-| Backend | `python -m pytest backend/tests -q` | activates when `backend/` lands (Phase 0 PBI) |
-| Frontend typecheck | `cmd /c "npm.cmd --prefix frontend run typecheck"` (`tsc --noEmit`) | activates when `frontend/` lands |
-| Frontend tests | `cmd /c "npm.cmd --prefix frontend test"` | activates when `frontend/` lands |
+| Backend | `python -m pytest backend/tests -q` | LIVE (scaffold gate, PBI-001) |
+| Frontend typecheck | `cmd /c "npm.cmd --prefix frontend run typecheck"` (`tsc --noEmit`) | LIVE (PBI-001) |
+| Frontend tests | `cmd /c "npm.cmd --prefix frontend test"` | pending — runner chosen in PBI-016 |
 
 ## 4. Conventions
 
@@ -74,9 +74,9 @@ project_structure:
   plans/:
     responsibility: "Sequencing index (README.md) + progress log (PROGRESS.md). Plane Todo seed recorded here."
   backend/:
-    responsibility: "FastAPI app (models/store/graph/agents/tools/api). Does not yet exist — Phase 0 PBI scaffolds it per guide §0."
+    responsibility: "FastAPI app (models/store/graph/agents/tools/api). Skeleton + locked env by PBI-001; domain modules arrive via PBI-002+."
   frontend/:
-    responsibility: "Next.js 16 control panel. Consumes /api/v1 exclusively — no direct filesystem/DB access. Does not yet exist — Phase 1d PBI."
+    responsibility: "Next.js 16 control panel. Consumes /api/v1 exclusively — no direct filesystem/DB access. Shell scaffolded by PBI-001 (typecheck + build gates LIVE); pages arrive via Phase 1d PBIs (PBI-016–018)."
   frontend/AGENTS.md:
     responsibility: "Scaffold-generated agent rules for the Next.js version in use (breaking-change notices). Authority for UI code conventions; commit it with frontend work."
   lab-projects/:
