@@ -182,3 +182,19 @@
   provider undecided (spec names it, guide omits it).
 - Gates: 43 passed. Sort: critic-approved after fix → agentic.
 - Chained: PBI-010 → Active.
+
+## 2026-09-05 — PBI-010 Done (review: agentic, via CHANGES-REQUESTED)
+
+- Critic's 5 must-fix were all real: (1) ban is now a TEST
+  (`test_no_raw_fetch_imports_in_graph_or_agents` — prose became
+  mechanism); (2) session-vs-norefetch resolved as two-tier lookup
+  (session first, global second, provenance copy) — both spec
+  statements literally true, interpretation documented; isolation
+  test rewritten as cross-session REUSE; (3) kind-aware keys
+  (html/pdf split, tested); (4) session_id ownership assigned
+  (PBI-014 mints as run_id, PBI-011 threads via state field);
+  (5) "every fetch path routes" now structurally guarded.
+- Also fixed: wrapper delegation tests, AGENTS backend gate row
+  (`uv run ...`, workdir backend — bare python lacks deps).
+- Gates: 50 passed. Sort: critic-approved after fix → agentic.
+- Chained: PBI-011 → Active (deps 006, 008, 010 Done).

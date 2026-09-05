@@ -10,6 +10,7 @@ from pathlib import Path
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.sqlite import SqliteSaver
 from app.agents.config import validate_model_assignment
+from app.graph.budget import is_exhausted
 from app.graph.state import LabProjectState
 from app.graph import nodes
 
@@ -33,10 +34,14 @@ def build_graph(lab_project_path: Path,
     g = StateGraph(LabProjectState)
     g.add_node("trigger_classifier", nodes.trigger_classifier)
     g.add_node("plan", nodes.make_plan(lab_project_path))
-    g.add_node("independent_first_pass", nodes.independent_first_pass)
-    g.add_node("evidence_extraction", nodes.evidence_extraction)
-    g.add_node("conflict_detection", nodes.conflict_detection)
-    g.add_node("targeted_research", nodes.targeted_research)
+    g.add_node("independent_first_pass",
+                 nodes.make_independent_first_pass(lab_project_path))
+    g.add_node("evidence_extraction",
+                 nodes.make_evidence_extraction(lab_project_path))
+    g.add_node("conflict_detection",
+                 nodes.make_conflict_detection(lab_project_path))
+    g.add_node("targeted_research",
+                 nodes.make_targeted_research(lab_project_path))
     g.add_node("adversarial_review", nodes.adversarial_review)
     g.add_node("evidence_adjudication", nodes.evidence_adjudication)
     g.add_node("synthesis", nodes.synthesis)
@@ -51,8 +56,14 @@ def build_graph(lab_project_path: Path,
     g.add_edge("plan", "independent_first_pass")
     g.add_edge("independent_first_pass", "evidence_extraction")
     g.add_edge("evidence_extraction", "conflict_detection")
-    g.add_conditional_edges("conflict_detection",
-                            lambda s: "targeted_research" if s["open_contradictions"] else "adversarial_review")
+    # Topology delta vs guide §2.2 (accepted PBI-011, owns the PBI-007
+    # mid-loop stop): an exhausted budget short-circuits to final_output
+    # instead of looping or spending review calls it cannot afford.
+    def _after_conflict(s):
+        if is_exhausted(s):
+            return "final_output"
+        return "targeted_research" if s["open_contradictions"] else "adversarial_review"
+    g.add_conditional_edges("conflict_detection", _after_conflict)
     g.add_edge("targeted_research", "conflict_detection")   # loop back
     g.add_edge("adversarial_review", "evidence_adjudication")
     g.add_edge("evidence_adjudication", "synthesis")

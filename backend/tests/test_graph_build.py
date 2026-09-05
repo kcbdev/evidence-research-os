@@ -8,8 +8,23 @@ resume to END — is executed, not assumed.
 from app.graph.build import build_graph
 from app.models.evidence import BudgetState
 
+import pytest
+
 COUNCIL = {"scientist": "m-sci", "investigator": "m-inv", "skeptic": "m-ske"}
 JUDGE = "m-judge"
+
+
+@pytest.fixture(autouse=True)
+def _skeleton_deps(monkeypatch):
+    # PBI-011 made council nodes real: skeleton tests mock the LLM
+    # boundary and the project meta they read.
+    from app.models.evidence import ProjectMeta
+    meta = ProjectMeta(id="p", title="t", question="q",
+                       created_at="2026-09-05T10:00:00Z",
+                       council_models=COUNCIL, judge_model=JUDGE)
+    monkeypatch.setattr(
+        "app.store.lab_project.LabProjectStore.read_meta", lambda self: meta)
+    monkeypatch.setattr("app.graph.nodes.call_model", lambda *a, **k: "")
 
 NODES = [
     "trigger_classifier", "plan", "independent_first_pass",

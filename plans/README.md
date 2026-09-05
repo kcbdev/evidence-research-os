@@ -31,7 +31,7 @@ ordering only.
 
 | PBI | Status | PBI | Status |
 |---|---|---|---|
-| PBI-001 | Done | PBI-011 | Proposed |
+| PBI-001 | Done | PBI-011 | Active |
 | PBI-002 | Done | PBI-012 | Proposed |
 | PBI-003 | Done | PBI-013 | Proposed |
 | PBI-004 | Done | PBI-014 | Proposed |
@@ -40,7 +40,7 @@ ordering only.
 | PBI-007 | Done | PBI-017 | Proposed |
 | PBI-008 | Done | PBI-018 | Proposed |
 | PBI-009 | Done | PBI-019 | Proposed |
-| PBI-010 | Active | | |
+| PBI-010 | Done | | |
 
 ## Dependency graph
 

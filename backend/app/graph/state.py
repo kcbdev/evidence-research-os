@@ -13,3 +13,5 @@ class LabProjectState(TypedDict):
     escalate: bool           # set by trigger_classifier
     audit_passed: bool
     needs_human_approval: bool
+    session_id: str          # PBI-011: run session, threaded to cached_*
+    first_pass: dict[str, str]  # PBI-011: role -> raw finding text

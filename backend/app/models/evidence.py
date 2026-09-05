@@ -127,3 +127,7 @@ class ProjectMeta(BaseModel):
     budget: BudgetState = BudgetState()
     council_models: dict[str, str]  # {"scientist": "...", "investigator": "...", "skeptic": "..."}
     judge_model: str
+    # PBI-011: retrieval volume caps (spec §10). MVP defaults are generous
+    # on purpose — the mechanism (not the numbers) is what's proven here.
+    max_sources: int = 50
+    max_sources_per_claim: int = 5
