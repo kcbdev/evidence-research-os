@@ -34,8 +34,8 @@ ordering only.
 | PBI-001 | Done | PBI-011 | Proposed |
 | PBI-002 | Done | PBI-012 | Proposed |
 | PBI-003 | Done | PBI-013 | Proposed |
-| PBI-004 | Active | PBI-014 | Proposed |
-| PBI-005 | Proposed | PBI-015 | Proposed |
+| PBI-004 | Done | PBI-014 | Proposed |
+| PBI-005 | In Review | PBI-015 | Proposed |
 | PBI-006 | Proposed | PBI-016 | Proposed |
 | PBI-007 | Proposed | PBI-017 | Proposed |
 | PBI-008 | Proposed | PBI-018 | Proposed |

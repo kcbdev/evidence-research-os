@@ -75,3 +75,37 @@
   (needs its own commit path) + no-`.git` test assertion must flip.
 - Sort: gate-proven + critic-approved → agentic.
 - Chained: PBI-004 → Active.
+
+## 2026-09-05 — PBI-004 Done (review: agentic)
+
+- `_commit` helper + `Repo.init`/reuse in `__init__`; `write_meta`
+  commits `meta: {id}`; no-`.git` test assertion flipped by design.
+- Failed approach (do not repeat): test needle `decision: D-1` —
+  message carries `what[:60]` per guide, not the id.
+- Phase-0 done-proof executed (temp script, since removed): hand-made
+  project, 7 writes → 7 commits, `git log` reads as history. PASS.
+- Gates: 22 passed. Critic APPROVE; PBI-text nits fixed (8→7 commits,
+  test-file location, PBI-011 concurrency handoff) in 6480a6f.
+- Follow-ups recorded, not done: per-commit isolation loop (test
+  hardening), branch-pinning for reuse test, git-identity startup
+  check (ops-side: set git config in backend image), index-race
+  serialization (owned by PBI-011).
+- Sort: gate-proven + critic-approved, local-only proof → agentic.
+- Chained: PBI-005 → Active.
+
+## 2026-09-05 — PBI-005 In Review (review: MANUAL — infra, human-gated)
+
+- MCP findings: no EVRSH resources exist; toolset has no create-project/
+  create-service tools (lifecycle only) → creation is Coolify-UI manual.
+  Reference shape grounded on LOOM app (dockerfile build, http health
+  check, FQDN). LOOM has no volumes — no local mount precedent.
+- Blockers needing the human: (1) repo has NO git remote — Coolify
+  deploys from git, so create `kcbdev/evidence-research-os` + push
+  first; (2) server choice (kcb.ma / EXO IT / UNSI); (3) backend has no
+  routes yet → use TCP/port-8000 health check until PBI-014 adds /healthz.
+- Handoff package given to user (see chat): project + backend app
+  (nixpacks, base /backend, port 8000, LAB_PROJECTS_ROOT + GIT_* env,
+  OPENROUTER_API_KEY deferred to Phase 1) + frontend app (base
+  /frontend, port 3000, NEXT_PUBLIC_API_URL after backend FQDN known)
+  + persistent volume → /data/lab-projects + redeploy-survival test.
+- Chain PAUSED here by design (manual sort) — PBI-006+ wait for Done.
