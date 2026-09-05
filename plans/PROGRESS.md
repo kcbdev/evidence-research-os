@@ -27,3 +27,23 @@
   dependency graph + gate plan in `plans/README.md`. Push-create to Plane
   (6b) not requested — ask before syncing.
 - Next: user reviews both specs, then picks the starting PBI (recommended: PBI-001).
+
+## 2026-09-05 — PBI-001 Done (review: agentic)
+
+- Specs approved by user; PBI-001 executed. uv 0.12.10 (pip), `uv sync`
+  green incl. from clean `.venv` delete; backend scaffold tests 3 passed;
+  repo smoke 3 passed; `tsc --noEmit` clean; `next build` success.
+- Failed approaches (do not repeat): (1) `New-Item lab-projects` with
+  backend-cwd created `backend/lab-projects` — root data dir lives at
+  repo root; (2) pyproject without `version` breaks `uv sync` (PEP 621);
+  (3) uncommittable `lab-projects/` (gitignored empty dir) made the
+  scaffold test pass-local/fail-on-clone — fixed via
+  `lab-projects/*` + `!lab-projects/.gitkeep`, probe-verified.
+- Spec divergence (approved mid-flight): Next 16.3.4 scaffolded vs spec's
+  Next 15 → spec/AGENTS/ARCHITECTURE updated to 16; DOCS/ untouched (read-only).
+  uv via pip (not standalone installer) — recorded, functionally equivalent.
+- Gates evidence: commits e9b08ff (scaffold) + 48dc8eb (review fixes);
+  critic subagent verdict CHANGES-REQUESTED → fixed → re-gated green.
+  Sort rationale: fully gate-proven, no UX/security/production surface,
+  divergence human-approved → agentic, closed to Done.
+- Chained: PBI-002 → Active (deps satisfied).
