@@ -31,9 +31,14 @@ def make_state(**over):
 
 
 def test_checkpoint_file_created(tmp_path):
+    import sqlite3
     proj = tmp_path / "proj"
     build_graph(proj)
     assert (proj / "checkpoint.sqlite").is_file()
+    # setup() wiring proof: file alone proves nothing (connect() is eager).
+    tables = {r[0] for r in sqlite3.connect(str(proj / "checkpoint.sqlite"))
+              .execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    assert "checkpoints" in tables and "writes" in tables
 
 
 def test_all_thirteen_nodes_registered(tmp_path):

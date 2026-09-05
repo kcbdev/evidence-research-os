@@ -1,6 +1,5 @@
-"""LangGraph state schema (spec §6.1, guide §2.1)."""
-from typing import Literal
-from typing_extensions import TypedDict
+"""LangGraph state schema (spec Scope orchestration contract, guide §2.1)."""
+from typing import Literal, TypedDict
 from app.models.evidence import Task, BudgetState
 
 
