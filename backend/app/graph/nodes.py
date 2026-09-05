@@ -4,13 +4,16 @@ PBI-011 (council loop), PBI-012 (review/adjudication/synthesis), and
 PBI-013 (audit/repair/checkpoint/output)."""
 from pathlib import Path
 import yaml
+from app.graph.budget import is_exhausted
 from app.graph.state import LabProjectState
 
 
 def trigger_classifier(state: LabProjectState) -> LabProjectState:
     # Cheap single-pass gate (iMAD-style). TODO: real heuristic — skip the
     # full council for answered/simple questions or tight budgets.
-    state["escalate"] = True
+    # Hard stop (PBI-007): an exhausted budget never escalates — the run
+    # ends at final_output instead of erroring mid-council.
+    state["escalate"] = not is_exhausted(state)
     return state
 
 

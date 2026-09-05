@@ -114,3 +114,22 @@
   project + 2 apps + volume, then project UUID + app UUIDs for MCP verify.
 - NOTE: PBI-006's deps (002, 003) are Done, so code work continues in
   parallel with the human infra track; PBI-005 closes when UUIDs arrive.
+
+## 2026-09-05 — PBI-006 Done (review: agentic)
+
+- `state.py` + `build.py` (13 nodes, exact guide §2.2 topology) +
+  `nodes.py` (classifier + plan real, 11 named stubs).
+- Version adaptation (mandatory, not drift): guide's
+  `SqliteSaver.from_conn_string` is a context manager on
+  checkpoint-sqlite 3.x — used `SqliteSaver(conn)` + `setup()`,
+  process-owned connection, documented. Stack: langgraph 1.2.11.
+- Gates: 26 passed (pause `next==(human_checkpoint,)` + resume to
+  `next==()` executed). Critic APPROVE; nits fixed in 0796cb3
+  (typing import, checkpoints/writes table proof).
+- Follow-ups recorded: sqlite FD close/dispose path + dep floor pins
+  (`langgraph>=1.2`, `checkpoint-sqlite>=3.1`) at API-wiring PBI;
+  rebuild-from-path durability test at PBI-013; `plan/` git-treatment
+  decision at PBI-008; untested branches (non-escalate, contradiction
+  loop, repair loop) are PBI-011/013 acceptance, not here.
+- Sort: gate-proven + critic-approved → agentic.
+- Chained: PBI-007 → Active.
