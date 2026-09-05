@@ -164,3 +164,21 @@
   RuntimeError, PBI filename drift, PBI-014 plan/ ADR acceptance.
 - Gates: 35 passed. Sort: critic-approved after fix → agentic.
 - Chained: PBI-009 → Active.
+
+## 2026-09-05 — PBI-009 Done (review: agentic, via CHANGES-REQUESTED)
+
+- Tools: `grep_project` (rg wrapper + contract docstring), `fetch_url`/
+  `fetch_pdf`/`extract_pdf`, `store_source`/`retrieve_evidence`. rg
+  15.2.0 installed via winget (hard gate prerequisite, portable paths
+  documented: winget/apt/image).
+- Critic caught 3 real gaps: missing `extract_pdf`, silent HTTP
+  failure (404 read as ""), skippable rg gate. All fixed: fail-loud
+  fetch (`raise_for_status` + 404 tests), fail-loud grep (no skip,
+  exit-2 → RuntimeError, timeout=60), `extract_pdf(bytes|path)`.
+  docstring tripwire debugged (contract lived on module, not fn).
+- Nits folded in: fetch_pdf redirects, server_close, contract-phrase
+  assertions, PBI-010 same-name-wrap acceptance.
+- Open backlog (needs plan delta, NOT this chain): `search_web`
+  provider undecided (spec names it, guide omits it).
+- Gates: 43 passed. Sort: critic-approved after fix → agentic.
+- Chained: PBI-010 → Active.
