@@ -47,10 +47,12 @@ def build_graph(lab_project_path: Path,
     g.add_node("evidence_adjudication",
                  nodes.make_evidence_adjudication(lab_project_path))
     g.add_node("synthesis", nodes.make_synthesis(lab_project_path))
-    g.add_node("citation_audit", nodes.citation_audit)
-    g.add_node("targeted_repair", nodes.targeted_repair)
+    g.add_node("citation_audit",
+                 nodes.make_citation_audit(lab_project_path))
+    g.add_node("targeted_repair",
+                 nodes.make_targeted_repair(lab_project_path))
     g.add_node("human_checkpoint", nodes.human_checkpoint)
-    g.add_node("final_output", nodes.final_output)
+    g.add_node("final_output", nodes.make_final_output(lab_project_path))
 
     g.add_edge(START, "trigger_classifier")
     g.add_conditional_edges("trigger_classifier",
@@ -70,8 +72,15 @@ def build_graph(lab_project_path: Path,
     g.add_edge("adversarial_review", "evidence_adjudication")
     g.add_edge("evidence_adjudication", "synthesis")
     g.add_edge("synthesis", "citation_audit")
-    g.add_conditional_edges("citation_audit",
-                            lambda s: "human_checkpoint" if s["audit_passed"] else "targeted_repair")
+    # Same accepted pattern as the conflict branch (PBI-013 owns the
+    # PBI-007 mid-repair-loop stop): exhaustion short-circuits to
+    # final_output instead of looping repair forever.
+    def _after_audit(s):
+        if is_exhausted(s):
+            return "final_output"
+        return ("human_checkpoint" if s["audit_passed"]
+                else "targeted_repair")
+    g.add_conditional_edges("citation_audit", _after_audit)
     g.add_edge("targeted_repair", "citation_audit")          # loop back
     g.add_edge("human_checkpoint", "final_output")
     g.add_edge("final_output", END)

@@ -31,7 +31,7 @@ from app.agents.client import call_model
 from app.agents.prompts import load_prompt
 from app.graph.budget import consume_calls, consume_round, is_exhausted
 from app.graph.state import LabProjectState
-from app.models.evidence import Claim, Evidence, Source, Task
+from app.models.evidence import Claim, Decision, Evidence, Source, Task
 from app.store.lab_project import LabProjectStore
 
 FINDING_FORMAT = """
@@ -446,17 +446,79 @@ def make_synthesis(lab_project_path: Path):
     return synthesis
 
 
-def citation_audit(state: LabProjectState) -> LabProjectState:
-    return state  # PBI-013
+def make_citation_audit(lab_project_path: Path):
+    """MVP existence check ONLY (pincite/support-match are Phase 3):
+    every source id cited by any claim must exist in sources/. Claims
+    themselves are never mutated here — FAIL routes to repair."""
+
+    def citation_audit(state) -> dict:
+        store = LabProjectStore(lab_project_path, state["lab_project_id"])
+        known = {s.id for s in store.list_sources()}
+        passed = True
+        for claim in store.list_claims():
+            cited = list(claim.supporting_sources) + list(claim.opposing_sources)
+            if any(sid not in known for sid in cited):
+                passed = False
+                break
+        return {"audit_passed": passed}
+
+    return citation_audit
 
 
-def targeted_repair(state: LabProjectState) -> LabProjectState:
-    return state  # PBI-013
+def make_targeted_repair(lab_project_path: Path):
+    """Void dangling linkages: drop cited ids with no source object.
+    The linkage was void (the citation doesn't exist), so removing it is
+    hygiene, not revision — adjudicated statuses are untouched."""
+
+    def targeted_repair(state) -> dict:
+        store = LabProjectStore(lab_project_path, state["lab_project_id"])
+        known = {s.id for s in store.list_sources()}
+        for claim in store.list_claims():
+            supporting = [s for s in claim.supporting_sources if s in known]
+            opposing = [s for s in claim.opposing_sources if s in known]
+            if supporting != list(claim.supporting_sources) or \
+                    opposing != list(claim.opposing_sources):
+                claim.supporting_sources = supporting
+                claim.opposing_sources = opposing
+                store.write_claim(claim)
+        return {}
+
+    return targeted_repair
 
 
-def human_checkpoint(state: LabProjectState) -> LabProjectState:
-    return state  # PBI-013 (sets needs_human_approval there)
+def human_checkpoint(state) -> dict:
+    # The pause itself comes from interrupt_before (build.py) — the only
+    # pause mechanism. This node just records that approval is pending.
+    return {"needs_human_approval": True}
 
 
-def final_output(state: LabProjectState) -> LabProjectState:
-    return state  # PBI-013
+def make_final_output(lab_project_path: Path):
+    """Terminal node: references.md + a terminal decisions/ entry.
+    Reason derives from budget state (exhausted vs completed) — this is
+    the PBI-007 remainder: every run end is recorded, no silent exits."""
+
+    def final_output(state) -> dict:
+        from datetime import datetime, timezone
+        store = LabProjectStore(lab_project_path, state["lab_project_id"])
+        session = state.get("session_id", "adhoc")
+        sources = store.list_sources()
+        lines = ["# References", ""]
+        for src in sources:
+            lines.append(f"- [{src.id}] {src.title} ({src.url}) — "
+                         f"tier {src.quality_tier}")
+        if not sources:
+            lines.append("(no sources)")
+        output_dir = Path(lab_project_path) / state["lab_project_id"] / "output"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        (output_dir / "references.md").write_text("\n".join(lines) + "\n")
+        reason = ("budget_exhausted" if is_exhausted(state) else "completed")
+        store.write_decision(Decision(
+            id=f"D-terminal-{session}", what=f"Run ended: {reason}",
+            why=(f"calls {state['budget'].calls_used}/"
+                 f"{state['budget'].max_model_calls}, rounds "
+                 f"{state['budget'].rounds_used}/"
+                 f"{state['budget'].max_research_rounds}"),
+            timestamp=datetime.now(timezone.utc)))
+        return {}
+
+    return final_output

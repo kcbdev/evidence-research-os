@@ -25,6 +25,12 @@ def _skeleton_deps(monkeypatch):
     monkeypatch.setattr(
         "app.store.lab_project.LabProjectStore.read_meta", lambda self: meta)
     monkeypatch.setattr("app.graph.nodes.call_model", lambda *a, **k: "")
+    # final_output commits decisions/ entries: hermetic git identity
+    # (production relies on machine config / GIT_* env per PBI-005).
+    for var, val in (("GIT_AUTHOR_NAME", "t"), ("GIT_AUTHOR_EMAIL", "t@e.org"),
+                     ("GIT_COMMITTER_NAME", "t"),
+                     ("GIT_COMMITTER_EMAIL", "t@e.org")):
+        monkeypatch.setenv(var, val)
 
 NODES = [
     "trigger_classifier", "plan", "independent_first_pass",
