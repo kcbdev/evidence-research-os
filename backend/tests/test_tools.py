@@ -13,6 +13,7 @@ import threading
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+import httpx
 import pytest
 from pypdf import PdfWriter
 from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
@@ -21,29 +22,33 @@ from app.models.evidence import Source, Evidence
 from app.store.lab_project import LabProjectStore
 from app.tools import grep_project as grep_mod
 from app.tools.blackboard import store_source, retrieve_evidence
-from app.tools.fetch import fetch_url, fetch_pdf
+from app.tools.fetch import extract_pdf, fetch_url, fetch_pdf
 
 TS = "2026-09-05T10:00:00Z"
 
 
-def _ensure_rg_on_path():
-    if shutil.which("rg"):
-        return
-    candidates = [
-        Path(os.environ.get("LOCALAPPDATA", "")) / "Microsoft/WinGet/Packages",
-        Path("C:/Program Files/ripgrep"),
-    ]
-    for base in candidates:
-        if not base.is_dir():
-            continue
-        for rg in list(base.rglob("rg.exe"))[:1]:
-            os.environ["PATH"] = str(rg.parent) + os.pathsep + os.environ["PATH"]
-            return
-    pytest.skip("rg binary not found — install ripgrep (PBI-009)")
+def _require_rg_on_path():
+    # Local convenience only: pre-install shells lack the winget PATH entry.
+    if not shutil.which("rg"):
+        candidates = [
+            Path(os.environ.get("LOCALAPPDATA", "")) / "Microsoft/WinGet/Packages",
+            Path("C:/Program Files/ripgrep"),
+        ]
+        for base in candidates:
+            if not base.is_dir():
+                continue
+            for rg in list(base.rglob("rg.exe"))[:1]:
+                os.environ["PATH"] = str(rg.parent) + os.pathsep + os.environ["PATH"]
+                break
+    # Hard prerequisite — never skip: a green gate must prove grep works.
+    assert shutil.which("rg"), (
+        "rg binary required on PATH "
+        "(winget: BurntSushi.ripgrep.MSVC / apt: ripgrep)"
+    )
 
 
 def test_grep_returns_file_line_hits(tmp_path):
-    _ensure_rg_on_path()
+    _require_rg_on_path()
     (tmp_path / "a.yaml").write_text("id: C-1\nstatement: X improves Y.\n")
     (tmp_path / "b.yaml").write_text("id: C-2\nstatement: unrelated.\n")
     out = grep_mod.grep_project(str(tmp_path), "improves")
@@ -52,9 +57,16 @@ def test_grep_returns_file_line_hits(tmp_path):
     assert grep_mod.grep_project(str(tmp_path), "no-such-token") == ""
 
 
-def test_grep_docstring_nudges_iterative_use():
+def test_grep_tool_error_is_not_a_clean_miss(tmp_path):
+    _require_rg_on_path()
+    (tmp_path / "a.yaml").write_text("id: C-1\n")
+    with pytest.raises(RuntimeError, match="ripgrep failed"):
+        grep_mod.grep_project(str(tmp_path), "[invalid")
+
+
+def test_grep_docstring_pins_the_contract():
     doc = grep_mod.grep_project.__doc__ or ""
-    assert "narrow" in doc and "read" in doc
+    assert "file:line:" in doc and "never single-shot" in doc
 
 
 @pytest.fixture()
@@ -69,6 +81,7 @@ def local_server(tmp_path):
     thread.start()
     yield f"http://127.0.0.1:{server.server_port}"
     server.shutdown()
+    server.server_close()
 
 
 def _pdf_with_text(text: str) -> bytes:
@@ -99,6 +112,23 @@ def test_fetch_url_extracts_article_text(local_server):
 
 def test_fetch_pdf_extracts_page_text(local_server):
     assert "Hello PDF world" in fetch_pdf(local_server + "/doc.pdf")
+
+
+def test_fetch_surfaces_http_failure_as_error(local_server):
+    with pytest.raises(httpx.HTTPStatusError):
+        fetch_url(local_server + "/no-such-page.html")
+    with pytest.raises(httpx.HTTPStatusError):
+        fetch_pdf(local_server + "/no-such-doc.pdf")
+
+
+def test_extract_pdf_reads_bytes_and_files(tmp_path, local_server):
+    import httpx as _httpx
+
+    data = _httpx.get(local_server + "/doc.pdf", timeout=15).content
+    assert "Hello PDF world" in extract_pdf(data)
+    pdf_path = tmp_path / "local.pdf"
+    pdf_path.write_bytes(data)
+    assert "Hello PDF world" in extract_pdf(pdf_path)
 
 
 def _make_store(tmp_path) -> LabProjectStore:
