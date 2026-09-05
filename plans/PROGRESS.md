@@ -47,3 +47,18 @@
   Sort rationale: fully gate-proven, no UX/security/production surface,
   divergence human-approved → agentic, closed to Done.
 - Chained: PBI-002 → Active (deps satisfied).
+
+## 2026-09-05 — PBI-002 Done (review: agentic)
+
+- `backend/app/models/evidence.py`: guide-§1.1 classes byte-faithful
+  (critic-verified line-by-line) + Idea per spec §4.2; Contradiction/
+  Experiment deferred with rationale (guide §2.3 tracks contradictions
+  as Tasks; no Experiment schema exists yet — inventing one would
+  violate "no change without a spec").
+- `backend/tests/test_models.py`: 10 tests, spec-example fixtures
+  (C-017 confidences, E-102 location, D-011 what/why verbatim).
+- Gates: 13 passed. Critic APPROVE (da82f4d); 3 nits fixed + re-gated
+  (c99eb5e); remaining nits recorded: parametrize negatives per-value,
+  YAML-text vs model-== wording, Task/Meta fixtures are guide-only.
+- Sort: gate-proven + critic-approved, no human judgment → agentic.
+- Chained: PBI-003 → Active.
