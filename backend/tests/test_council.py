@@ -88,17 +88,27 @@ def test_prompts_load_per_role():
 
 
 def test_parse_findings_protocol():
-    events = list(parse_findings(
+    events, skipped = parse_findings(
         "CLAIM: s1\n"
         "EVIDENCE: ex || https://e.org/x || p3 || bogus-type\n"
         "EVIDENCE: broken\n"
         "CHALLENGE: s2\n"
-        "noise\n"))
+        "noise\n")
     assert events == [
         ("claim", "s1"),
         ("evidence", "ex", "https://e.org/x", "p3", "argumentative"),
         ("challenge", "s2"),
     ]
+    assert skipped == 2  # malformed evidence line + noise line
+
+
+def test_overlap_boundary():
+    from app.graph.nodes import _overlap, CHALLENGE_OVERLAP
+    hit = _overlap("Vitamin D does not support bone density.",
+                   "Vitamin D supports bone density.")
+    miss = _overlap("Chocolate cures everything.",
+                    "Vitamin D supports bone density.")
+    assert hit >= CHALLENGE_OVERLAP > miss
 
 
 def test_first_pass_isolated_and_partial(tmp_path, monkeypatch):
@@ -147,6 +157,62 @@ def test_extraction_enforces_per_claim_cap(tmp_path, monkeypatch):
         "EVIDENCE: one || https://e.org/1 || p1\n"
         "EVIDENCE: two || https://e.org/2 || p2\n")}))
     assert [e.id for e in store.list_evidence()] == ["E-scientist-001"]
+
+
+def test_extraction_enforces_global_source_cap(tmp_path, monkeypatch):
+    _mock_llm(monkeypatch)
+    from app.models.evidence import Source
+    store = _seed_project(tmp_path, _meta({"max_sources": 2}))
+    store.write_source(Source(id="S-old-001", kind="primary_paper",
+                              url="https://e.org/old", title="t",
+                              retrieved_at=TS, quality_tier=1))
+    node = nodes.make_evidence_extraction(tmp_path)
+    node(_state(first_pass={"scientist": (
+        "CLAIM: s\n"
+        "EVIDENCE: one || https://e.org/1 || p1\n"
+        "EVIDENCE: two || https://e.org/2 || p2\n"
+        "EVIDENCE: three || https://e.org/3 || p3\n")}))
+    urls = sorted(s.url for s in store.list_sources())
+    # Pre-existing source counts toward the cap: only ONE new source minted.
+    assert urls == ["https://e.org/1", "https://e.org/old"]
+    assert len(store.list_evidence()) == 1
+
+
+def test_conflict_upserts_changed_reason_and_prunes_resolved(
+        tmp_path, monkeypatch):
+    _mock_llm(monkeypatch)
+    store = _seed_project(tmp_path)
+    from app.models.evidence import Task
+    store.write_task(Task(id="T-C-gone", question="q",
+                          reason="stale", assigned_agent="investigator"))
+    store.write_task(Task(id="T-C-scientist-001", question="q",
+                          reason="stale reason",
+                          assigned_agent="investigator"))
+    nodes.make_evidence_extraction(tmp_path)(_state(first_pass={
+        "scientist": SCIENTIST_TEXT, "investigator": "", "skeptic": ""}))
+    out = nodes.make_conflict_detection(tmp_path)(_state(first_pass={
+        "scientist": "", "investigator": "", "skeptic": SKEPTIC_TEXT}))
+    assert out["open_contradictions"] == ["C-scientist-001"]
+    # stale non-matching task pruned, changed reason upserted:
+    assert store.read_task("T-C-scientist-001").reason.startswith(
+        "Skeptic challenge:")
+    assert not (store.path / "tasks" / "T-C-gone.yaml").exists()
+
+
+def test_targeted_counts_calls_and_round(tmp_path, monkeypatch):
+    _mock_llm(monkeypatch)
+    _seed_project(tmp_path)
+    from app.models.evidence import Task
+    budget = BudgetState(max_model_calls=100, max_research_rounds=5)
+    tasks = [Task(id="T-a", question="qa", reason="r",
+                  assigned_agent="investigator"),
+             Task(id="T-b", question="qb", reason="r",
+                  assigned_agent="skeptic")]
+    out = nodes.make_targeted_research(tmp_path)(
+        _state(budget=budget, pending_tasks=tasks))
+    assert out["pending_tasks"] == []
+    assert (out["budget"].calls_used, out["budget"].rounds_used) == (2, 1)
+    assert budget.calls_used == 0  # input copy, not mutation
 
 
 def test_conflict_detects_challenge_match(tmp_path, monkeypatch):

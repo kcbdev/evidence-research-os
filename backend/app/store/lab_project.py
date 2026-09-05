@@ -102,6 +102,19 @@ class LabProjectStore:
     def write_task(self, t: Task):
         self._write("tasks", t.id, t, f"task: {t.id}")
 
+    def delete_task(self, id: str):
+        # Queue semantics (PBI-011): consumed/resolved tasks leave the
+        # queue; git history preserves them. Only our contradiction tasks
+        # (T-C-*) are ever pruned, and only by conflict_detection.
+        p = self.path / "tasks" / f"{id}.yaml"
+        if not p.exists():
+            return
+        # working_tree=True: `git rm`, not `git rm --cached`. The queue
+        # file must actually leave, git history keeps the record.
+        self.repo.index.remove([str(p.relative_to(self.path))],
+                               working_tree=True)
+        self.repo.index.commit(f"task done: {id}")
+
     def read_task(self, id: str) -> Task:
         return self._read("tasks", id, Task)
 

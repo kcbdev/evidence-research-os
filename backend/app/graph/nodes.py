@@ -6,8 +6,15 @@ PBI-011 design notes:
 - Council LLM calls run concurrently via asyncio.to_thread (the OpenAI
   client is blocking); ALL store writes happen after the gather, inside
   single-threaded node bodies — so the git-index race (PBI-004 review)
-  cannot trigger by construction. Nodes return PARTIAL updates, never
-  mutated full state (parallel-branch lost-update risk).
+  cannot trigger by construction. The concurrent-loop nodes return
+  PARTIAL updates and consume budget via the PBI-007 helpers on copies,
+  never mutated full state (parallel-branch lost-update risk). The older
+  sync nodes (classifier/plan) still return full state — moot, as the
+  topology has no parallel graph branches.
+- NOTE on fetching: these nodes make no fetch calls at all (LLM boundary
+  only). Runtime MCP fetch wiring + session_id readers arrive with the
+  run harness (open backlog, see PROGRESS) — the raw-fetch ban test
+  guards the boundary meanwhile.
 - Extraction parses a documented line protocol (FINDING_FORMAT, sent in
   the user message so system prompts stay guide-verbatim). Detection is
   deliberately cheap/heuristic (token-overlap challenge matching); the
@@ -58,29 +65,45 @@ def _overlap(a: str, b: str) -> float:
     return len(ta & tb) / len(ta | tb)
 
 
-def parse_findings(text: str):
-    """Parse the FINDING_FORMAT protocol into ordered events.
+def parse_findings(text: str) -> tuple[list[tuple], int]:
+    """Parse the FINDING_FORMAT protocol into ordered events plus a
+    skipped-line count (malformed lines are NEVER silent: the count is
+    returned for tests and, at runtime, for the future observability
+    surface — see the runtime-MCP backlog note in PROGRESS).
 
     Yields ("claim", statement), ("evidence", excerpt, url, loc, etype),
-    ("challenge", statement). Malformed lines are ignored.
+    ("challenge", statement).
     """
+    events: list[tuple] = []
+    skipped = 0
     for line in (text or "").splitlines():
         line = line.strip()
+        if not line:
+            continue
         if line.startswith("CLAIM:"):
             statement = line[len("CLAIM:"):].strip()
             if statement:
-                yield ("claim", statement)
+                events.append(("claim", statement))
+            else:
+                skipped += 1
         elif line.startswith("EVIDENCE:"):
             parts = [p.strip() for p in line[len("EVIDENCE:"):].split("||")]
             if len(parts) >= 3 and parts[0] and parts[1]:
                 etype = parts[3] if len(parts) > 3 else "argumentative"
                 if etype not in ("empirical", "argumentative", "analogical"):
                     etype = "argumentative"
-                yield ("evidence", parts[0], parts[1], parts[2], etype)
+                events.append(("evidence", parts[0], parts[1], parts[2], etype))
+            else:
+                skipped += 1
         elif line.startswith("CHALLENGE:"):
             statement = line[len("CHALLENGE:"):].strip()
             if statement:
-                yield ("challenge", statement)
+                events.append(("challenge", statement))
+            else:
+                skipped += 1
+        else:
+            skipped += 1
+    return events, skipped
 
 
 def trigger_classifier(state: LabProjectState) -> LabProjectState:
@@ -136,10 +159,16 @@ def make_independent_first_pass(lab_project_path: Path):
     def independent_first_pass(state) -> dict:
         store = LabProjectStore(lab_project_path, state["lab_project_id"])
         models = store.read_meta().council_models
+        # Sync-node only: LangGraph runs sync nodes in a worker thread with
+        # no running loop, so asyncio.run is safe. Never await this node
+        # directly from async code (would raise "asyncio.run() cannot be
+        # called from a running event loop").
         findings = asyncio.run(_run_all(state["active_question"], models))
-        budget = state["budget"].model_copy(
-            update={"calls_used": state["budget"].calls_used + 3})
-        return {"first_pass": findings, "budget": budget}
+        # Route through the PBI-007 helper (no dead imports): consume on a
+        # copy so the input BudgetState is never mutated in place.
+        tmp = {"budget": state["budget"].model_copy()}
+        consume_calls(tmp, 3)
+        return {"first_pass": findings, "budget": tmp["budget"]}
 
     return independent_first_pass
 
@@ -158,21 +187,25 @@ def make_evidence_extraction(lab_project_path: Path):
         caps = store.read_meta()  # project.yaml always exists; loud if not
         per_claim, max_sources = caps.max_sources_per_claim, caps.max_sources
         findings = state.get("first_pass", {}) or {}
+        # Global URL registry (preloaded with existing sources): the
+        # max_sources cap spans roles AND prior runs, not per role.
+        url_to_source = {s.url: s.id for s in store.list_sources()}
         for role in ROLES:
-            _extract_role(store, role, findings.get(role, ""),
-                          per_claim, max_sources)
+            events, _skipped = parse_findings(findings.get(role, ""))
+            _extract_role(store, role, events, per_claim, max_sources,
+                          url_to_source)
         return {}
 
     return evidence_extraction
 
 
-def _extract_role(store: LabProjectStore, role: str, text: str,
-                  per_claim: int, max_sources: int):
+def _extract_role(store: LabProjectStore, role: str, events: list,
+                  per_claim: int, max_sources: int,
+                  url_to_source: dict[str, str]):
     ci = ei = 0
     current_claim: str | None = None
     claimed_evidence = 0
-    url_to_source: dict[str, str] = {}
-    for event in parse_findings(text):
+    for event in events:
         if event[0] == "claim":
             ci += 1
             current_claim = f"C-{role}-{ci:03d}"
@@ -185,10 +218,13 @@ def _extract_role(store: LabProjectStore, role: str, text: str,
             if url not in url_to_source:
                 if len(url_to_source) >= max_sources:
                     continue
-                sid = f"S-{role}-{len(url_to_source) + 1:03d}"
-                url_to_source[url] = sid
+                # Global cap, per-role readable suffix.
+                n = sum(1 for sid in url_to_source.values()
+                        if sid.startswith(f"S-{role}-")) + 1
+                url_to_source[url] = f"S-{role}-{n:03d}"
                 store.write_source(Source(
-                    id=sid, kind="web_content", url=url, title=url,
+                    id=url_to_source[url], kind="web_content", url=url,
+                    title=url,
                     retrieved_at=datetime.now(timezone.utc),
                     quality_tier=9))
             ei += 1
@@ -197,6 +233,8 @@ def _extract_role(store: LabProjectStore, role: str, text: str,
                 id=f"E-{role}-{ei:03d}", source_id=url_to_source[url],
                 location={"section": loc}, text_reference=excerpt,
                 supports=[current_claim], evidence_type=etype,
+                # "medium": an LLM-synthesized finding is neither a vetted
+                # empirical result (high) nor a throwaway (low) until audit.
                 strength="medium"))
 
 
@@ -207,28 +245,33 @@ def make_conflict_detection(lab_project_path: Path):
     def conflict_detection(state) -> dict:
         store = LabProjectStore(lab_project_path, state["lab_project_id"])
         findings = state.get("first_pass", {}) or {}
-        challenges = [e[1] for e in parse_findings(findings.get("skeptic", ""))
-                      if e[0] == "challenge"]
+        events, _skipped = parse_findings(findings.get("skeptic", ""))
+        challenges = [e[1] for e in events if e[0] == "challenge"]
         claims = store.list_claims()
-        open_ids: list[str] = []
-        tasks: list[Task] = []
+        computed: dict[str, Task] = {}
         for claim in claims:
             hit = next((c for c in challenges
                         if _overlap(c, claim.statement) >= CHALLENGE_OVERLAP),
                        None)
             if hit is not None:
-                open_ids.append(claim.id)
-                tasks.append(Task(
+                computed[f"T-{claim.id}"] = Task(
                     id=f"T-{claim.id}",
                     question=f"Adjudicate conflicting evidence on: {claim.statement}",
                     reason=f"Skeptic challenge: {hit}",
-                    assigned_agent="investigator"))
-        for task in tasks:
-            existing = {t.id for t in store.list_tasks()}
-            if task.id not in existing:
+                    assigned_agent="investigator")
+        # Reconcile the queue (a queue, not an archive): upsert new or
+        # changed reasons, prune tasks whose contradiction cleared.
+        existing = {t.id: t for t in store.list_tasks()}
+        for tid, task in computed.items():
+            if tid not in existing or existing[tid].reason != task.reason:
                 store.write_task(task)
-        return {"open_contradictions": open_ids,
-                "pending_tasks": tasks}
+        for tid in existing:
+            if tid.startswith("T-C-") and tid not in computed:
+                store.delete_task(tid)
+        open_ids = sorted(claim.id for claim in claims
+                          if f"T-{claim.id}" in computed)
+        pending = [computed[f"T-{cid}"] for cid in open_ids]
+        return {"open_contradictions": open_ids, "pending_tasks": pending}
 
     return conflict_detection
 
@@ -243,17 +286,20 @@ def make_targeted_research(lab_project_path: Path):
         models = store.read_meta().council_models
         debates = Path(lab_project_path) / state["lab_project_id"] / "debates"
         debates.mkdir(parents=True, exist_ok=True)
-        for task in state.get("pending_tasks", []) or []:
+        pending = state.get("pending_tasks", []) or []
+        for task in pending:
             agent = task.assigned_agent if isinstance(task, Task) else task["assigned_agent"]
             tid = task.id if isinstance(task, Task) else task["id"]
+            question = task.question if isinstance(task, Task) else task["question"]
             model = models.get(agent, next(iter(models.values())))
-            text = call_model(model, load_prompt(agent),
-                              task.question if isinstance(task, Task)
-                              else task["question"])
+            text = call_model(model, load_prompt(agent), question)
             (debates / f"{tid}.md").write_text(text)
-        budget = state["budget"].model_copy(
-            update={"rounds_used": state["budget"].rounds_used + 1})
-        return {"pending_tasks": [], "budget": budget}
+        # Every dispatch is a model call AND the pass consumes one round:
+        # route both through the PBI-007 helpers on a copy.
+        tmp = {"budget": state["budget"].model_copy()}
+        consume_calls(tmp, len(pending))
+        consume_round(tmp)
+        return {"pending_tasks": [], "budget": tmp["budget"]}
 
     return targeted_research
 
