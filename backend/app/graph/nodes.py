@@ -304,16 +304,137 @@ def make_targeted_research(lab_project_path: Path):
     return targeted_research
 
 
-def adversarial_review(state: LabProjectState) -> LabProjectState:
-    return state  # PBI-012
+def make_adversarial_review(lab_project_path: Path):
+    """Skeptic reviews every claim against the spec §3 rubric. Findings go
+    to debates/adversarial.md (transcript scratch) — claims are NEVER
+    edited here; the transcript is fed to the judge as context."""
+
+    def adversarial_review(state) -> dict:
+        store = LabProjectStore(lab_project_path, state["lab_project_id"])
+        model = store.read_meta().council_models["skeptic"]
+        claims = store.list_claims()
+        listing = "\n".join(f"{c.id}: {c.statement} [{c.status}]"
+                            for c in claims)
+        text = call_model(model, load_prompt("skeptic"),
+                          "Review these claims for weaknesses:\n" + listing)
+        debates = Path(lab_project_path) / state["lab_project_id"] / "debates"
+        debates.mkdir(parents=True, exist_ok=True)
+        (debates / "adversarial.md").write_text(text)
+        tmp = {"budget": state["budget"].model_copy()}
+        consume_calls(tmp, 1)
+        return {"budget": tmp["budget"]}
+
+    return adversarial_review
 
 
-def evidence_adjudication(state: LabProjectState) -> LabProjectState:
-    return state  # PBI-012
+JUDGE_STATUSES = ("SUPPORTED", "STRONGLY_SUPPORTED", "WEAKLY_SUPPORTED",
+                  "DISPUTED", "CONTRADICTED", "INSUFFICIENT_EVIDENCE",
+                  "UNVERIFIABLE")
+
+JUDGE_FORMAT = """
+Adjudicate each claim below from the evidence graph ONLY.
+Respond with one line per claim: STATUS <claim-id>: <STATUS>
+Valid statuses: SUPPORTED STRONGLY_SUPPORTED WEAKLY_SUPPORTED DISPUTED
+CONTRADICTED INSUFFICIENT_EVIDENCE UNVERIFIABLE
+Three agents agreeing does not make an unsupported claim true.
+"""
 
 
-def synthesis(state: LabProjectState) -> LabProjectState:
-    return state  # PBI-012
+def make_evidence_adjudication(lab_project_path: Path):
+    """Judge resolves every claim from evidence, never consensus.
+
+    Two layers: (1) deterministic guard — a claim with ZERO supporting
+    evidence resolves INSUFFICIENT_EVIDENCE without spending a judge
+    call (adjudicated_by "rule:no-evidence"); unanimous council support
+    cannot override physics. (2) Judge LLM for evidenced claims, with
+    the skeptic transcript as context; unparseable output leaves the
+    claim untouched (fail-safe, never fabricate a verdict).
+    validate_model_assignment is re-asserted here: project.yaml may have
+    changed between build time and run time."""
+
+    def evidence_adjudication(state) -> dict:
+        from app.agents.config import validate_model_assignment
+        store = LabProjectStore(lab_project_path, state["lab_project_id"])
+        meta = store.read_meta()
+        validate_model_assignment(meta.council_models, meta.judge_model)
+        by_claim: dict[str, list] = {}
+        for ev in store.list_evidence():
+            for cid in ev.supports:
+                by_claim.setdefault(cid, []).append(ev)
+        judged = 0
+        for claim in store.list_claims():
+            supporting = by_claim.get(claim.id, [])
+            if not supporting:
+                claim.status = "INSUFFICIENT_EVIDENCE"
+                claim.adjudicated_by = "rule:no-evidence"
+                store.write_claim(claim)
+                continue
+            verdicts = _consult_judge(meta.judge_model, store, claim,
+                                      supporting)
+            if claim.id in verdicts:
+                claim.status = verdicts[claim.id]
+                claim.adjudicated_by = meta.judge_model
+                store.write_claim(claim)
+                judged += 1
+        tmp = {"budget": state["budget"].model_copy()}
+        consume_calls(tmp, judged)
+        return {"budget": tmp["budget"]}
+
+    return evidence_adjudication
+
+
+def _consult_judge(judge_model: str, store: LabProjectStore, claim,
+                   supporting: list) -> dict:
+    debates = store.path / "debates" / "adversarial.md"
+    notes = debates.read_text(encoding="utf-8") if debates.exists() else "(none)"
+    lines = [f"{claim.id}: {claim.statement}"]
+    for ev in supporting:
+        src = store.read_source(ev.source_id)
+        lines.append(f"{ev.id} ({ev.evidence_type}/{ev.strength}) "
+                     f"for {','.join(ev.supports)}: {ev.text_reference} "
+                     f"[source: {src.url}]")
+    text = call_model(judge_model, load_prompt("judge"),
+                      JUDGE_FORMAT + "\nCLAIMS:\n" + "\n".join(lines)
+                      + "\nSKEPTIC NOTES:\n" + notes)
+    verdicts = {}
+    for line in text.splitlines():
+        line = line.strip()
+        if line.startswith("STATUS "):
+            rest = line[len("STATUS "):]
+            if ":" in rest:
+                cid, status = (p.strip() for p in rest.split(":", 1))
+                if status in JUDGE_STATUSES:
+                    verdicts[cid] = status
+    return verdicts
+
+
+def make_synthesis(lab_project_path: Path):
+    """Deterministic draft render from adjudicated claims (no LLM call:
+    a draft must be complete and traceable, not eloquent — polish is a
+    later phase's job). Run artifact, written directly like plan/."""
+
+    def synthesis(state) -> dict:
+        store = LabProjectStore(lab_project_path, state["lab_project_id"])
+        meta = store.read_meta()
+        out = [f"# {meta.title}", "", f"Question: {meta.question}", ""]
+        for claim in store.list_claims():
+            conf = (claim.confidence.overall if claim.confidence is not None
+                    else 0.0)
+            out.append(f"## {claim.id} — {claim.status}")
+            out.append("")
+            out.append(claim.statement)
+            out.append("")
+            out.append(f"Confidence: {conf:.2f} | "
+                       f"Adjudicated by: {claim.adjudicated_by or 'pending'}")
+            out.append(f"Supporting: {', '.join(claim.supporting_sources) or '—'} | "
+                       f"Opposing: {', '.join(claim.opposing_sources) or '—'}")
+            out.append("")
+        output_dir = Path(lab_project_path) / state["lab_project_id"] / "output"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        (output_dir / "report.md").write_text("\n".join(out))
+        return {}
+
+    return synthesis
 
 
 def citation_audit(state: LabProjectState) -> LabProjectState:

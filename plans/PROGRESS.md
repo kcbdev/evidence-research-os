@@ -198,3 +198,28 @@
   (`uv run ...`, workdir backend — bare python lacks deps).
 - Gates: 50 passed. Sort: critic-approved after fix → agentic.
 - Chained: PBI-011 → Active (deps 006, 008, 010 Done).
+
+## 2026-09-05 — PBI-011 Done (review: agentic, via CHANGES-REQUESTED)
+
+- Council loop real: concurrent isolated first pass (to_thread+gather),
+  FINDING_FORMAT protocol extraction, Jaccard challenge matching,
+  targeted dispatch with debates transcripts, exhaustion edge to
+  final_output, loop termination executed (not argued).
+- Critic's 5 must-fix, all addressed in code (9ea95bd): (1) budget via
+  helpers on copies incl. per-dispatch call counts — dead import gone;
+  (2) max_sources GLOBAL (preloaded registry, per-role suffixes) +
+  test incl. pre-existing; (3) task upsert-on-changed-reason +
+  prune-resolved via new delete_task (git-rm, not cached-remove —
+  caught by test); (4) session/cached_* honestly deferred to runtime
+  backlog in PBI text, ban test guards; (5) parse returns skipped
+  counts, asserted.
+- Own bugs caught by gates (do not repeat): council_models/models
+  rename slip; sorted-list expectations (investigator < scientist);
+  debates/ exists from layout (assert files, not dir); paren slip in
+  test edit; `index.remove` defaults to --cached.
+- Open backlog (plan delta needed, NOT this chain): runtime MCP
+  exposure for cached_*/search_web (provider undecided) + session_id
+  readers + parse-health observability; langgraph msgpack allowlist
+  for future strict mode; budgets >>25 vs recursion_limit(25).
+- Gates: 63 passed. Sort: critic-approved after fix → agentic.
+- Chained: PBI-012 → Active.

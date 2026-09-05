@@ -42,9 +42,11 @@ def build_graph(lab_project_path: Path,
                  nodes.make_conflict_detection(lab_project_path))
     g.add_node("targeted_research",
                  nodes.make_targeted_research(lab_project_path))
-    g.add_node("adversarial_review", nodes.adversarial_review)
-    g.add_node("evidence_adjudication", nodes.evidence_adjudication)
-    g.add_node("synthesis", nodes.synthesis)
+    g.add_node("adversarial_review",
+                 nodes.make_adversarial_review(lab_project_path))
+    g.add_node("evidence_adjudication",
+                 nodes.make_evidence_adjudication(lab_project_path))
+    g.add_node("synthesis", nodes.make_synthesis(lab_project_path))
     g.add_node("citation_audit", nodes.citation_audit)
     g.add_node("targeted_repair", nodes.targeted_repair)
     g.add_node("human_checkpoint", nodes.human_checkpoint)
