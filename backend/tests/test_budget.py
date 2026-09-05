@@ -50,9 +50,10 @@ def test_exhausted_calls_end_run_cleanly(tmp_path):
     config = {"configurable": {"thread_id": "t1"}}
     budget = BudgetState(max_model_calls=50, max_research_rounds=5,
                          calls_used=50)
-    graph.invoke(make_state(budget), config)
+    result = graph.invoke(make_state(budget), config)
     assert tuple(graph.get_state(config).next) == ()
     assert not (proj / "plan" / "research-plan.yaml").exists()
+    assert result["escalate"] is False
 
 
 def test_fresh_budget_still_escalates(tmp_path):
