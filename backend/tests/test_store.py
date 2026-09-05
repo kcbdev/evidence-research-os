@@ -17,7 +17,7 @@ def test_layout_created(tmp_path):
     store = make_store(tmp_path)
     for sub in LAYOUT_SUBDIRS:
         assert (store.path / sub).is_dir(), f"missing subdir {sub}"
-    assert (store.path / ".git").exists() is False  # PBI-004 owns git
+    assert not (store.path / ".git").exists()  # PBI-004 owns git
 
 
 def test_meta_roundtrip(tmp_path):

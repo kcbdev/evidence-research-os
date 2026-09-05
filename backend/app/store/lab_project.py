@@ -40,6 +40,7 @@ class LabProjectStore:
         return model_cls(**yaml.safe_load(p.read_text()))
 
     def _list(self, subdir: str, model_cls):
+        # sorted(): intentional determinism — bare glob order is OS-dependent.
         return [model_cls(**yaml.safe_load(p.read_text()))
                 for p in sorted((self.path / subdir).glob("*.yaml"))]
 
