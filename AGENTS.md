@@ -33,7 +33,7 @@ source of truth; every derived index is regeneratable and gitignored.
 | Scope | Command | Status |
 |---|---|---|
 | Repo smoke | `python -m pytest tests/ -q` | LIVE (3 tests, onboarding seed) |
-| Backend | `python -m pytest backend/tests -q` | LIVE (scaffold gate, PBI-001) |
+| Backend | `uv run pytest tests/ -q` (workdir `backend/`) | LIVE (PBI-001+) |
 | Frontend typecheck | `cmd /c "npm.cmd --prefix frontend run typecheck"` (`tsc --noEmit`) | LIVE (PBI-001) |
 | Frontend tests | `cmd /c "npm.cmd --prefix frontend test"` | pending — runner chosen in PBI-016 |
 
