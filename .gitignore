@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+# Node
+node_modules/
+.next/
+# Evidence Research OS derived indices (regeneratable, never committed)
+.index/
+# Lab Project data volume (separate git remote per Lab Project, own history)
+lab-projects/
+# OS / editors
+.DS_Store
+Thumbs.db
