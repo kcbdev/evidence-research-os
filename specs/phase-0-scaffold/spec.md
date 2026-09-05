@@ -25,7 +25,9 @@ boundaries instead of scaffolding.
     type, YAML round-trip without loss; the ONLY writer of object YAML.
   - Git init per Lab Project on creation; one commit per store write.
   - `frontend/` via `create-next-app --typescript --tailwind --app`
-    (no data-fetching library).
+    (no data-fetching library). Scaffold drift approved 2026-09-05: the
+    tool installs **Next.js 16** (React 19, Tailwind v4) — the spec's
+    "Next.js 15" is superseded everywhere by this note.
   - `lab-projects/` data dir, gitignored from the app repo.
   - Coolify: backend (:8000) + frontend (:3000) services, persistent
     volume mounted at `/data/lab-projects` (`LAB_PROJECTS_ROOT`).

@@ -27,6 +27,21 @@ ordering only.
 18. PBI-018 — Run view + approval modal (needs PBI-014, PBI-016)
 19. PBI-019 — End-to-end MVP validation, human-gated (needs PBI-016–018)
 
+## Statuses (`Proposed` → `Active` → `In Review` → `Done` / `Blocked`)
+
+| PBI | Status | PBI | Status |
+|---|---|---|---|
+| PBI-001 | Active | PBI-011 | Proposed |
+| PBI-002 | Proposed | PBI-012 | Proposed |
+| PBI-003 | Proposed | PBI-013 | Proposed |
+| PBI-004 | Proposed | PBI-014 | Proposed |
+| PBI-005 | Proposed | PBI-015 | Proposed |
+| PBI-006 | Proposed | PBI-016 | Proposed |
+| PBI-007 | Proposed | PBI-017 | Proposed |
+| PBI-008 | Proposed | PBI-018 | Proposed |
+| PBI-009 | Proposed | PBI-019 | Proposed |
+| PBI-010 | Proposed | | |
+
 ## Dependency graph
 
 ```text

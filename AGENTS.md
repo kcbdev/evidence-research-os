@@ -11,10 +11,12 @@ source of truth; every derived index is regeneratable and gitignored.
 
 - **Backend:** Python >=3.12, FastAPI, LangGraph (+ langgraph-checkpoint-sqlite),
   Pydantic v2, OpenRouter via OpenAI-compatible client. Managed with `uv`
-  when available, else stdlib `venv` + `pip`. (uv not yet installed on this
-  machine — Phase 0 PBI installs/standardizes it.)
-- **Frontend:** Next.js 15 (TypeScript, Tailwind, app router), native
+  when available, else stdlib `venv` + `pip`. (uv 0.12.10 installed via
+  pip, PBI-001; `uv sync` reproducible per `backend/uv.lock`.)
+- **Frontend:** Next.js 16 (React 19, Tailwind v4, app router, `src/`), native
   `fetch` + `EventSource` only — no extra data-fetching library for MVP.
+  Scaffold authority is `frontend/AGENTS.md` (breaking-change notices +
+  `node_modules/next/dist/docs/` guides) — read it before writing UI code.
 - **Retrieval tiers:** Tier 1 ripgrep (MVP default) → Tier 2 Tantivy BM25
   (Phase 3) → Tier 3 LanceDB + fastembed (Phase 3, dedup + cross-project only).
 - **Deploy:** Coolify/Hetzner — two services (backend :8000, frontend :3000)
@@ -74,7 +76,9 @@ project_structure:
   backend/:
     responsibility: "FastAPI app (models/store/graph/agents/tools/api). Does not yet exist — Phase 0 PBI scaffolds it per guide §0."
   frontend/:
-    responsibility: "Next.js 15 control panel. Consumes /api/v1 exclusively — no direct filesystem/DB access. Does not yet exist — Phase 1d PBI."
+    responsibility: "Next.js 16 control panel. Consumes /api/v1 exclusively — no direct filesystem/DB access. Does not yet exist — Phase 1d PBI."
+  frontend/AGENTS.md:
+    responsibility: "Scaffold-generated agent rules for the Next.js version in use (breaking-change notices). Authority for UI code conventions; commit it with frontend work."
   lab-projects/:
     responsibility: "Data volume (gitignored here; separate git remote per Lab Project, own history). Never committed to the app repo."
   tests/:

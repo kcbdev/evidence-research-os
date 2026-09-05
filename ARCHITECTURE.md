@@ -18,7 +18,7 @@ yet — all arrive via asdlc-plan PBIs (Phase 0 scaffold first).
 | `backend/app/agents/` | Role prompts + OpenRouter client; `validate_model_assignment` startup check | Council models ≠ judge model, enforced, not conventional |
 | `backend/app/tools/` | ripgrep wrapper, web/PDF fetch, tool-output cache | Every fetch through `tool_outputs/<session>/` cache keyed by URL/DOI hash |
 | `backend/app/api/` | FastAPI `/api/v1`: lab-projects, runs (+SSE stream, +approve), claims (SQLite view), decisions, budget, output | Sole dependency of the frontend |
-| `frontend/` | Next.js 15 pages: dashboard, lab overview, claims, ideas, graph, run view, audit, output, settings | REST + SSE only; no direct filesystem/DB access |
+| `frontend/` | Next.js 16 pages: dashboard, lab overview, claims, ideas, graph, run view, audit, output, settings | REST + SSE only; no direct filesystem/DB access |
 
 ## Storage
 
