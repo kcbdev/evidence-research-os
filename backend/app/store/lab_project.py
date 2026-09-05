@@ -35,9 +35,25 @@ class LabProjectStore:
     def _ensure_layout(self):
         for sub in LAYOUT_SUBDIRS:
             (self.path / sub).mkdir(parents=True, exist_ok=True)
+        # Derived/discardable paths stay untracked (ADR-0001). Written
+        # here, committed lazily with the first object write (see
+        # _commit) so project creation itself mints no commits.
+        gi = self.path / ".gitignore"
+        if not gi.exists():
+            gi.write_text("plan/\ndebates/\ntool_outputs/\n.index/\n"
+                          "checkpoint.sqlite\n")
 
     def _commit(self, rel_path: Path, msg: str):
-        self.repo.index.add([str(rel_path)])
+        paths = [str(rel_path)]
+        gi = self.path / ".gitignore"
+        if gi.exists():
+            try:
+                untracked = self.repo.untracked_files
+            except Exception:
+                untracked = []
+            if ".gitignore" in untracked:
+                paths.append(".gitignore")
+        self.repo.index.add(paths)
         self.repo.index.commit(msg)
 
     def _write(self, subdir: str, obj_id: str, model, commit_msg: str):

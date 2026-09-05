@@ -1,0 +1,192 @@
+"""Run lifecycle (spec §8, guide §5.2): start, status, SSE stream, approve.
+
+Runtime model: each run gets a background thread driving graph.stream()
+(run_id doubles as thread_id AND session_id — PBI-010/PBI-014 contract).
+Graphs are cached per project path (one sqlite FD per project per
+process — acceptable single-operator MVP; a close/dispose path is a
+documented follow-up, not this PBI). Handlers never touch the
+filesystem except through LabProjectStore; the graph owns run state.
+
+SSE posture: the stream replays recorded events then follows live until
+a resting status (awaiting_approval/done/failed/rejected) or a 60s cap.
+Clients reconnect after approving.
+"""
+import asyncio
+import json
+import threading
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+from fastapi import APIRouter, HTTPException, Request
+from sse_starlette.sse import EventSourceResponse
+from app.agents.config import validate_model_assignment
+from app.graph.build import build_graph
+from app.models.evidence import Decision
+from app.store.lab_project import LabProjectStore
+from app.api.lab_projects import _root, _store
+
+router = APIRouter()
+
+RESTING = ("awaiting_approval", "done", "failed", "rejected")
+
+_lock = threading.Lock()
+_runs: dict[str, dict] = {}
+_graphs: dict[str, object] = {}
+
+
+def get_graph(root: Path, project_id: str,
+              council_models: dict, judge_model: str):
+    # Validated EVERY run (project.yaml may change between runs);
+    # the compiled graph is structural and safely cached per project.
+    # NOTE: build_graph takes the lab ROOT (nodes append project_id
+    # themselves) — passing store.path here doubles the id.
+    validate_model_assignment(council_models, judge_model)
+    key = str(Path(root) / project_id)
+    with _lock:
+        if key not in _graphs:
+            _graphs[key] = build_graph(Path(root), council_models,
+                                       judge_model)
+        return _graphs[key]
+
+
+def clear_graph_cache():
+    """Test/ops helper: close cached sqlite handles and drop the cache
+    (prevents FD leaks and Windows tmp-cleanup locks in tests)."""
+    with _lock:
+        for graph in _graphs.values():
+            conn = getattr(getattr(graph, "checkpointer", None),
+                           "conn", None)
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+        _graphs.clear()
+
+
+def _record(run_id: str) -> dict:
+    try:
+        return _runs[run_id]
+    except KeyError:
+        raise HTTPException(status_code=404, detail="run not found")
+
+
+def _payload(rec: dict) -> dict:
+    return {"run_id": rec["run_id"], "project_id": rec["project_id"],
+            "status": rec["status"], "events": list(rec["events"]),
+            "needs_approval": rec["status"] == "awaiting_approval",
+            "error": rec["error"]}
+
+
+def _pump(run_id: str, initial=None):
+    """Drive the graph to rest (pause or END), recording node events."""
+    rec = _runs[run_id]
+    graph = rec["graph"]
+    config = {"configurable": {"thread_id": run_id}}
+    try:
+        for chunk in graph.stream(initial, config, stream_mode="updates"):
+            with _lock:
+                rec["events"].extend({"node": node} for node in chunk)
+        nxt = tuple(graph.get_state(config).next)
+        with _lock:
+            rec["status"] = "awaiting_approval" if nxt else "done"
+    except Exception as exc:  # never leave a run stuck in "running"
+        with _lock:
+            rec["status"] = "failed"
+            rec["error"] = str(exc)
+
+
+@router.post("/{project_id}/runs")
+def start_run(project_id: str, payload: dict, request: Request):
+    root = _root(request)
+    store = _store(root, project_id)
+    meta = store.read_meta()
+    council = payload.get("council_models", meta.council_models)
+    judge = payload.get("judge_model", meta.judge_model)
+    try:
+        graph = get_graph(root, project_id, council, judge)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    budget = meta.budget.model_copy()
+    for key in ("max_model_calls", "max_research_rounds"):
+        if key in (payload.get("budget") or {}):
+            setattr(budget, key, payload["budget"][key])
+    run_id = uuid.uuid4().hex[:12]
+    initial = {
+        "lab_project_id": project_id,
+        "mode": payload.get("mode", meta.mode),
+        "active_question": payload.get("question", meta.question),
+        "budget": budget, "pending_tasks": [], "open_contradictions": [],
+        "escalate": False, "audit_passed": False,
+        "needs_human_approval": False, "session_id": run_id,
+        "first_pass": {},
+    }
+    with _lock:
+        _runs[run_id] = {"run_id": run_id, "project_id": project_id,
+                         "status": "running", "events": [], "error": None,
+                         "graph": graph, "initial": initial}
+    threading.Thread(target=_pump, args=(run_id,), kwargs={"initial": initial},
+                     daemon=True).start()
+    return {"run_id": run_id, "status": "running"}
+
+
+@router.get("/{project_id}/runs/{run_id}")
+def get_run(project_id: str, run_id: str):
+    rec = _record(run_id)
+    if rec["project_id"] != project_id:
+        raise HTTPException(status_code=404, detail="run not found")
+    with _lock:
+        return _payload(rec)
+
+
+@router.get("/{project_id}/runs/{run_id}/stream")
+async def stream_run(project_id: str, run_id: str):
+    rec = _record(run_id)
+    if rec["project_id"] != project_id:
+        raise HTTPException(status_code=404, detail="run not found")
+
+    async def gen():
+        seen = 0
+        for _ in range(300):  # 60s cap at 0.2s polls
+            with _lock:
+                events, status = list(rec["events"]), rec["status"]
+            while seen < len(events):
+                yield {"event": "node", "data": json.dumps(events[seen])}
+                seen += 1
+            if status in RESTING:
+                return
+            await asyncio.sleep(0.2)
+
+    return EventSourceResponse(gen())
+
+
+@router.post("/{project_id}/runs/{run_id}/approve")
+def approve_run(project_id: str, run_id: str, payload: dict,
+                request: Request):
+    rec = _record(run_id)
+    if rec["project_id"] != project_id:
+        raise HTTPException(status_code=404, detail="run not found")
+    with _lock:
+        status = rec["status"]
+    if status != "awaiting_approval":
+        raise HTTPException(status_code=400,
+                            detail=f"run is {status}, nothing to approve")
+    decision = (payload or {}).get("decision", "approve")
+    if decision not in ("approve", "reject"):
+        raise HTTPException(status_code=422,
+                            detail="decision must be approve or reject")
+    store = _store(_root(request), project_id)
+    past = {"approve": "approved", "reject": "rejected"}[decision]
+    store.write_decision(Decision(
+        id=f"D-approve-{run_id}",
+        what=f"Human {past} run at checkpoint",
+        why=(payload or {}).get("note", ""),
+        timestamp=datetime.now(timezone.utc)))
+    if decision == "reject":
+        with _lock:
+            rec["status"] = "rejected"
+        return {"run_id": run_id, "status": "rejected"}
+    with _lock:
+        rec["status"] = "running"
+    threading.Thread(target=_pump, args=(run_id,), daemon=True).start()
+    return {"run_id": run_id, "status": "running"}

@@ -238,3 +238,20 @@
   same runtime backlog), evidence pointers in report (later).
 - Gates: 70 passed. Sort: critic-approved after fix → agentic.
 - Chained: PBI-013 → Active (deps 012 Done).
+
+## 2026-09-05 — PBI-013 Done (review: agentic, via CHANGES-REQUESTED)
+
+- Existence-only audit + void-linkage repair (statuses untouched) +
+  flag-only checkpoint (single pause mechanism intact) + terminal
+  outputs (references.md, decisions/ completed|budget_exhausted).
+- Critic's 2 must-fix in code: repaired-path resume proven
+  (pause→approve→END + outputs + completed record); session_id
+  fail-closed (no adhoc fallback; old helpers seeded).
+- Nits taken: PBI file list, HITL skill citation, edge-comment
+  honesty (predicate can't flip mid-repair — repair terminates by
+  determinism). Deferred: sqlite close path, sourceless-SUPPORTED
+  follow-up note, unparseable logging (runtime backlog).
+- Process note (do not repeat): parallel commit+edits once mixed
+  close-out into a fix commit — commit FIRST, then status edits.
+- Gates: 79 passed. Sort: critic-approved after fix → agentic.
+- Chained: PBI-014 → Active (deps 013 Done).
