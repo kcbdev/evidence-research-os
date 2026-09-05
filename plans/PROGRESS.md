@@ -133,3 +133,21 @@
   loop, repair loop) are PBI-011/013 acceptance, not here.
 - Sort: gate-proven + critic-approved → agentic.
 - Chained: PBI-007 → Active.
+
+## 2026-09-05 — PBI-007 Done (review: agentic, via CHANGES-REQUESTED)
+
+- `budget.py` (is_exhausted/consume_calls/consume_round) + classifier
+  hard stop (`escalate = not exhausted`); exhausted runs reach END
+  with no plan file; fresh budget escalates.
+- Critic CHANGES-REQUESTED was right: mid-run stops, decisions-entry,
+  and max_sources/caps were unenforced/unowned. Fixed by explicit
+  assignment, not code: PBI-011 owns mid-loop stop + source caps +
+  no-free-calls + partial-update returns; PBI-013 owns mid-repair stop
+  + terminal decisions/ entry. TYPE_CHECKING + test symmetry fixed.
+- Process failure (do not repeat): committed ee20333 BEFORE gating —
+  it broke collection (TYPE_CHECKING needs `from __future__ import
+  annotations`). Rule: gate → commit, never commit → gate. Fixed in
+  7052e3f, 30 passed.
+- Sort: entry-stop gate-proven + critic findings fully addressed
+  (code or owned deferral) → agentic.
+- Chained: PBI-008 → Active.

@@ -21,7 +21,9 @@ def make_plan(lab_project_path: Path):
     """Plan node bound to a project dir. PBI-008 wires the Scientist here;
     until then it records run intent as a placeholder (a run artifact like
     output/report.md — not an evidence object type, so the store doesn't
-    own it)."""
+    own it). Decided PBI-008: plan/ stays an uncommitted run artifact;
+    the human's scope approval is recorded in decisions/ by PBI-014's
+    approve endpoint, not by versioning the plan file."""
 
     def plan(state: LabProjectState) -> LabProjectState:
         plan_dir = Path(lab_project_path) / "plan"

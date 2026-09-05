@@ -9,11 +9,20 @@ import sqlite3
 from pathlib import Path
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.sqlite import SqliteSaver
+from app.agents.config import validate_model_assignment
 from app.graph.state import LabProjectState
 from app.graph import nodes
 
 
-def build_graph(lab_project_path: Path):
+def build_graph(lab_project_path: Path,
+                council_models: dict[str, str] | None = None,
+                judge_model: str | None = None):
+    # Hard startup check FIRST: nothing (no dirs, no sqlite) is created
+    # when the assignment is invalid. PBI-014 always supplies both, making
+    # the check unconditional on the run path; bare calls (tests, shells)
+    # skip it. Optional params preserve PBI-006's call shape.
+    if council_models is not None and judge_model is not None:
+        validate_model_assignment(council_models, judge_model)
     lab_project_path = Path(lab_project_path)
     lab_project_path.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(
