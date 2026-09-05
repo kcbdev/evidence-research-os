@@ -151,3 +151,16 @@
 - Sort: entry-stop gate-proven + critic findings fully addressed
   (code or owned deferral) → agentic.
 - Chained: PBI-008 → Active.
+
+## 2026-09-05 — PBI-008 Done (review: agentic, via CHANGES-REQUESTED)
+
+- `client.py` (OpenRouter, key at call time, empty-completion
+  ValueError) + `config.py` (byte-exact refusal) + 4 prompt files
+  (guide wording verbatim) + build-time validation.
+- Critic caught a REAL hole: optional params made the "hard check"
+  fail-open (silent skip incl. partial supply). Fixed fail-closed:
+  required params; all 6 skeleton call sites updated; bare call now
+  TypeErrors by test. Also fixed: client assert→ValueError, key
+  RuntimeError, PBI filename drift, PBI-014 plan/ ADR acceptance.
+- Gates: 35 passed. Sort: critic-approved after fix → agentic.
+- Chained: PBI-009 → Active.
