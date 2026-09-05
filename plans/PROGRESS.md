@@ -12,3 +12,18 @@
   `ARCHITECTURE.md` (as-built snapshot), `plans/README.md` (bootstrap index).
 - Plane binding: `kcb` / `EVRSH` — verified via MCP. Todo seed: 0 issues.
 - Next: user confirms this report → route Phase 0 to asdlc-plan.
+
+## 2026-09-05 — asdlc-plan: Phase 0+1 (scope = guide doc, per user)
+
+- Capability discovery: `skills find` × 3 gaps. Approved + installed
+  (global, opencode): `langgraph-human-in-the-loop`,
+  `langgraph-persistence`. Declined for now: nextjs-app-router-patterns,
+  fastapi-official. `uv` install deferred to PBI-001.
+- Plane pull (1b): EVRSH still 0 issues — nothing to pull; Specs authoritative.
+- Wrote `specs/phase-0-scaffold/spec.md` (tasks 1–5) and
+  `specs/phase-1-mvp/spec.md` (tasks 6–20) — AWAITING HUMAN REVIEW
+  (no code may be touched before approval).
+- Derived 19 atomic PBIs (`tasks/PBI-001.md` … `PBI-019.md`); sequencing +
+  dependency graph + gate plan in `plans/README.md`. Push-create to Plane
+  (6b) not requested — ask before syncing.
+- Next: user reviews both specs, then picks the starting PBI (recommended: PBI-001).
