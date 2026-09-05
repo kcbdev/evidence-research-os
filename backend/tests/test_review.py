@@ -99,6 +99,7 @@ def test_trap_claim_cannot_ride_consensus(tmp_path, monkeypatch):
     assert out["budget"].calls_used == 1  # one judge call, not four
     judge_calls = [c for c in seen if "Evidence Judge" in c["system"]]
     assert len(judge_calls) == 1 and "C-ok-001" in judge_calls[0]["user"]
+    assert "SKEPTIC NOTES:" in judge_calls[0]["user"]
 
 
 def test_garbage_judge_output_leaves_claim(tmp_path, monkeypatch):
@@ -116,6 +117,22 @@ def test_garbage_judge_output_leaves_claim(tmp_path, monkeypatch):
     nodes.make_evidence_adjudication(tmp_path)(_state())
     claim = store.read_claim("C-garbage-001")
     assert (claim.status, claim.adjudicated_by) == ("DISPUTED", None)
+
+
+def test_garbage_judge_call_still_costs(tmp_path, monkeypatch):
+    seen = _mock(monkeypatch)
+    store = _seed(tmp_path)
+    store.write_source(Source(id="S-9", kind="journalism", url="https://e.org",
+                              title="t", retrieved_at=TS, quality_tier=5))
+    store.write_evidence(Evidence(id="E-9", source_id="S-9",
+                                  location={"section": "s"},
+                                  text_reference="t", supports=["C-1"],
+                                  evidence_type="argumentative",
+                                  strength="low"))
+    store.write_claim(Claim(id="C-1", statement="s"))
+    out = nodes.make_evidence_adjudication(tmp_path)(_state())
+    assert out["budget"].calls_used == 1  # call made, verdict unusable
+    assert len([c for c in seen if "Evidence Judge" in c["system"]]) == 1
 
 
 def test_tampered_models_refuse_before_judge(tmp_path, monkeypatch):
@@ -143,3 +160,16 @@ def test_synthesis_renders_adjudicated_claims(tmp_path, monkeypatch):
     assert "Bone Study" in report and "does D help?" in report
     assert "C-1 — SUPPORTED" in report and "0.82" in report
     assert JUDGE in report
+
+
+def test_synthesis_segregates_pending_claims(tmp_path, monkeypatch):
+    _mock(monkeypatch)
+    store = _seed(tmp_path)
+    store.write_claim(Claim(id="C-done", statement="done",
+                            status="SUPPORTED", adjudicated_by=JUDGE))
+    store.write_claim(Claim(id="C-wait", statement="waiting"))
+    nodes.make_synthesis(tmp_path)(_state())
+    report = (tmp_path / "p" / "output" / "report.md").read_text()
+    adjudicated, _, pending = report.partition("## Pending review")
+    assert "C-done — SUPPORTED" in adjudicated
+    assert "C-wait" not in adjudicated and "C-wait" in pending

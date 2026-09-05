@@ -223,3 +223,18 @@
   for future strict mode; budgets >>25 vs recursion_limit(25).
 - Gates: 63 passed. Sort: critic-approved after fix → agentic.
 - Chained: PBI-012 → Active.
+
+## 2026-09-05 — PBI-012 Done (review: agentic, via CHANGES-REQUESTED)
+
+- Skeptic transcript (claims never touched) fed to judge as context;
+  no-evidence deterministic guard (`rule:no-evidence`) beats consensus;
+  STATUS-protocol judge transport (fail-safe untouched); deterministic
+  synthesis render; validate re-asserted at entry.
+- Critic's 2 must-fix, both in code: budget per CALL made (garbage
+  output still costs — new test pins it); synthesis segregates
+  pending (`adjudicated_by None` never cited as adjudicated).
+- Nits taken: SKEPTIC NOTES assertion, header truth, PBI filename.
+  Deferred (logged): unparseable-line logging (no logging infra —
+  same runtime backlog), evidence pointers in report (later).
+- Gates: 70 passed. Sort: critic-approved after fix → agentic.
+- Chained: PBI-013 → Active (deps 012 Done).

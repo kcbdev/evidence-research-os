@@ -32,8 +32,8 @@ ordering only.
 | PBI | Status | PBI | Status |
 |---|---|---|---|
 | PBI-001 | Done | PBI-011 | Done |
-| PBI-002 | Done | PBI-012 | Active |
-| PBI-003 | Done | PBI-013 | Proposed |
+| PBI-002 | Done | PBI-012 | Done |
+| PBI-003 | Done | PBI-013 | Active |
 | PBI-004 | Done | PBI-014 | Proposed |
 | PBI-005 | In Review | PBI-015 | Proposed |
 | PBI-006 | Done | PBI-016 | Proposed |

@@ -1,6 +1,6 @@
-"""Graph nodes. Classifier + plan are PBI-006/008; the council loop below
-is PBI-011; review/adjudication/synthesis (PBI-012) and audit/repair/
-checkpoint/output (PBI-013) remain named stubs.
+"""Graph nodes. Classifier + plan are PBI-006/008, the council loop is
+PBI-011, review/adjudication/synthesis are PBI-012; audit/repair/
+checkpoint/output remain named stubs for PBI-013.
 
 PBI-011 design notes:
 - Council LLM calls run concurrently via asyncio.to_thread (the OpenAI
@@ -371,11 +371,11 @@ def make_evidence_adjudication(lab_project_path: Path):
                 continue
             verdicts = _consult_judge(meta.judge_model, store, claim,
                                       supporting)
+            judged += 1  # the call was made, whatever came back
             if claim.id in verdicts:
                 claim.status = verdicts[claim.id]
                 claim.adjudicated_by = meta.judge_model
                 store.write_claim(claim)
-                judged += 1
         tmp = {"budget": state["budget"].model_copy()}
         consume_calls(tmp, judged)
         return {"budget": tmp["budget"]}
@@ -416,19 +416,28 @@ def make_synthesis(lab_project_path: Path):
     def synthesis(state) -> dict:
         store = LabProjectStore(lab_project_path, state["lab_project_id"])
         meta = store.read_meta()
-        out = [f"# {meta.title}", "", f"Question: {meta.question}", ""]
+        out = [f"# {meta.title}", "", f"Question: {meta.question}", "",
+               "## Adjudicated claims", ""]
+        pending = [c for c in store.list_claims()
+                   if c.adjudicated_by is None]
         for claim in store.list_claims():
+            if claim.adjudicated_by is None:
+                continue
             conf = (claim.confidence.overall if claim.confidence is not None
                     else 0.0)
-            out.append(f"## {claim.id} — {claim.status}")
+            out.append(f"### {claim.id} — {claim.status}")
             out.append("")
             out.append(claim.statement)
             out.append("")
             out.append(f"Confidence: {conf:.2f} | "
-                       f"Adjudicated by: {claim.adjudicated_by or 'pending'}")
+                       f"Adjudicated by: {claim.adjudicated_by}")
             out.append(f"Supporting: {', '.join(claim.supporting_sources) or '—'} | "
                        f"Opposing: {', '.join(claim.opposing_sources) or '—'}")
             out.append("")
+        out.append("## Pending review (not cited above)")
+        out.append("")
+        out.append(", ".join(c.id for c in pending) or "(none)")
+        out.append("")
         output_dir = Path(lab_project_path) / state["lab_project_id"] / "output"
         output_dir.mkdir(parents=True, exist_ok=True)
         (output_dir / "report.md").write_text("\n".join(out))
