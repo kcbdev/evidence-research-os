@@ -1,5 +1,8 @@
 """Graph assembly per guide §2.2. Checkpointer wiring follows the adopted
 `langgraph-persistence` skill: per-project SQLite file, thread_id per run.
+The single pause mechanism (`interrupt_before=["human_checkpoint"]`)
+follows the adopted `langgraph-human-in-the-loop` skill — no parallel
+pause machinery exists or may be added.
 
 Connection lifetime: the sqlite3 connection is process-owned (opened here,
 `check_same_thread=False` for server use) and lives as long as the compiled
@@ -73,8 +76,11 @@ def build_graph(lab_project_path: Path,
     g.add_edge("evidence_adjudication", "synthesis")
     g.add_edge("synthesis", "citation_audit")
     # Same accepted pattern as the conflict branch (PBI-013 owns the
-    # PBI-007 mid-repair-loop stop): exhaustion short-circuits to
-    # final_output instead of looping repair forever.
+    # PBI-007 stop): if the budget already exhausted upstream (review /
+    # adjudication spend calls), the audit outcome is moot — end at
+    # final_output instead of repairing a run that cannot continue.
+    # (Audit/repair nodes themselves consume nothing, so the predicate
+    # cannot flip mid-repair; repair terminates by determinism.)
     def _after_audit(s):
         if is_exhausted(s):
             return "final_output"

@@ -500,7 +500,10 @@ def make_final_output(lab_project_path: Path):
     def final_output(state) -> dict:
         from datetime import datetime, timezone
         store = LabProjectStore(lab_project_path, state["lab_project_id"])
-        session = state.get("session_id", "adhoc")
+        # Fail-closed: every real run carries session_id (PBI-014 mints it
+        # as run_id, unique per run). No "adhoc" fallback — colliding
+        # terminal records would weaken "every run end recorded".
+        session = state["session_id"]
         sources = store.list_sources()
         lines = ["# References", ""]
         for src in sources:

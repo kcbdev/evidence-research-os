@@ -49,6 +49,7 @@ def make_state(**over):
         "open_contradictions": [], "escalate": False,
         "audit_passed": True,  # seeded: stubs don't decide branches yet
         "needs_human_approval": False,
+        "session_id": "s-test", "first_pass": {},
     }
     state.update(over)
     return state

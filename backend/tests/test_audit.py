@@ -120,6 +120,13 @@ def test_repair_loop_runs_once_then_pauses(tmp_path, monkeypatch):
     # Repair voided the dangling id, second audit passed, run paused:
     assert store.read_claim("C-1").supporting_sources == []
     assert tuple(graph.get_state(config).next) == ("human_checkpoint",)
+    # ...and resumes through to a completed terminal record:
+    graph.invoke(None, config)
+    assert tuple(graph.get_state(config).next) == ()
+    assert (tmp_path / "p" / "output" / "references.md").is_file()
+    assert (tmp_path / "p" / "output" / "report.md").is_file()
+    assert store.read_decision("D-terminal-s-1").what == \
+        "Run ended: completed"
 
 
 def test_exhausted_audit_skips_repair_ends_run(tmp_path, monkeypatch):

@@ -39,6 +39,7 @@ def make_state(budget: BudgetState) -> LabProjectState:
         "pending_tasks": [], "open_contradictions": [],
         "escalate": False, "audit_passed": True,
         "needs_human_approval": False,
+        "session_id": "s-test",
     }
 
 
