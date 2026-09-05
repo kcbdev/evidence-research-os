@@ -109,3 +109,8 @@
   /frontend, port 3000, NEXT_PUBLIC_API_URL after backend FQDN known)
   + persistent volume → /data/lab-projects + redeploy-survival test.
 - Chain PAUSED here by design (manual sort) — PBI-006+ wait for Done.
+- Human decisions (2026-09-05): server = kcb.ma server; repo =
+  kcbdev/evidence-research-os. Awaiting: repo creation + push, Coolify
+  project + 2 apps + volume, then project UUID + app UUIDs for MCP verify.
+- NOTE: PBI-006's deps (002, 003) are Done, so code work continues in
+  parallel with the human infra track; PBI-005 closes when UUIDs arrive.
