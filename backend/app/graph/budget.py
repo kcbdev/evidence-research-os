@@ -13,6 +13,8 @@ Exhaustion is observable in the final state itself
 Out of MVP scope here: `max_sources` / `max_sources_per_claim`
 (spec §10) — owned by PBI-011 (investigator dispatch volume).
 """
+from __future__ import annotations
+
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
