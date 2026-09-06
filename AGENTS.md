@@ -42,9 +42,10 @@ source of truth; every derived index is regeneratable and gitignored.
 - **No change without a spec** — including one-line fixes (compact behavior
   contract, 2–4 sections, satisfies this). Specs live at `specs/{feature}/spec.md`;
   deltas are `tasks/PBI-{NNN}.md`; sequencing in `plans/README.md`.
-- **Filesystem discipline:** all Lab Project writes go through the store
+- **Filesystem discipline:** all Lab Project OBJECT writes go through the store
   helpers (`app/store/lab_project.py`); never hand-edit object YAML outside
-  them. Every store write = one git commit in the Lab Project repo
+  them. Run artifacts (`plan/`, `debates/`, `tool_outputs/`, `output/`) are
+  written directly by their nodes per ADR-0001 (`DOCS/adrs/0001-...`). Every store write = one git commit in the Lab Project repo
   (audit trail; cheap now, expensive to retrofit — Phase 0 task 5).
 - **Judge-model exclusion is a hard startup check**, not a convention:
   `validate_model_assignment` refuses any run where the judge model overlaps
@@ -58,7 +59,7 @@ source of truth; every derived index is regeneratable and gitignored.
 - **Human checkpoints** after PLAN and after SYNTHESIS (per-Lab-Project
   configurable); graph pauses via `interrupt_before=["human_checkpoint"]`,
   resumes via `POST .../runs/{run_id}/approve`. No parallel pause mechanism.
-- Structural decisions → `docs/adrs/`; dead structure found later is
+- Structural decisions → `DOCS/adrs/`; dead structure found later is
   corrected in `ARCHITECTURE.md` via ADR, never silently in code.
 
 ## 5. Context Map
@@ -83,7 +84,7 @@ project_structure:
     responsibility: "Data volume (gitignored here; separate git remote per Lab Project, own history). Never committed to the app repo."
   tests/:
     responsibility: "Repo-level deterministic gates. Grows into backend/frontend suites per §3."
-  docs/adrs/:
+  DOCS/adrs/:
     responsibility: "Architectural Decision Records. Created with the first structural PBI."
 
 documentation_index:

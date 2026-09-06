@@ -9,7 +9,11 @@ filesystem except through LabProjectStore; the graph owns run state.
 
 SSE posture: the stream replays recorded events then follows live until
 a resting status (awaiting_approval/done/failed/rejected) or a 60s cap.
-Clients reconnect after approving.
+Event names are "node" per graph step plus a synthetic
+"human_checkpoint" event on pause (spec §9.3: no polling — the frontend
+keys its approval modal off that event). Clients reconnect after
+approving. Runs live in memory: a backend restart loses them (404
+afterwards) — acceptable single-operator MVP, documented not hidden.
 """
 import asyncio
 import json
@@ -37,7 +41,11 @@ _graphs: dict[str, object] = {}
 def get_graph(root: Path, project_id: str,
               council_models: dict, judge_model: str):
     # Validated EVERY run (project.yaml may change between runs);
-    # the compiled graph is structural and safely cached per project.
+    # the compiled graph is structural and safely cached per project
+    # (nodes re-read project.yaml live, so caching never bakes models
+    # in). One sqlite FD per project per process lifetime — acceptable
+    # MVP; clear_graph_cache() exists for tests/ops (a real closer,
+    # exercised in fixture teardown, not duck-typed hope).
     # NOTE: build_graph takes the lab ROOT (nodes append project_id
     # themselves) — passing store.path here doubles the id.
     validate_model_assignment(council_models, judge_model)
@@ -89,7 +97,14 @@ def _pump(run_id: str, initial=None):
                 rec["events"].extend({"node": node} for node in chunk)
         nxt = tuple(graph.get_state(config).next)
         with _lock:
-            rec["status"] = "awaiting_approval" if nxt else "done"
+            if nxt:
+                rec["status"] = "awaiting_approval"
+                # Synthetic typed event: the frontend keys its approval
+                # modal off event name "human_checkpoint" (spec §9.3).
+                rec["events"].append({"node": "human_checkpoint",
+                                      "etype": "human_checkpoint"})
+            else:
+                rec["status"] = "done"
     except Exception as exc:  # never leave a run stuck in "running"
         with _lock:
             rec["status"] = "failed"
@@ -98,6 +113,10 @@ def _pump(run_id: str, initial=None):
 
 @router.post("/{project_id}/runs")
 def start_run(project_id: str, payload: dict, request: Request):
+    """Start a run. Body: {mode?, question?, budget?{max_model_calls,
+    max_research_rounds}, council_models?, judge_model?}. Validates
+    models (400 on judge overlap), seeds budget from project.yaml,
+    returns {run_id, status}. session_id == run_id == thread_id."""
     root = _root(request)
     store = _store(root, project_id)
     meta = store.read_meta()
@@ -108,6 +127,9 @@ def start_run(project_id: str, payload: dict, request: Request):
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     budget = meta.budget.model_copy()
+    # MVP override surface: call/round limits only. max_sources and
+    # max_sources_per_claim (ProjectMeta fields) stay project-level —
+    # nodes read them live; per-run override is a later refinement.
     for key in ("max_model_calls", "max_research_rounds"):
         if key in (payload.get("budget") or {}):
             setattr(budget, key, payload["budget"][key])
@@ -132,6 +154,9 @@ def start_run(project_id: str, payload: dict, request: Request):
 
 @router.get("/{project_id}/runs/{run_id}")
 def get_run(project_id: str, run_id: str):
+    """Run status. Returns {run_id, project_id, status, events,
+    needs_approval, error}. Events are [{node}] in execution order
+    plus a terminal {node: human_checkpoint} record on pause."""
     rec = _record(run_id)
     if rec["project_id"] != project_id:
         raise HTTPException(status_code=404, detail="run not found")
@@ -141,6 +166,10 @@ def get_run(project_id: str, run_id: str):
 
 @router.get("/{project_id}/runs/{run_id}/stream")
 async def stream_run(project_id: str, run_id: str):
+    """SSE stream. Shape per event: {event: <type>, data: <JSON>} where
+    type is "node" per graph step or "human_checkpoint" on pause
+    (frontend keys its approval modal off that name, spec §9.3).
+    Replays history then follows live to a resting status."""
     rec = _record(run_id)
     if rec["project_id"] != project_id:
         raise HTTPException(status_code=404, detail="run not found")
@@ -151,7 +180,9 @@ async def stream_run(project_id: str, run_id: str):
             with _lock:
                 events, status = list(rec["events"]), rec["status"]
             while seen < len(events):
-                yield {"event": "node", "data": json.dumps(events[seen])}
+                ev = events[seen]
+                yield {"event": ev.get("etype", "node"),
+                       "data": json.dumps(ev)}
                 seen += 1
             if status in RESTING:
                 return
@@ -163,6 +194,9 @@ async def stream_run(project_id: str, run_id: str):
 @router.post("/{project_id}/runs/{run_id}/approve")
 def approve_run(project_id: str, run_id: str, payload: dict,
                 request: Request):
+    """Resolve a checkpoint. Body: {decision: approve|reject, note?}.
+    Records D-approve-{run} in decisions/ via the store, then resumes
+    (approve) or parks (reject). 400 unless awaiting_approval."""
     rec = _record(run_id)
     if rec["project_id"] != project_id:
         raise HTTPException(status_code=404, detail="run not found")

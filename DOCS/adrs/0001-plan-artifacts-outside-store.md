@@ -19,8 +19,15 @@ and the derived `.index/` — none of which are evidence object types.
 - Git treatment: `output/` (deliverables) and `audits/` are TRACKED;
   `plan/`, `debates/`, `tool_outputs/`, `.index/`, `checkpoint.sqlite`
   are UNTRACKED via a project-level `.gitignore` written by
-  `LabProjectStore._ensure_layout` (committed lazily with the first
-  object write, so creation itself stays commit-free).
+  `LabProjectStore._ensure_layout` and piggybacked onto the first
+  object-write commit (creation itself — bare `__init__` with no writes
+  — still mints zero commits; the API create path writes meta
+  immediately, so its first commit is `meta + .gitignore`).
+- Interim lifecycle gap (owned by the promote-to-product flow,
+  Phase 4): NOTHING commits `output/`/`audits/` yet — nodes write them
+  directly and no PBI wires a commit. They sit dirty until then; the
+  operator commits manually before any handoff. PBI-019 validation
+  reads them from disk, so e2e is unaffected.
 - Durability of human judgment does NOT rely on versioning the
   artifacts: scope approvals (`/approve`) and terminal run outcomes are
   recorded as `decisions/` objects through the store (audit trail

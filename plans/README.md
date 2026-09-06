@@ -26,6 +26,7 @@ ordering only.
 17. PBI-017 — Claims table + trace modal (needs PBI-015, PBI-016)
 18. PBI-018 — Run view + approval modal (needs PBI-014, PBI-016)
 19. PBI-019 — End-to-end MVP validation, human-gated (needs PBI-016–018)
+20. PBI-020 — Archive Lab Project (needs PBI-014; Phase 1 backlog)
 
 ## Statuses (`Proposed` → `Active` → `In Review` → `Done` / `Blocked`)
 
@@ -40,7 +41,7 @@ ordering only.
 | PBI-007 | Done | PBI-017 | Proposed |
 | PBI-008 | Done | PBI-018 | Proposed |
 | PBI-009 | Done | PBI-019 | Proposed |
-| PBI-010 | Done | | |
+| PBI-010 | Done | PBI-020 | Proposed |
 
 ## Dependency graph
 

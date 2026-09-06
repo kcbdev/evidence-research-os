@@ -31,6 +31,9 @@ def _slug(title: str) -> str:
 
 @router.post("")
 def create_lab_project(payload: dict, request: Request):
+    """Create a project. Body: {title, question, mode?,
+    council_models?, judge_model?}. Returns the stored ProjectMeta.
+    Default models are fail-closed (judge==council refuses runs)."""
     if not payload.get("title") or not payload.get("question"):
         raise HTTPException(status_code=422,
                             detail="title and question are required")
@@ -55,6 +58,8 @@ def create_lab_project(payload: dict, request: Request):
 
 @router.get("")
 def list_lab_projects(request: Request):
+    """Dashboard list. Returns [{id, title, mode, question,
+    claims_count}] — summaries only, no object payloads."""
     root = _root(request)
     out = []
     if root.is_dir():
@@ -72,6 +77,8 @@ def list_lab_projects(request: Request):
 
 @router.get("/{project_id}")
 def get_lab_project(project_id: str, request: Request):
+    """Project detail. Returns the full ProjectMeta plus per-type
+    object counts. (Archive/delete lives in PBI-020, not here.)"""
     store = _store(_root(request), project_id)
     meta = store.read_meta()
     return {**meta.model_dump(mode="json"), "counts": {
