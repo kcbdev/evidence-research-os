@@ -186,3 +186,18 @@ def test_plan_artifact_adr_exists():
     adr = Path(__file__).resolve().parent.parent.parent / "DOCS" / "adrs" \
         / "0001-plan-artifacts-outside-store.md"
     assert adr.is_file()
+
+
+def test_cors_allows_browser_origin(client):
+    # Regression (PBI-019 witness): the control panel at :3000 fetches
+    # the API at :8000 cross-origin — browsers require the ACAO header.
+    resp = client.get("/api/v1/lab-projects",
+                      headers={"Origin": "http://localhost:3000"})
+    assert resp.status_code == 200
+    assert resp.headers["access-control-allow-origin"] == \
+        "http://localhost:3000"
+    preflight = client.options(
+        "/api/v1/lab-projects", headers={
+            "Origin": "http://localhost:3000",
+            "Access-Control-Request-Method": "POST"})
+    assert preflight.status_code == 200
