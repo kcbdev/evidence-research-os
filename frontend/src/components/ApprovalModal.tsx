@@ -10,18 +10,19 @@ export default function ApprovalModal({
 }: {
   projectId: string;
   runId: string;
-  onResolved: () => void;
+  onResolved: (decision: "approve" | "reject") => void;
 }) {
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function decide(decision: "approve" | "reject") {
+    if (busy) return; // re-entrancy: two clicks in one tick, one POST
     setBusy(true);
     setError(null);
     try {
       await approveRun(projectId, runId, decision, note);
-      onResolved(); // parent resubscribes: the stream ended at the pause
+      onResolved(decision);
     } catch (err) {
       setError(err instanceof Error ? err.message : "approval failed");
       setBusy(false);

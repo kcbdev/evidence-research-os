@@ -76,7 +76,7 @@ export interface RunStatus {
   run_id: string;
   project_id: string;
   status: string;
-  events: { node: string }[];
+  events: { node: string; etype?: string }[];
   needs_approval: boolean;
   error: string | null;
 }

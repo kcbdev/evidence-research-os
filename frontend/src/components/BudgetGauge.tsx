@@ -3,23 +3,20 @@
 import type { Budget } from "@/lib/api";
 
 /**
- * Project budget limits with run progress. Honest limitation: the SSE
- * event stream carries node names only (no per-call ticks), so live
- * spent-tracking is event-count progress against static limits — true
- * per-call ticks await event enrichment on the backend (open backlog).
+ * Project budget limits snapshot (fetched once on mount). Honest
+ * limitation: the SSE event stream carries node names only (no per-call
+ * ticks), so this gauge does NOT live-update during a run and shows no
+ * event-count pseudo-progress — true per-call ticks await event
+ * enrichment on the backend (open backlog).
  */
 export default function BudgetGauge({ budget }: { budget: Budget | null }) {
   if (budget === null) {
     return <p className="text-sm text-zinc-500">Loading budget…</p>;
   }
-  const callsPct = Math.min(
-    100,
-    Math.round((budget.calls_used / budget.max_model_calls) * 100),
-  );
-  const roundsPct = Math.min(
-    100,
-    Math.round((budget.rounds_used / budget.max_research_rounds) * 100),
-  );
+  const pct = (used: number, max: number) =>
+    max > 0 ? Math.min(100, Math.round((used / max) * 100)) : 0;
+  const callsPct = pct(budget.calls_used, budget.max_model_calls);
+  const roundsPct = pct(budget.rounds_used, budget.max_research_rounds);
   return (
     <div className="space-y-2 text-sm">
       <div>

@@ -51,8 +51,11 @@ const BUDGET = {
   exhausted: false,
 };
 
+let runStatus = "running";
+
 beforeEach(() => {
   FakeEventSource.instances = [];
+  runStatus = "running";
   vi.stubGlobal("EventSource", FakeEventSource);
   vi.stubGlobal(
     "fetch",
@@ -64,6 +67,19 @@ beforeEach(() => {
       if (path.endsWith("/approve")) {
         return { ok: true, json: async () => ({ run_id: "r", status: "running" }) };
       }
+      if (path.endsWith("/runs/r")) {
+        return {
+          ok: true,
+          json: async () => ({
+            run_id: "r",
+            project_id: "p",
+            status: runStatus,
+            events: [],
+            needs_approval: runStatus === "awaiting_approval",
+            error: null,
+          }),
+        };
+      }
       throw new Error(`unexpected fetch: ${url} ${init?.method}`);
     }),
   );
@@ -72,6 +88,9 @@ beforeEach(() => {
 describe("RunView", () => {
   it("streams node events and completes", async () => {
     render(<RunView />);
+    await vi.waitFor(() => {
+      expect(FakeEventSource.instances.length).toBe(1);
+    });
     const es = FakeEventSource.instances[0];
     expect(es.url).toContain("/api/v1/lab-projects/p/runs/r/stream");
 
@@ -86,6 +105,9 @@ describe("RunView", () => {
 
   it("opens the approval modal on checkpoint and resubscribes", async () => {
     render(<RunView />);
+    await vi.waitFor(() => {
+      expect(FakeEventSource.instances.length).toBe(1);
+    });
     const es = FakeEventSource.instances[0];
     es.emit("node", { node: "plan" });
     await screen.findByText("plan");
@@ -109,8 +131,69 @@ describe("RunView", () => {
     });
   });
 
+  it("ignores stale checkpoint replay after resolve", async () => {
+    render(<RunView />);
+    await vi.waitFor(() => {
+      expect(FakeEventSource.instances.length).toBe(1);
+    });
+    const es = FakeEventSource.instances[0];
+    es.emit("human_checkpoint", { node: "human_checkpoint" });
+    await screen.findByRole("dialog", { name: "Human checkpoint approval" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+    await vi.waitFor(() => {
+      expect(FakeEventSource.instances.length).toBe(2);
+    });
+    expect(screen.queryByRole("dialog", { name: "Human checkpoint approval" }))
+      .toBeNull();
+
+    // The resubscribed stream replays the same historic checkpoint:
+    FakeEventSource.instances[1].emit("human_checkpoint", {
+      node: "human_checkpoint",
+    });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.queryByRole("dialog", { name: "Human checkpoint approval" }))
+      .toBeNull(); // stays shut: single pause per run
+  });
+
+  it("rejects with a note and does not resubscribe", async () => {
+    render(<RunView />);
+    await vi.waitFor(() => {
+      expect(FakeEventSource.instances.length).toBe(1);
+    });
+    FakeEventSource.instances[0].emit("human_checkpoint", {
+      node: "human_checkpoint",
+    });
+    await screen.findByRole("dialog", { name: "Human checkpoint approval" });
+
+    fireEvent.change(screen.getByLabelText("Approval note"), {
+      target: { value: "wrong scope" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Reject" }));
+    await screen.findByText("Run rejected by reviewer.");
+    expect(FakeEventSource.instances.length).toBe(1); // no resubscribe
+    const posts = (fetch as ReturnType<typeof vi.fn>).mock.calls.filter(
+      ([url]) => String(url).endsWith("/approve"),
+    );
+    expect(JSON.parse(posts[0][1].body as string)).toMatchObject({
+      decision: "reject",
+      note: "wrong scope",
+    });
+  });
+
+  it("renders resting runs from status without subscribing", async () => {
+    runStatus = "done";
+    render(<RunView />);
+    await screen.findByText("Run completed.");
+    await new Promise((r) => setTimeout(r, 50));
+    expect(FakeEventSource.instances.length).toBe(0);
+  });
+
   it("reset-on-open prevents replay duplicates", async () => {
     render(<RunView />);
+    await vi.waitFor(() => {
+      expect(FakeEventSource.instances.length).toBe(1);
+    });
     const es = FakeEventSource.instances[0];
     es.emit("node", { node: "plan" });
     await screen.findByText("plan");
