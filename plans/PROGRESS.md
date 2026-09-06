@@ -378,3 +378,38 @@ provider undecided (Investigator has grep/fetch/blackboard only);
 Sort: manual by design — stays In Review until a human witnesses a
 real run and signs the MVP release. Chain STOPS here (PBI-020/021
 are Phase-1 backlog, executable after release).
+
+## 2026-09-06 — Plane sync backfill (on user flag)
+
+- Gap owned: 21 PBIs executed with zero Plane issues (6b never
+  requested). Fixed: push-created EVRSH-1..21 with TRUE statuses
+  (17 Done, 2 In Progress, 2 Backlog — not all-Todo), each card's
+  Context now carries `Plane: kcb/EVRSH-N`.
+- Process note: parallel creation interleaves sequence_ids (PBI-002
+  is EVRSH-3, PBI-005 is EVRSH-2, etc.) — the map in plans/README.md
+  is authoritative, not numeric order. One self-caught mislink
+  (013/014 both tagged 12) fixed before commit.
+- Open: PBI-005 + PBI-019 closeouts must transition EVRSH-2/EVRSH-21
+  when the human work lands; PBI-020/021 sit in Backlog until moved
+  to Todo per doctrine.
+
+## 2026-09-06 — PBI-019 live-fire log
+
+- Run 1 (d8c15d8, budget 15): 21 claims / 20 evidence / 20 sources
+  from live models (protocol WORKS), then FAILED at adjudication:
+  `'utf-8' codec can't decode byte 0x92` — debates transcript written
+  cp1252, read as UTF-8. Fixed: encoding="utf-8" pinned on all 11
+  text-IO sites + regression test + convention guard
+  (test_conventions.py). REAL bug only live data could catch.
+- Run 2 (5be9cc12, budget 15): full 10-node path, calls exhausted
+  mid-adjudication → clean budget_exhausted end + terminal decision.
+  Human checkpoint correctly SKIPPED on exhaustion (contract, not bug).
+- Run 3 (8a8d5a9, budget 40): reached awaiting_approval (11 events).
+- Witness catch #2: NO CORS middleware — browser blocked :3000→:8000.
+  Fixed (CORSMiddleware, localhost origins + FRONTEND_URL override,
+  tested incl. preflight) in 963b16b; backend restarted (PID 31404),
+  ACAO verified. Casualty: restart wiped the in-memory run registry,
+  so run 3's pause record is gone (checkpoint row orphaned in sqlite
+  — the documented restart-loss limitation, now observed live).
+  Witness path: completed run 2 (claims/trace) + fresh UI-started run
+  for the live pause.

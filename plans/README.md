@@ -92,3 +92,11 @@ Parallel-safe pairs (disjoint files): {002,005}, {004,005}, {016,015},
 - **Seed (2026-09-05):** `0 — no Todo issues found` (project empty).
   This plan's PBIs come from slicing `DOCS/` Phase 0+1. Push-create of
   per-PBI `Todo` issues (step 6b) NOT requested — ask before syncing.
+- **Push-create (2026-09-06, on user flag):** all 21 PBIs now have
+  Plane issues, created with true statuses — 17 × Done (PBI-001–004,
+  006–018), 2 × In Progress (PBI-005 infra = EVRSH-2, PBI-019 release
+  = EVRSH-21), 2 × Backlog (PBI-020 = EVRSH-18, PBI-021 = EVRSH-20).
+  Full PBI↔issue map: PBI-001→1, 002→3, 003→5,
+  004→4, 005→2, 006→6, 007→7, 008→8, 009→14, 010→13, 011→11, 012→10,
+  013→9, 014→12, 015→15, 016→16, 017→17, 018→19, 019→21, 020→18,
+  021→20. Each card's Context carries its `Plane: kcb/EVRSH-N` link.
