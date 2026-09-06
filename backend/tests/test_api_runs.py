@@ -80,6 +80,7 @@ def test_full_run_pause_approve_done(client, tmp_path):
     assert done["status"] == "running"
     final = _wait_for(client, pid, rid, {"done"})
     assert final["needs_approval"] is False
+    assert any(e.get("etype") == "run_done" for e in final["events"])
     store = LabProjectStore(tmp_path, pid)
     decisions = {d.id: d.what for d in store.list_decisions()}
     assert decisions[f"D-approve-{rid}"] == "Human approved run at checkpoint"

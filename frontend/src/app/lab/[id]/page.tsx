@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import {
   getBudget,
   getLabProject,
   getReport,
+  startRun,
   type Budget,
   type LabProjectDetail,
 } from "@/lib/api";
@@ -15,11 +16,13 @@ type Tab = "claims" | "runs" | "output";
 
 export default function LabOverview() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
   const [project, setProject] = useState<LabProjectDetail | null>(null);
   const [budget, setBudget] = useState<Budget | null>(null);
   const [report, setReport] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("claims");
   const [error, setError] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
 
   const refresh = useCallback(async () => {
     setError(null);
@@ -96,8 +99,27 @@ export default function LabOverview() {
       )}
       {tab === "runs" && (
         <section className="mt-4">
-          <p className="text-sm text-zinc-500">
-            Start runs and watch them live from the run view (PBI-018).
+          <button
+            disabled={starting}
+            onClick={() => {
+              setStarting(true);
+              setError(null);
+              startRun(id).then(
+                (run) => router.push(`/lab/${id}/runs/${run.run_id}`),
+                (err: unknown) => {
+                  setError(
+                    err instanceof Error ? err.message : "start failed",
+                  );
+                  setStarting(false);
+                },
+              );
+            }}
+            className="rounded bg-zinc-900 px-4 py-1 text-white disabled:opacity-50"
+          >
+            {starting ? "Starting…" : "Start run"}
+          </button>
+          <p className="mt-2 text-sm text-zinc-500">
+            Watch it live from the run view (node feed, budget, approval).
           </p>
         </section>
       )}

@@ -309,3 +309,20 @@
   PBI-017; create-flow test + getReport catch-all later.
 - Sort: gate-proven + critic-approved → agentic.
 - Chained: PBI-017 → Active (deps 015, 016 Done).
+
+## 2026-09-06 — PBI-017 Done (review: agentic, via CHANGES-REQUESTED)
+
+- Claims table (filter→refetch, sortable, badge) + trace modal
+  (claim→evidence→source→location, empty-evidence copy accurate to
+  the no-evidence guard) + 5-dim bars + span-badge (href honestly
+  deferred — no task surface exists).
+- Critic's 2 must-fix in code: keyboard-reachable rows (ID buttons);
+  field-level trace asserts (9 within-dialog expects incl. tier,
+  adjudicator, location).
+- Test-debug history: split JSX text nodes (single-expression fix);
+  toBe vs toEqual with asymmetric matchers; modal/row text
+  ambiguity → within(dialog) scoping.
+- PBI-021 filed for the badge href (needs tasks read surface).
+- Gates: tsc clean, 16/16 vitest, build (3 routes).
+- Sort: critic-approved after fix → agentic.
+- Chained: PBI-018 → Active (deps 014, 016 Done).

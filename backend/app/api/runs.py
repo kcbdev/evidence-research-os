@@ -105,6 +105,10 @@ def _pump(run_id: str, initial=None):
                                       "etype": "human_checkpoint"})
             else:
                 rec["status"] = "done"
+                # Terminal event (PBI-018): the stream would otherwise end
+                # silently and the UI could only poll for completion.
+                rec["events"].append({"node": "done",
+                                      "etype": "run_done"})
     except Exception as exc:  # never leave a run stuck in "running"
         with _lock:
             rec["status"] = "failed"

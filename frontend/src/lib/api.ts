@@ -72,6 +72,56 @@ export async function createLabProject(input: {
   return (await res.json()) as LabProjectDetail;
 }
 
+export interface RunStatus {
+  run_id: string;
+  project_id: string;
+  status: string;
+  events: { node: string }[];
+  needs_approval: boolean;
+  error: string | null;
+}
+
+export async function startRun(
+  projectId: string,
+  input: { question?: string; mode?: string } = {},
+): Promise<{ run_id: string; status: string }> {
+  const res = await fetch(`${BASE}/api/v1/lab-projects/${projectId}/runs`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    throw new Error(`POST runs: ${res.status}`);
+  }
+  return (await res.json()) as { run_id: string; status: string };
+}
+
+export function getRun(projectId: string, runId: string): Promise<RunStatus> {
+  return get<RunStatus>(
+    `/api/v1/lab-projects/${projectId}/runs/${runId}`,
+  );
+}
+
+export async function approveRun(
+  projectId: string,
+  runId: string,
+  decision: "approve" | "reject",
+  note = "",
+): Promise<{ run_id: string; status: string }> {
+  const res = await fetch(
+    `${BASE}/api/v1/lab-projects/${projectId}/runs/${runId}/approve`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ decision, note }),
+    },
+  );
+  if (!res.ok) {
+    throw new Error(`POST approve: ${res.status}`);
+  }
+  return (await res.json()) as { run_id: string; status: string };
+}
+
 export interface RunEvent {
   type: string;
   data: unknown;
@@ -153,16 +203,24 @@ export function getClaimDetail(
   );
 }
 
-const STREAM_TYPES = ["node", "human_checkpoint"] as const;
+const STREAM_TYPES = ["node", "human_checkpoint", "run_done"] as const;
 
 export function streamRun(
   projectId: string,
   runId: string,
   onEvent: (event: RunEvent) => void,
+  onOpen?: () => void,
 ): () => void {
   const es = new EventSource(
     `${BASE}/api/v1/lab-projects/${projectId}/runs/${runId}/stream`,
   );
+  // Reset-on-open: the server replays full history on every (re)connect,
+  // so the slate must clear first or replayed events duplicate. Native
+  // auto-reconnect fires open again — same path, no special casing.
+  const openHandler = onOpen as EventListener | undefined;
+  if (openHandler) {
+    es.addEventListener("open", openHandler);
+  }
   const handlers = STREAM_TYPES.map((type) => {
     const handler = (msg: MessageEvent) => {
       try {
@@ -177,6 +235,9 @@ export function streamRun(
   return () => {
     for (const { type, handler } of handlers) {
       es.removeEventListener(type, handler);
+    }
+    if (openHandler) {
+      es.removeEventListener("open", openHandler);
     }
     es.close(); // cleanup: no dangling subscriptions
   };

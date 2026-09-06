@@ -27,6 +27,7 @@ ordering only.
 18. PBI-018 — Run view + approval modal (needs PBI-014, PBI-016)
 19. PBI-019 — End-to-end MVP validation, human-gated (needs PBI-016–018)
 20. PBI-020 — Archive Lab Project (needs PBI-014; Phase 1 backlog)
+21. PBI-021 — Task deep-link surface (needs PBI-017; badge href follow-up)
 
 ## Statuses (`Proposed` → `Active` → `In Review` → `Done` / `Blocked`)
 
@@ -38,10 +39,11 @@ ordering only.
 | PBI-004 | Done | PBI-014 | Done |
 | PBI-005 | In Review | PBI-015 | Done |
 | PBI-006 | Done | PBI-016 | Done |
-| PBI-007 | Done | PBI-017 | Active |
-| PBI-008 | Done | PBI-018 | Proposed |
+| PBI-007 | Done | PBI-017 | Done |
+| PBI-008 | Done | PBI-018 | Active |
 | PBI-009 | Done | PBI-019 | Proposed |
 | PBI-010 | Done | PBI-020 | Proposed |
+| PBI-021 | Proposed | | |
 
 ## Dependency graph
 
