@@ -150,12 +150,16 @@ export default function ClaimsPage() {
           </thead>
           <tbody>
             {sorted.map((row) => (
-              <tr
-                key={row.id}
-                className="cursor-pointer border-t hover:bg-zinc-50"
-                onClick={() => setOpenClaim(row.id)}
-              >
-                <td className="py-1 pr-2 font-mono">{row.id}</td>
+              <tr key={row.id} className="border-t hover:bg-zinc-50">
+                <td className="py-1 pr-2 font-mono">
+                  <button
+                    onClick={() => setOpenClaim(row.id)}
+                    className="underline"
+                    aria-label={`Open evidence trace for ${row.id}`}
+                  >
+                    {row.id}
+                  </button>
+                </td>
                 <td className="pr-2">{row.status}</td>
                 <td className="pr-2 tabular-nums">
                   {row.confidence.toFixed(2)}

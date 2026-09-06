@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import ClaimsPage from "./page";
 
@@ -82,14 +82,22 @@ describe("ClaimsPage", () => {
     expect(await screen.findByText("strong claim")).toBeDefined();
     expect(screen.getByText("2 opposing")).toBeDefined();
 
-    fireEvent.click(screen.getByText("weak claim"));
-    expect(
-      await screen.findByRole("dialog", { name: "Evidence trace for C-low" }),
-    ).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Open evidence trace for C-low" }));
     // Modal trace matches the detail payload field-for-field:
-    expect(screen.getByText("excerpt here")).toBeDefined();
-    expect(screen.getByText("Source Two")).toBeDefined();
-    expect(screen.getByText("Overall")).toBeDefined();
+    const dialog = await screen.findByRole("dialog", {
+      name: "Evidence trace for C-low",
+    });
+    expect(dialog).toBeDefined();
+    const q = within(dialog);
+    expect(q.getByText("weak claim")).toBeDefined();
+    expect(q.getByText(/DISPUTED/)).toBeDefined();
+    expect(q.getByText(/m-judge/)).toBeDefined();
+    expect(q.getByText("excerpt here")).toBeDefined();
+    expect(q.getByText(/empirical\/high/)).toBeDefined();
+    expect(q.getByText(/Results/)).toBeDefined();
+    expect(q.getByText("Source Two")).toBeDefined();
+    expect(q.getByText(/tier 6/)).toBeDefined();
+    expect(q.getByText("Overall")).toBeDefined();
   });
 
   it("filter narrows via refetch", async () => {
