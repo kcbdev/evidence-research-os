@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createLabProject,
   getBudget,
+  getClaimDetail,
+  listClaims,
   listLabProjects,
   streamRun,
 } from "./api";
@@ -42,6 +44,36 @@ describe("REST helpers", () => {
     const [, init] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(init.method).toBe("POST");
     expect(JSON.parse(init.body as string)).toMatchObject({ title: "T" });
+  });
+
+  it("builds claim filter query strings", async () => {
+    mockFetchOnce([]);
+    await listClaims("p", {
+      status: "DISPUTED",
+      min_confidence: 0.5,
+      has_opposition: true,
+    });
+    const [url] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toContain("/api/v1/lab-projects/p/claims?");
+    expect(url).toContain("status=DISPUTED");
+    expect(url).toContain("min_confidence=0.5");
+    expect(url).toContain("has_opposition=true");
+  });
+
+  it("omits unset filters", async () => {
+    mockFetchOnce([]);
+    await listClaims("p", {});
+    const [url] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toEqual(
+      expect.stringContaining("/api/v1/lab-projects/p/claims"),
+    );
+    expect(url).not.toContain("?");
+  });
+
+  it("fetches claim trace detail", async () => {
+    mockFetchOnce({ claim: { id: "C-1" }, evidence: [], sources: [] });
+    const detail = await getClaimDetail("p", "C-1");
+    expect(detail.claim.id).toBe("C-1");
   });
 });
 

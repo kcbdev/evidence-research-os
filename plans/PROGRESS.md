@@ -291,3 +291,21 @@
 - Sort: critic-approved after fix → agentic.
 - Chained: PBI-016 → Active (deps 001, 014 Done). NOTE: first
   frontend PBI — frontend/AGENTS.md authority applies.
+
+## 2026-09-06 — PBI-016 Done (review: agentic, APPROVE clean)
+
+- Read versioned guides first (vitest setup, client-fetching):
+  toolchain matches exactly (vitest set + jsdom + globals delta for
+  RTL cleanup); `test: vitest run` (watch would hang gates);
+  @types/node 20→22 (scaffold conflict, types-only).
+- Dashboard (list + create→re-fetch) + overview (question, budget
+  gauge, claims/runs/output tabs) + api.ts (addEventListener SSE,
+  cleanup) + 6 vitest tests. addEventListener is CORRECT vs the
+  guide's onmessage (backend emits named events).
+- Debug history: `"""docstring"""` in TS; label-query doubles →
+  globals:true was the real fix (cross-test DOM leak).
+- Gates: tsc clean, 6/6 vitest, next build (routes / + /lab/[id]).
+- Critic APPROVE, no must-fix. Open: /claims dead link resolves in
+  PBI-017; create-flow test + getReport catch-all later.
+- Sort: gate-proven + critic-approved → agentic.
+- Chained: PBI-017 → Active (deps 015, 016 Done).

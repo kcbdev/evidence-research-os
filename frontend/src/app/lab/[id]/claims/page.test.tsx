@@ -1,0 +1,118 @@
+import { fireEvent, render, screen } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import ClaimsPage from "./page";
+
+const ROWS = [
+  {
+    id: "C-high",
+    status: "SUPPORTED",
+    confidence: 0.9,
+    opposition: 0,
+    statement: "strong claim",
+  },
+  {
+    id: "C-low",
+    status: "DISPUTED",
+    confidence: 0.3,
+    opposition: 2,
+    statement: "weak claim",
+  },
+];
+
+const DETAIL = {
+  claim: {
+    id: "C-low",
+    statement: "weak claim",
+    status: "DISPUTED",
+    supporting_sources: ["S-2"],
+    opposing_sources: ["S-1"],
+    confidence: {
+      source_quality: 0.4,
+      methodological_strength: 0.3,
+      independent_confirmation: 0.2,
+      contradiction_level: 0.8,
+      overall: 0.3,
+    },
+    adjudicated_by: "m-judge",
+  },
+  evidence: [
+    {
+      id: "E-1",
+      source_id: "S-2",
+      location: { section: "Results" },
+      text_reference: "excerpt here",
+      supports: ["C-low"],
+      evidence_type: "empirical",
+      strength: "high",
+    },
+  ],
+  sources: [
+    { id: "S-2", url: "https://e.org/2", title: "Source Two", quality_tier: 6 },
+  ],
+};
+
+vi.mock("next/navigation", () => ({
+  useParams: () => ({ id: "p" }),
+}));
+
+beforeEach(() => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string) => {
+      const path = String(url);
+      if (path.includes("/claims/C-low")) {
+        return { ok: true, json: async () => DETAIL };
+      }
+      if (path.includes("/claims")) {
+        const query = path.split("?")[1] ?? "";
+        let rows = ROWS;
+        if (query.includes("status=DISPUTED")) {
+          rows = rows.filter((r) => r.status === "DISPUTED");
+        }
+        return { ok: true, json: async () => rows };
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    }),
+  );
+});
+
+describe("ClaimsPage", () => {
+  it("renders rows with badges and opens the trace modal", async () => {
+    render(<ClaimsPage />);
+    expect(await screen.findByText("strong claim")).toBeDefined();
+    expect(screen.getByText("2 opposing")).toBeDefined();
+
+    fireEvent.click(screen.getByText("weak claim"));
+    expect(
+      await screen.findByRole("dialog", { name: "Evidence trace for C-low" }),
+    ).toBeDefined();
+    // Modal trace matches the detail payload field-for-field:
+    expect(screen.getByText("excerpt here")).toBeDefined();
+    expect(screen.getByText("Source Two")).toBeDefined();
+    expect(screen.getByText("Overall")).toBeDefined();
+  });
+
+  it("filter narrows via refetch", async () => {
+    render(<ClaimsPage />);
+    await screen.findByText("strong claim");
+    fireEvent.change(screen.getByLabelText("Status filter"), {
+      target: { value: "DISPUTED" },
+    });
+    expect(await screen.findByText("weak claim")).toBeDefined();
+    expect(screen.queryByText("strong claim")).toBeNull();
+    const calls = (fetch as ReturnType<typeof vi.fn>).mock.calls.map(
+      String,
+    );
+    expect(calls.some((c) => c.includes("status=DISPUTED"))).toBe(true);
+  });
+
+  it("sort toggle reorders by confidence", async () => {
+    render(<ClaimsPage />);
+    const rows = await screen.findAllByRole("row");
+    // Header + 2 data rows, default confidence desc: high first.
+    expect(rows[1].textContent).toContain("C-high");
+    fireEvent.click(screen.getByRole("button", { name: /Confidence/ }));
+    const flipped = await screen.findAllByRole("row");
+    expect(flipped[1].textContent).toContain("C-low");
+  });
+});

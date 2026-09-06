@@ -77,6 +77,82 @@ export interface RunEvent {
   data: unknown;
 }
 
+export interface ClaimRow {
+  id: string;
+  status: string;
+  confidence: number;
+  opposition: number;
+  statement: string;
+}
+
+export interface Confidence {
+  source_quality: number;
+  methodological_strength: number;
+  independent_confirmation: number;
+  contradiction_level: number;
+  overall: number;
+}
+
+export interface ClaimDetail {
+  claim: {
+    id: string;
+    statement: string;
+    status: string;
+    supporting_sources: string[];
+    opposing_sources: string[];
+    confidence: Confidence | null;
+    adjudicated_by: string | null;
+  };
+  evidence: {
+    id: string;
+    source_id: string;
+    location: { page?: number; section?: string };
+    text_reference: string;
+    supports: string[];
+    evidence_type: string;
+    strength: string;
+  }[];
+  sources: {
+    id: string;
+    url: string;
+    title: string;
+    quality_tier: number;
+  }[];
+}
+
+export interface ClaimFilters {
+  status?: string;
+  min_confidence?: number;
+  has_opposition?: boolean;
+}
+
+export function listClaims(
+  projectId: string,
+  filters: ClaimFilters = {},
+): Promise<ClaimRow[]> {
+  const params = new URLSearchParams();
+  if (filters.status) params.set("status", filters.status);
+  if (filters.min_confidence !== undefined) {
+    params.set("min_confidence", String(filters.min_confidence));
+  }
+  if (filters.has_opposition !== undefined) {
+    params.set("has_opposition", String(filters.has_opposition));
+  }
+  const query = params.toString();
+  return get<ClaimRow[]>(
+    `/api/v1/lab-projects/${projectId}/claims${query ? `?${query}` : ""}`,
+  );
+}
+
+export function getClaimDetail(
+  projectId: string,
+  claimId: string,
+): Promise<ClaimDetail> {
+  return get<ClaimDetail>(
+    `/api/v1/lab-projects/${projectId}/claims/${claimId}`,
+  );
+}
+
 const STREAM_TYPES = ["node", "human_checkpoint"] as const;
 
 export function streamRun(
