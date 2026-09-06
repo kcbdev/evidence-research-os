@@ -255,3 +255,24 @@
   close-out into a fix commit — commit FIRST, then status edits.
 - Gates: 79 passed. Sort: critic-approved after fix → agentic.
 - Chained: PBI-014 → Active (deps 013 Done).
+
+## 2026-09-05 — PBI-014 Done (review: agentic, via CHANGES-REQUESTED)
+
+- Routers live: project CRUD (fail-closed auto-model defaults),
+  run start/status/SSE/approve with background-thread registry,
+  session==run==thread threading, per-run validation + per-project
+  graph cache, approve/reject decisions recorded, ADR-0001.
+- Debug history (do not repeat): path-doubling (store.path vs root —
+  pinned by comment), "rejectd" grammar, SSE space-strip assertion.
+  Full-suite wall time now ~50s (threaded API tests dominate).
+- Critic's 7 must-fix, all in: typed human_checkpoint SSE event
+  (no-polling honored) + handler docstrings; approve guards pinned
+  (running→400 via slow mock, wrong-project→404); session-threading
+  reworded dormant; AGENTS §4 cites ADR-0001; DELETE→PBI-020 card;
+  ADR gaps closed (creation-commit clarity, output interim rule).
+- Nits taken: budget-override scope comment, cache docstring truth,
+  why=note assert, get_graph revalidation unit. Left open: msgpack
+  allowlist, close/dispose path, budgets>>25 vs recursion limit,
+  runtime MCP + search_web provider (plan delta).
+- Gates: 88 passed. Sort: critic-approved after fix → agentic.
+- Chained: PBI-015 → Active (deps 003, 014 Done).

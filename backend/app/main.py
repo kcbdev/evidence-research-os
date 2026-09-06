@@ -3,7 +3,7 @@
 from pathlib import Path
 from fastapi import FastAPI
 from app import config
-from app.api import lab_projects, runs
+from app.api import claims, lab_projects, runs
 
 
 def create_app(lab_root=None) -> FastAPI:
@@ -11,6 +11,8 @@ def create_app(lab_root=None) -> FastAPI:
     app.state.lab_root = Path(lab_root) if lab_root is not None else config.LAB_PROJECTS_ROOT
     app.include_router(lab_projects.router, prefix="/api/v1/lab-projects")
     app.include_router(runs.router, prefix="/api/v1/lab-projects")
+    # PBI-015 sequences after PBI-014: same file, never parallel.
+    app.include_router(claims.router, prefix="/api/v1/lab-projects")
     return app
 
 
