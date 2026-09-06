@@ -326,3 +326,55 @@
 - Gates: tsc clean, 16/16 vitest, build (3 routes).
 - Sort: critic-approved after fix → agentic.
 - Chained: PBI-018 → Active (deps 014, 016 Done).
+
+## 2026-09-06 — PBI-018 Done (review: agentic, via CHANGES-REQUESTED)
+
+- Run view: SSE feed (addEventListener, reset-on-open dedupe),
+  BudgetGauge (honest snapshot), ApprovalModal (approve/reject+note),
+  resting-mount (no pointless subs), stale-checkpoint guard,
+  run_done terminal event (backend, justified vs no-polling).
+- Critic caught a REAL loop bug (replayed checkpoint reopening the
+  modal after approve) — fixed via resolvedRef + run_done-closes +
+  resting-mount short-circuit, all tested.
+- Own бюджета: mangled an edit into a handler deletion (rewrote file
+  cleanly after Read); TS property-narrowing in closures (const copy).
+- Gates: tsc clean, 22/22 vitest, build (4 routes); backend API
+  suite green with run_done pin.
+- Sort: critic-approved after fix → agentic.
+
+## 2026-09-06 — PBI-019 In Review (review: MANUAL — MVP release decision)
+
+Validation dossier (guide §7 checklist → executed evidence):
+
+- [x] Git-per-write visible — PBI-004 proof script (7 writes → 7
+  commits) + store tests; every backend run since commits cleanly.
+- [x] Full 13-node path — executed (escalation, contradiction loop,
+  repair loop, checkpoint, output) across graph/API tests.
+- [x] Pause/resume — executed at graph level AND over HTTP
+  (start→pause→approve→done with decisions + outputs asserted).
+- [x] Judge refusal — deliberate overlap test refuses pre-node.
+- [x] Trace modal — 9 field-level asserts against fixture payload.
+- [x] Budget stop — calls AND rounds exhaustion end runs cleanly.
+- [x] Cache reuse — counter, preseed, cross-session tests.
+- [ ] REAL question, REAL models, HUMAN witness — OPEN (see below).
+
+Gates right now: repo smoke 3 ✓, backend 93 ✓, tsc ✓,
+frontend 22 ✓, next build ✓ (all executed 2026-09-06).
+
+Blockers for the open box:
+1. No OPENROUTER_API_KEY in this environment — live-model runs
+   (and any real fetch) cannot execute here.
+2. No /areas/ topic available — the "real question" needs picking
+   (suggest: a small, verifiable question with known-good sources).
+3. PBI-005 infra (kcb.ma server) still awaiting human creation —
+   independent of local validation, required before any shared run.
+
+Residual risks the real run must retire: (a) live LLMs may not emit
+FINDING_FORMAT/STATUS protocols (mock-only coverage; parser skips +
+counts, but a 100%-malformed pass yields an empty run); (b) search_web
+provider undecided (Investigator has grep/fetch/blackboard only);
+(c) budgets >>25 vs langgraph recursion_limit default 25.
+
+Sort: manual by design — stays In Review until a human witnesses a
+real run and signs the MVP release. Chain STOPS here (PBI-020/021
+are Phase-1 backlog, executable after release).
