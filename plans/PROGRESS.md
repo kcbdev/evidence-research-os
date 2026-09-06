@@ -413,3 +413,16 @@ are Phase-1 backlog, executable after release).
   — the documented restart-loss limitation, now observed live).
   Witness path: completed run 2 (claims/trace) + fresh UI-started run
   for the live pause.
+
+## 2026-09-06 — PBI-019 live-fire log, continued
+
+- UI-started run f862d63a FAILED in first_pass: `empty completion
+  from deepseek/deepseek-v4-flash-0731` (PBI-008 fail-fast working as
+  designed). Direct probe 60s later: model healthy (content + stop).
+  Verdict: TRANSIENT provider hiccup, no code defect — but one empty
+  response killing a 10-min run is unacceptable recovery posture.
+  Filed PBI-022 (bounded retry, retries counted as calls) as Phase-1
+  backlog; NOT implemented mid-validation (code frozen under witness).
+- Restarted run d156072c (budget 40/3) for the pause witness.
+- Residual risk retired: the failed-status machinery itself proven
+  (run → failed + error surfaced, no stuck "running").
