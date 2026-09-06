@@ -276,3 +276,18 @@
   runtime MCP + search_web provider (plan delta).
 - Gates: 88 passed. Sort: critic-approved after fix → agentic.
 - Chained: PBI-015 → Active (deps 003, 014 Done).
+
+## 2026-09-05 — PBI-015 Done (review: agentic, via CHANGES-REQUESTED)
+
+- Read-model routers: claims view (DELETE+reinsert regenerate),
+  trace detail, decisions, honest budget (no cost model), report
+  passthrough. main.py sequenced after runs router.
+- Critic's must-fix: `max_confidence` added (the card's own
+  DISPUTED+<0.5 example now tested) + GET-with-write side effect
+  fixed (existence pre-check; pinned by no-mkdir test).
+- Left open (logged): concurrent-rebuild note, migration wart,
+  dangling-link tombstones (citation PBI), N+1 irrelevant at MVP.
+- Gates: 93 passed. Suite wall time ~57s (threaded API tests).
+- Sort: critic-approved after fix → agentic.
+- Chained: PBI-016 → Active (deps 001, 014 Done). NOTE: first
+  frontend PBI — frontend/AGENTS.md authority applies.
