@@ -50,7 +50,6 @@ class FakeEventSource {
   url: string;
   listeners = new Map<string, Set<(e: object) => void>>();
   closed = false;
-  onmessage: ((e: object) => void) | null = null;
 
   constructor(url: string) {
     this.url = url;
