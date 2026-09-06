@@ -266,4 +266,4 @@ def test_contradiction_loop_terminates_on_rounds(tmp_path, monkeypatch):
     assert tuple(graph.get_state(config).next) == ()
     assert result["budget"].rounds_used == 1
     debates = list((tmp_path / "p" / "debates").glob("T-*.md"))
-    assert len(debates) == 1 and "Sunlight raises" in debates[0].read_text()
+    assert len(debates) == 1 and "Sunlight raises" in debates[0].read_text(encoding="utf-8")

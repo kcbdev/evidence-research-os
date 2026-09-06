@@ -126,3 +126,17 @@ def test_list_order_stable(tmp_path):
     for i in ("C-3", "C-1", "C-2"):
         store.write_claim(Claim(id=i, statement="s"))
     assert [c.id for c in store.list_claims()] == ["C-1", "C-2", "C-3"]
+
+
+def test_non_ascii_roundtrip_is_utf8(tmp_path):
+    # Regression (live run PBI-019): model output carries smart quotes /
+    # emoji; locale-default IO corrupted them on Windows (0x92 decode
+    # crash in a debates transcript). Store files must be
+    # encoding-neutral (yaml escapes to ASCII) and round-trip exactly;
+    # raw transcript writes are pinned to UTF-8 in nodes.py.
+    store = make_store(tmp_path)
+    statement = "It’s “quoted” — café naïve — \U0001F9EA"
+    store.write_claim(Claim(id="C-u", statement=statement))
+    raw = (store.path / "claims" / "C-u.yaml").read_bytes()
+    raw.decode("ascii")  # no locale bytes leaked into the file
+    assert store.read_claim("C-u").statement == statement

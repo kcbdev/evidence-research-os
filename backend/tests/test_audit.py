@@ -92,7 +92,7 @@ def test_final_output_completed_run(tmp_path, monkeypatch):
     store = _seed(tmp_path)
     _source(store)
     nodes.make_final_output(tmp_path)(_state(session_id="s-9"))
-    refs = (tmp_path / "p" / "output" / "references.md").read_text()
+    refs = (tmp_path / "p" / "output" / "references.md").read_text(encoding="utf-8")
     assert "[S-1]" in refs and "https://e.org" in refs
     decision = store.read_decision("D-terminal-s-9")
     assert decision.what == "Run ended: completed"

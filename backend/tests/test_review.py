@@ -73,7 +73,7 @@ def test_review_writes_transcript_leaves_claims(tmp_path, monkeypatch):
     store.write_claim(Claim(id="C-1", statement="s"))
     before = [(c.id, c.status) for c in store.list_claims()]
     out = nodes.make_adversarial_review(tmp_path)(_state())
-    assert (tmp_path / "p" / "debates" / "adversarial.md").read_text() == \
+    assert (tmp_path / "p" / "debates" / "adversarial.md").read_text(encoding="utf-8") == \
         "skeptic notes here"
     assert [(c.id, c.status) for c in store.list_claims()] == before
     assert out["budget"].calls_used == 1
@@ -156,7 +156,7 @@ def test_synthesis_renders_adjudicated_claims(tmp_path, monkeypatch):
                               independent_confirmation=0.7,
                               contradiction_level=0.1, overall=0.82)))
     nodes.make_synthesis(tmp_path)(_state())
-    report = (tmp_path / "p" / "output" / "report.md").read_text()
+    report = (tmp_path / "p" / "output" / "report.md").read_text(encoding="utf-8")
     assert "Bone Study" in report and "does D help?" in report
     assert "C-1 — SUPPORTED" in report and "0.82" in report
     assert JUDGE in report
@@ -169,7 +169,7 @@ def test_synthesis_segregates_pending_claims(tmp_path, monkeypatch):
                             status="SUPPORTED", adjudicated_by=JUDGE))
     store.write_claim(Claim(id="C-wait", statement="waiting"))
     nodes.make_synthesis(tmp_path)(_state())
-    report = (tmp_path / "p" / "output" / "report.md").read_text()
+    report = (tmp_path / "p" / "output" / "report.md").read_text(encoding="utf-8")
     adjudicated, _, pending = report.partition("## Pending review")
     assert "C-done — SUPPORTED" in adjudicated
     assert "C-wait" not in adjudicated and "C-wait" in pending

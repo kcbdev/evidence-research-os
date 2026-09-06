@@ -41,7 +41,7 @@ class LabProjectStore:
         gi = self.path / ".gitignore"
         if not gi.exists():
             gi.write_text("plan/\ndebates/\ntool_outputs/\n.index/\n"
-                          "checkpoint.sqlite\n")
+                          "checkpoint.sqlite\n", encoding="utf-8")
 
     def _commit(self, rel_path: Path, msg: str):
         paths = [str(rel_path)]
@@ -58,26 +58,29 @@ class LabProjectStore:
 
     def _write(self, subdir: str, obj_id: str, model, commit_msg: str):
         p = self.path / subdir / f"{obj_id}.yaml"
-        p.write_text(yaml.safe_dump(model.model_dump(mode="json")))
+        p.write_text(yaml.safe_dump(model.model_dump(mode="json")),
+                     encoding="utf-8")
         self._commit(p.relative_to(self.path), commit_msg)
 
     def _read(self, subdir: str, obj_id: str, model_cls):
         p = self.path / subdir / f"{obj_id}.yaml"
-        return model_cls(**yaml.safe_load(p.read_text()))
+        return model_cls(**yaml.safe_load(p.read_text(encoding="utf-8")))
 
     def _list(self, subdir: str, model_cls):
         # sorted(): intentional determinism — bare glob order is OS-dependent.
-        return [model_cls(**yaml.safe_load(p.read_text()))
+        return [model_cls(**yaml.safe_load(p.read_text(encoding="utf-8")))
                 for p in sorted((self.path / subdir).glob("*.yaml"))]
 
     def write_meta(self, m: ProjectMeta):
         p = self.path / "project.yaml"
-        p.write_text(yaml.safe_dump(m.model_dump(mode="json")))
+        p.write_text(yaml.safe_dump(m.model_dump(mode="json")),
+                     encoding="utf-8")
         self._commit(p.relative_to(self.path), f"meta: {m.id}")
 
     def read_meta(self) -> ProjectMeta:
         return ProjectMeta(
-            **yaml.safe_load((self.path / "project.yaml").read_text()))
+            **yaml.safe_load((self.path / "project.yaml").read_text(
+                encoding="utf-8")))
 
     def write_source(self, s: Source):
         self._write("sources", s.id, s, f"source: {s.id}")

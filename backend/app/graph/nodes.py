@@ -131,7 +131,7 @@ def make_plan(lab_project_path: Path):
                 "question": state["active_question"],
                 "mode": state["mode"],
                 "status": "stub",
-            })
+            }), encoding="utf-8"
         )
         return state
 
@@ -293,7 +293,7 @@ def make_targeted_research(lab_project_path: Path):
             question = task.question if isinstance(task, Task) else task["question"]
             model = models.get(agent, next(iter(models.values())))
             text = call_model(model, load_prompt(agent), question)
-            (debates / f"{tid}.md").write_text(text)
+            (debates / f"{tid}.md").write_text(text, encoding="utf-8")
         # Every dispatch is a model call AND the pass consumes one round:
         # route both through the PBI-007 helpers on a copy.
         tmp = {"budget": state["budget"].model_copy()}
@@ -319,7 +319,7 @@ def make_adversarial_review(lab_project_path: Path):
                           "Review these claims for weaknesses:\n" + listing)
         debates = Path(lab_project_path) / state["lab_project_id"] / "debates"
         debates.mkdir(parents=True, exist_ok=True)
-        (debates / "adversarial.md").write_text(text)
+        (debates / "adversarial.md").write_text(text, encoding="utf-8")
         tmp = {"budget": state["budget"].model_copy()}
         consume_calls(tmp, 1)
         return {"budget": tmp["budget"]}
@@ -440,7 +440,7 @@ def make_synthesis(lab_project_path: Path):
         out.append("")
         output_dir = Path(lab_project_path) / state["lab_project_id"] / "output"
         output_dir.mkdir(parents=True, exist_ok=True)
-        (output_dir / "report.md").write_text("\n".join(out))
+        (output_dir / "report.md").write_text("\n".join(out), encoding="utf-8")
         return {}
 
     return synthesis
@@ -513,7 +513,8 @@ def make_final_output(lab_project_path: Path):
             lines.append("(no sources)")
         output_dir = Path(lab_project_path) / state["lab_project_id"] / "output"
         output_dir.mkdir(parents=True, exist_ok=True)
-        (output_dir / "references.md").write_text("\n".join(lines) + "\n")
+        (output_dir / "references.md").write_text("\n".join(lines) + "\n",
+                                                  encoding="utf-8")
         reason = ("budget_exhausted" if is_exhausted(state) else "completed")
         store.write_decision(Decision(
             id=f"D-terminal-{session}", what=f"Run ended: {reason}",
