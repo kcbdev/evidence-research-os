@@ -44,12 +44,15 @@ def rebuild_claims_index(lab_project_path: Path) -> Path:
 
 
 def _query(db_path: Path, status=None, min_confidence=0.0,
-           has_opposition=None):
+           max_confidence=None, has_opposition=None):
     db = sqlite3.connect(str(db_path))
     try:
         query = ("SELECT id, status, confidence, opposition, statement "
                  "FROM claims WHERE confidence >= ?")
         params: list = [min_confidence]
+        if max_confidence is not None:
+            query += " AND confidence <= ?"
+            params.append(max_confidence)
         if status is not None:
             query += " AND status = ?"
             params.append(status)
@@ -68,12 +71,15 @@ def _query(db_path: Path, status=None, min_confidence=0.0,
 @router.get("/{project_id}/claims")
 def list_claims(project_id: str, request: Request, status: str | None = None,
                 min_confidence: float = 0.0,
+                max_confidence: float | None = None,
                 has_opposition: bool | None = None):
-    """Filterable claims table source. The status+confidence+opposition
-    combination is the query grep cannot express — served by the view."""
+    """Filterable claims table source. The status+confidence-range+
+    opposition combination is the query grep cannot express — served by
+    the view."""
     store = _store(_root(request), project_id)
     db_path = rebuild_claims_index(store.path)
-    return _query(db_path, status, min_confidence, has_opposition)
+    return _query(db_path, status, min_confidence, max_confidence,
+                  has_opposition)
 
 
 @router.get("/{project_id}/claims/{claim_id}")

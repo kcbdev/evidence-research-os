@@ -64,6 +64,22 @@ def test_claims_filters(seeded):
         "/api/v1/lab-projects/p/claims",
         params={"status": "SUPPORTED", "min_confidence": 0.5,
                 "has_opposition": False}).json()] == ["C-high"]
+    # The card's own example: DISPUTED with confidence BELOW 0.5.
+    assert [r["id"] for r in client.get(
+        "/api/v1/lab-projects/p/claims",
+        params={"status": "DISPUTED",
+                "max_confidence": 0.5}).json()] == ["C-low"]
+    assert client.get("/api/v1/lab-projects/p/claims",
+                      params={"status": "NOPE"}).json() == []
+    assert [r["id"] for r in client.get(
+        "/api/v1/lab-projects/p/claims",
+        params={"has_opposition": False}).json()] == ["C-high"]
+
+
+def test_unknown_project_creates_nothing(seeded):
+    client, store = seeded
+    assert client.get("/api/v1/lab-projects/ghost/claims").status_code == 404
+    assert not (store.path.parent / "ghost").exists()  # no mkdir side effect
 
 
 def test_claim_detail_trace(seeded):

@@ -18,10 +18,12 @@ def _root(request: Request) -> Path:
 
 
 def _store(root: Path, project_id: str) -> LabProjectStore:
-    store = LabProjectStore(root, project_id)
-    if not (store.path / "project.yaml").exists():
+    # Existence BEFORE construction: LabProjectStore.__init__ creates
+    # layout + git repo as a side effect, so a blind construct-then-check
+    # would mkdir+git-init on every 404 probe (GET-with-write).
+    if not (Path(root) / project_id / "project.yaml").exists():
         raise HTTPException(status_code=404, detail="lab project not found")
-    return store
+    return LabProjectStore(root, project_id)
 
 
 def _slug(title: str) -> str:
