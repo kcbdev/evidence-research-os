@@ -46,15 +46,17 @@ class LabProjectStore:
     def _commit(self, rel_path: Path, msg: str):
         paths = [str(rel_path)]
         gi = self.path / ".gitignore"
-        if gi.exists():
-            try:
-                untracked = self.repo.untracked_files
-            except Exception:
-                untracked = []
-            if ".gitignore" in untracked:
-                paths.append(".gitignore")
+        # Pure-python index read (no subprocess): Repo.untracked_files
+        # shells out to `git status` per call, and per-write subprocesses
+        # trigger a Windows Popen.__del__ handle race that segfaults the
+        # suite intermittently. Never shell out in the write path.
+        if gi.exists() and ".gitignore" not in self._tracked_files():
+            paths.append(".gitignore")
         self.repo.index.add(paths)
         self.repo.index.commit(msg)
+
+    def _tracked_files(self) -> set:
+        return {entry[0] for entry in self.repo.index.entries}
 
     def _write(self, subdir: str, obj_id: str, model, commit_msg: str):
         p = self.path / subdir / f"{obj_id}.yaml"

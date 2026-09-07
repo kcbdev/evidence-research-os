@@ -165,11 +165,13 @@ def list_runs(project_id: str, request: Request):
     runs is a later PBI, not this one."""
     _store(_root(request), project_id)  # 404 for unknown projects
     with _lock:
-        recs = [r for r in _runs.values() if r["project_id"] == project_id]
-    return [{"run_id": r["run_id"], "status": r["status"],
-             "needs_approval": r["status"] == "awaiting_approval",
-             "events_count": len(r["events"]), "error": r["error"]}
-            for r in reversed(recs)]
+        snapshot = [(r["run_id"], r["status"], len(r["events"]), r["error"])
+                    for r in _runs.values()
+                    if r["project_id"] == project_id]
+    return [{"run_id": rid, "status": status,
+             "needs_approval": status == "awaiting_approval",
+             "events_count": count, "error": error}
+            for rid, status, count, error in reversed(snapshot)]
 
 
 @router.get("/{project_id}/runs/{run_id}")

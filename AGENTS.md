@@ -33,7 +33,8 @@ source of truth; every derived index is regeneratable and gitignored.
 | Scope | Command | Status |
 |---|---|---|
 | Repo smoke | `python -m pytest tests/ -q` | LIVE (3 tests, onboarding seed) |
-| Backend | `uv run pytest tests/ -q` (workdir `backend/`) | LIVE (PBI-001+) |
+| Backend units | `uv run pytest tests/ -q --ignore=tests/test_api_runs.py` (workdir `backend/`) | LIVE |
+| Backend API | `uv run pytest tests/test_api_runs.py -q` (workdir `backend/`) | LIVE (split process: threaded API tests + git-subprocess GC race segfaults Windows intermittently when combined; both halves must pass) |
 | Frontend typecheck | `cmd /c "npm.cmd --prefix frontend run typecheck"` (`tsc --noEmit`) | LIVE (PBI-001) |
 | Frontend tests | `cmd /c "npm.cmd --prefix frontend test"` | pending — runner chosen in PBI-016 |
 

@@ -179,7 +179,7 @@ def _create_client_project(tmp_path):
     return "p"
 
 
-def test_runs_list_newest_first_and_404(client):
+def test_runs_list_newest_first_and_404(client, tmp_path):
     pid = _create(client)
     r1 = client.post(f"/api/v1/lab-projects/{pid}/runs",
                      json={}).json()["run_id"]
@@ -190,6 +190,7 @@ def test_runs_list_newest_first_and_404(client):
     assert set(rows[0]) == {"run_id", "status", "needs_approval",
                             "events_count", "error"}
     assert client.get("/api/v1/lab-projects/ghost/runs").status_code == 404
+    assert not (tmp_path / "ghost").exists()  # no mkdir side effect
 
 
 def test_plan_artifact_adr_exists():
