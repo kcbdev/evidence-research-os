@@ -125,7 +125,7 @@ export default function ClaimsPage() {
 
       {loading && <p className="mt-4">Loading…</p>}
       {error && <p className="mt-4 text-red-600">{error}</p>}
-      {!loading && !error && (
+      {!loading && !error && sorted.length > 0 && (
         <table className="mt-4 w-full text-left text-sm">
           <thead>
             <tr>
@@ -172,6 +172,11 @@ export default function ClaimsPage() {
             ))}
           </tbody>
         </table>
+      )}
+      {!loading && !error && sorted.length === 0 && (
+        <p className="mt-4 text-sm text-zinc-500">
+          No claims match these filters.
+        </p>
       )}
       {openClaim && (
         <EvidenceTraceModal

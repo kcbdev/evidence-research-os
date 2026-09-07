@@ -121,7 +121,7 @@ export default function RunView() {
   }
 
   return (
-    <main className="mx-auto max-w-3xl p-8">
+    <main className="mx-auto max-w-4xl p-8">
       <Link href={`/lab/${id}`} className="text-sm underline">
         ← Lab overview
       </Link>

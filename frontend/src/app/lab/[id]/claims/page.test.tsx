@@ -69,6 +69,9 @@ beforeEach(() => {
         if (query.includes("status=DISPUTED")) {
           rows = rows.filter((r) => r.status === "DISPUTED");
         }
+        if (query.includes("status=CONTRADICTED")) {
+          rows = [];
+        }
         return { ok: true, json: async () => rows };
       }
       throw new Error(`unexpected fetch: ${url}`);
@@ -112,6 +115,16 @@ describe("ClaimsPage", () => {
       String,
     );
     expect(calls.some((c) => c.includes("status=DISPUTED"))).toBe(true);
+  });
+
+  it("empty result shows the no-match message, not a bare table", async () => {
+    render(<ClaimsPage />);
+    await screen.findByText("strong claim");
+    fireEvent.change(screen.getByLabelText("Status filter"), {
+      target: { value: "CONTRADICTED" },
+    });
+    expect(await screen.findByText("No claims match these filters.")).toBeDefined();
+    expect(screen.queryByRole("table")).toBeNull();
   });
 
   it("sort toggle reorders by confidence", async () => {

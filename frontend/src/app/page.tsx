@@ -46,7 +46,7 @@ export default function Dashboard() {
   }
 
   return (
-    <main className="mx-auto max-w-3xl p-8">
+    <main className="mx-auto max-w-4xl p-8">
       <h1 className="text-2xl font-semibold">Evidence Research OS</h1>
       <p className="mt-1 text-sm text-zinc-600">
         Lab Projects — one workspace per research question.

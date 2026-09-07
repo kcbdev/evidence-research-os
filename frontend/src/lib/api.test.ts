@@ -1,13 +1,50 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  approveRun,
   createLabProject,
   getBudget,
   getClaimDetail,
+  getRun,
   listClaims,
   listLabProjects,
+  listRuns,
+  startRun,
   streamRun,
 } from "./api";
 
+describe("runs helpers", () => {
+  it("lists runs via GET …/runs", async () => {
+    mockFetchOnce([{ run_id: "r2", status: "done" }]);
+    const runs = await listRuns("p");
+    expect(runs).toEqual([{ run_id: "r2", status: "done" }]);
+    const [url] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toContain("/api/v1/lab-projects/p/runs");
+  });
+
+  it("starts and approves runs", async () => {
+    const postMock = mockFetchOnce({ run_id: "r", status: "running" });
+    await startRun("p", {});
+    const [, startInit] = postMock.mock.calls[0] as unknown as [
+      unknown,
+      { method: string },
+    ];
+    expect(startInit.method).toBe("POST");
+
+    const approveMock = mockFetchOnce({ run_id: "r", status: "running" });
+    await approveRun("p", "r", "reject", "nope");
+    const [, approveInit] = approveMock.mock.calls[0] as unknown as [
+      unknown,
+      { body: string },
+    ];
+    expect(JSON.parse(approveInit.body)).toMatchObject({
+      decision: "reject",
+      note: "nope",
+    });
+
+    mockFetchOnce({ run_id: "r", status: "done" });
+    expect((await getRun("p", "r")).status).toBe("done");
+  });
+});
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
@@ -15,11 +52,9 @@ afterEach(() => {
 
 function mockFetchOnce(payload: unknown, ok = true, status = 200) {
   const json = vi.fn(async () => payload);
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async () => ({ ok, status, json })),
-  );
-  return json;
+  const fetchMock = vi.fn(async () => ({ ok, status, json }));
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
 }
 
 describe("REST helpers", () => {

@@ -72,6 +72,18 @@ export async function createLabProject(input: {
   return (await res.json()) as LabProjectDetail;
 }
 
+export interface RunSummary {
+  run_id: string;
+  status: string;
+  needs_approval: boolean;
+  events_count: number;
+  error: string | null;
+}
+
+export function listRuns(projectId: string): Promise<RunSummary[]> {
+  return get<RunSummary[]>(`/api/v1/lab-projects/${projectId}/runs`);
+}
+
 export interface RunStatus {
   run_id: string;
   project_id: string;

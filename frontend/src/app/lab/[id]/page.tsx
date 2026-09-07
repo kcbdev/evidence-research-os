@@ -7,12 +7,21 @@ import {
   getBudget,
   getLabProject,
   getReport,
+  listRuns,
   startRun,
   type Budget,
   type LabProjectDetail,
+  type RunSummary,
 } from "@/lib/api";
+import Markdown from "@/components/Markdown";
 
 type Tab = "claims" | "runs" | "output";
+
+const TABS: { key: Tab; label: (counts: { claims: number; runs: number }) => string }[] = [
+  { key: "claims", label: (c) => `Claims (${c.claims})` },
+  { key: "runs", label: (c) => `Runs (${c.runs})` },
+  { key: "output", label: () => "Output" },
+];
 
 export default function LabOverview() {
   const { id } = useParams<{ id: string }>();
@@ -20,6 +29,8 @@ export default function LabOverview() {
   const [project, setProject] = useState<LabProjectDetail | null>(null);
   const [budget, setBudget] = useState<Budget | null>(null);
   const [report, setReport] = useState<string | null>(null);
+  const [runs, setRuns] = useState<RunSummary[]>([]);
+  const [runsFailed, setRunsFailed] = useState(false);
   const [tab, setTab] = useState<Tab>("claims");
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
@@ -30,6 +41,12 @@ export default function LabOverview() {
       const [p, b] = await Promise.all([getLabProject(id), getBudget(id)]);
       setProject(p);
       setBudget(b);
+      try {
+        setRuns(await listRuns(id));
+        setRunsFailed(false);
+      } catch {
+        setRunsFailed(true); // history unavailable — not "no runs yet"
+      }
       try {
         setReport((await getReport(id)).report);
       } catch {
@@ -44,11 +61,14 @@ export default function LabOverview() {
     void refresh();
   }, [refresh]);
 
-  if (error) return <main className="p-8 text-red-600">{error}</main>;
-  if (!project || !budget) return <main className="p-8">Loading…</main>;
+  if (error) return <main className="mx-auto max-w-4xl p-8 text-red-600">{error}</main>;
+  if (!project || !budget)
+    return <main className="mx-auto max-w-4xl p-8">Loading…</main>;
+
+  const counts = { claims: project.counts.claims, runs: runs.length };
 
   return (
-    <main className="mx-auto max-w-3xl p-8">
+    <main className="mx-auto max-w-4xl p-8">
       <Link href="/" className="text-sm underline">
         ← Dashboard
       </Link>
@@ -72,33 +92,31 @@ export default function LabOverview() {
         )}
       </section>
 
-      <nav className="mt-4 flex gap-2" aria-label="Lab sections">
-        {(["claims", "runs", "output"] as Tab[]).map((t) => (
+      <div role="tablist" aria-label="Lab sections" className="mt-4 flex gap-2">
+        {TABS.map(({ key, label }) => (
           <button
-            key={t}
-            onClick={() => setTab(t)}
-            aria-pressed={tab === t}
-            className={`rounded border px-3 py-1 capitalize ${
-              tab === t ? "bg-zinc-900 text-white" : ""
+            key={key}
+            role="tab"
+            aria-selected={tab === key}
+            onClick={() => setTab(key)}
+            className={`rounded border px-3 py-1 ${
+              tab === key ? "bg-zinc-900 text-white" : ""
             }`}
           >
-            {t}
+            {label(counts)}
           </button>
         ))}
-      </nav>
+      </div>
 
       {tab === "claims" && (
-        <section className="mt-4">
+        <section role="tabpanel" className="mt-4">
           <Link href={`/lab/${id}/claims`} className="underline">
             Open claims table →
           </Link>
-          <p className="text-sm text-zinc-500">
-            Filterable table with evidence trace (PBI-017).
-          </p>
         </section>
       )}
       {tab === "runs" && (
-        <section className="mt-4">
+        <section role="tabpanel" className="mt-4 space-y-3">
           <button
             disabled={starting}
             onClick={() => {
@@ -118,19 +136,51 @@ export default function LabOverview() {
           >
             {starting ? "Starting…" : "Start run"}
           </button>
-          <p className="mt-2 text-sm text-zinc-500">
-            Watch it live from the run view (node feed, budget, approval).
-          </p>
+          {runsFailed ? (
+            <p className="text-sm text-red-600">
+              Couldn’t load run history.
+            </p>
+          ) : runs.length === 0 ? (
+            <p className="text-sm text-zinc-500">
+              No runs yet. History appears here (newest first); it resets
+              if the backend restarts.
+            </p>
+          ) : (
+            <ul className="space-y-2">
+              {runs.map((run) => (
+                <li key={run.run_id} className="rounded border p-3 text-sm">
+                  <Link
+                    href={`/lab/${id}/runs/${run.run_id}`}
+                    className="font-mono underline"
+                  >
+                    {run.run_id}
+                  </Link>
+                  <span className="ml-2">{run.status}</span>
+                  {run.needs_approval && (
+                    <span className="ml-2 font-medium text-amber-700">
+                      needs approval
+                    </span>
+                  )}
+                  <span className="ml-2 text-zinc-500">
+                    {run.events_count} events
+                  </span>
+                  {run.error && (
+                    <p className="text-red-600">{run.error}</p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
       )}
       {tab === "output" && (
-        <section className="mt-4">
+        <section role="tabpanel" className="mt-4">
           {report === null ? (
             <p className="text-sm text-zinc-500">No report yet.</p>
           ) : (
-            <pre className="whitespace-pre-wrap rounded border p-3 text-sm">
-              {report}
-            </pre>
+            <article className="rounded border p-4">
+              <Markdown text={report} />
+            </article>
           )}
         </section>
       )}
