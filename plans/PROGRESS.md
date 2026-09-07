@@ -414,7 +414,62 @@ are Phase-1 backlog, executable after release).
   Witness path: completed run 2 (claims/trace) + fresh UI-started run
   for the live pause.
 
+## 2026-09-06 — PBI-019 witness run COMPLETED (awaiting sign-off)
+
+- Run 2010620c10cc (budget 40/3, user-started from UI): full 10-node
+  path → pause (11 events) → USER APPROVED in browser → resumed →
+  `done` (14 events). D-approve + D-terminal:completed recorded.
+  23 claims live, 190 commits in lab-project history. Total key
+  spend across ALL live runs: $0.12 / $2.
+- Sample: C-scientist-001 INSUFFICIENT_EVIDENCE with 1 evidence +
+  1 source — specific, traceable, honestly graded.
+- Incidents this session (all resolved, all recorded): UTF-8 crash,
+  CORS block, transient empty completion (PBI-022 filed), silent
+  wedge d156 (cause undetermined — restart + logs in place),
+  shell-host death + double-backend mystery (uv shim re-exec
+  understood), orphan-run adoption via checkpoint forensics.
+- Open backlog from live-fire: PBI-022 (retry); checkpoint.sqlite
+  lives at LAB ROOT not per-project (docs say per-project — cosmetic
+  drift, behaviorally sound via thread isolation); msgpack strict-mode
+  allowlist; recursion_limit vs big budgets; search_web provider.
+- PBI-019 closes ONLY on explicit human sign-off of the witnessed
+  UI (feed/modal/trace/approve), not on these server-side facts.
+
 ## 2026-09-06 — PBI-019 live-fire log, continued
+
+## 2026-09-07 — PBI-023 Done (review: agentic, APPROVE + nits folded)
+
+- Judge protocol extended (same call, zero new spend): confidence
+  segment parsed/clamped/fail-granular; trap stays unscored; finite
+  guard added on critic nit. Kills the all-zero witness finding for
+  all FUTURE runs (historical claims keep 0 — honest, they were never
+  scored). Gates green. Plane: EVRSH-22 Done.
+
+## 2026-09-07 — PBI-024 Done (review: agentic, via CHANGES-REQUESTED)
+
+- GET runs list (newest-first, 404-safe, memory-limits documented) +
+  overview history tab (links, approval flags, restart-honest empty
+  state). Review fixes: lock-scoped snapshot, mkdir assert, POST
+  assert, runs-error surfacing. Gates green. Plane: EVRSH-23 Done.
+
+## 2026-09-07 — PBI-025 Done (review: agentic, via CHANGES-REQUESTED)
+
+- Uniform max-w-4xl, tablist+counts, claims empty-filter (table
+  hidden when empty), dependency-free Markdown renderer (XSS-safe by
+  construction). Review fixes: empty-filter test, bare-header
+  removal. Gates: tsc, 29 vitest, build. Plane: EVRSH-24 Done.
+
+## 2026-09-07 — Gate hardening (segfault flake, no PBI)
+
+- Full-suite `0xC0000005` segfault, 2 of 5 runs, wandering crash
+  site + `Popen.__del__ WinError 6` warning → subprocess-handle GC
+  race on Windows (GitPython). Prime suspect: my own `_commit`
+  `untracked_files` check (a `git status` subprocess PER WRITE).
+  Fix: pure-python `index.entries` check (zero new subprocesses).
+- Backend gate SPLIT in AGENTS.md (units + API halves, both must
+  pass) — isolation against recurrence, not hidden skips. Full
+  combined run green post-fix (100 passed); flake unreproducible
+  since, monitored not proven-gone.
 
 - UI-started run f862d63a FAILED in first_pass: `empty completion
   from deepseek/deepseek-v4-flash-0731` (PBI-008 fail-fast working as
