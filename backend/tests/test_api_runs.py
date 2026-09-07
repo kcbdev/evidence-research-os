@@ -179,6 +179,19 @@ def _create_client_project(tmp_path):
     return "p"
 
 
+def test_runs_list_newest_first_and_404(client):
+    pid = _create(client)
+    r1 = client.post(f"/api/v1/lab-projects/{pid}/runs",
+                     json={}).json()["run_id"]
+    r2 = client.post(f"/api/v1/lab-projects/{pid}/runs",
+                     json={}).json()["run_id"]
+    rows = client.get(f"/api/v1/lab-projects/{pid}/runs").json()
+    assert [r["run_id"] for r in rows] == [r2, r1]
+    assert set(rows[0]) == {"run_id", "status", "needs_approval",
+                            "events_count", "error"}
+    assert client.get("/api/v1/lab-projects/ghost/runs").status_code == 404
+
+
 def test_plan_artifact_adr_exists():
     from pathlib import Path
     # Canonical dir is DOCS/adrs (uppercase — a lowercase `docs/`
