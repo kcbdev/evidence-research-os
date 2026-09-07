@@ -336,8 +336,28 @@ Adjudicate each claim below from the evidence graph ONLY.
 Respond with one line per claim: STATUS <claim-id>: <STATUS>
 Valid statuses: SUPPORTED STRONGLY_SUPPORTED WEAKLY_SUPPORTED DISPUTED
 CONTRADICTED INSUFFICIENT_EVIDENCE UNVERIFIABLE
+Optionally append judged confidence: STATUS <id>: <STATUS> | sq ms ic cl ov
+(five 0-1 floats: source_quality methodological_strength
+independent_confirmation contradiction_level overall). Omit the segment
+when you cannot score — never invent precision.
 Three agents agreeing does not make an unsupported claim true.
 """
+
+
+def _parse_confidence(segment: str):
+    """Five floats or None (malformed → unscored, never fabricate)."""
+    import math
+    from app.models.evidence import Confidence
+    try:
+        values = [float(p) for p in segment.split()]
+    except ValueError:
+        return None
+    if len(values) != 5 or not all(math.isfinite(v) for v in values):
+        return None
+    sq, ms, ic, cl, ov = (min(1.0, max(0.0, v)) for v in values)
+    return Confidence(source_quality=sq, methodological_strength=ms,
+                      independent_confirmation=ic, contradiction_level=cl,
+                      overall=ov)
 
 
 def make_evidence_adjudication(lab_project_path: Path):
@@ -373,7 +393,10 @@ def make_evidence_adjudication(lab_project_path: Path):
                                       supporting)
             judged += 1  # the call was made, whatever came back
             if claim.id in verdicts:
-                claim.status = verdicts[claim.id]
+                status, confidence = verdicts[claim.id]
+                claim.status = status
+                if confidence is not None:
+                    claim.confidence = confidence
                 claim.adjudicated_by = meta.judge_model
                 store.write_claim(claim)
         tmp = {"budget": state["budget"].model_copy()}
@@ -401,10 +424,17 @@ def _consult_judge(judge_model: str, store: LabProjectStore, claim,
         line = line.strip()
         if line.startswith("STATUS "):
             rest = line[len("STATUS "):]
+            if "|" in rest:
+                # PBI-023: verdict left, confidence right — a bad right
+                # side voids ONLY the numbers, never the verdict.
+                rest, _, conf_segment = rest.partition("|")
+                confidence = _parse_confidence(conf_segment.strip())
+            else:
+                confidence = None
             if ":" in rest:
                 cid, status = (p.strip() for p in rest.split(":", 1))
                 if status in JUDGE_STATUSES:
-                    verdicts[cid] = status
+                    verdicts[cid] = (status, confidence)
     return verdicts
 
 

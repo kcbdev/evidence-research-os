@@ -145,6 +145,38 @@ def test_tampered_models_refuse_before_judge(tmp_path, monkeypatch):
     assert not any("Evidence Judge" in c["system"] for c in seen)
 
 
+def test_judge_confidence_stored_and_clamped(tmp_path, monkeypatch):
+    _mock(monkeypatch,
+          judge_text="STATUS C-ok-001: SUPPORTED | 0.9 0.8 0.7 0.1 1.5\n")
+    store = _seed(tmp_path)
+    _seed_evidenced_claim(store)
+    nodes.make_evidence_adjudication(tmp_path)(_state())
+    conf = store.read_claim("C-ok-001").confidence
+    assert conf is not None
+    assert (conf.source_quality, conf.methodological_strength,
+            conf.independent_confirmation, conf.contradiction_level,
+            conf.overall) == (0.9, 0.8, 0.7, 0.1, 1.0)  # overall clamped
+
+
+def test_malformed_confidence_keeps_verdict(tmp_path, monkeypatch):
+    _mock(monkeypatch,
+          judge_text="STATUS C-ok-001: SUPPORTED | nope\n")
+    store = _seed(tmp_path)
+    _seed_evidenced_claim(store)
+    nodes.make_evidence_adjudication(tmp_path)(_state())
+    claim = store.read_claim("C-ok-001")
+    assert (claim.status, claim.confidence) == ("SUPPORTED", None)
+
+
+def test_confidence_rejects_bad_shapes(tmp_path, monkeypatch):
+    from app.graph.nodes import _parse_confidence
+    assert _parse_confidence("0.9 0.8 0.7") is None  # arity
+    assert _parse_confidence("0.9 0.8 0.7 0.1 0.8 0.5") is None
+    assert _parse_confidence("nan inf 0.7 0.1 0.8") is None
+    conf = _parse_confidence("-0.5 1 1 1 1")
+    assert conf is not None and conf.source_quality == 0.0  # clamped
+
+
 def test_synthesis_renders_adjudicated_claims(tmp_path, monkeypatch):
     _mock(monkeypatch)
     store = _seed(tmp_path)
