@@ -131,3 +131,6 @@ class ProjectMeta(BaseModel):
     # on purpose — the mechanism (not the numbers) is what's proven here.
     max_sources: int = 50
     max_sources_per_claim: int = 5
+    # PBI-020: reversible archive flag (spec §8 DELETE semantics).
+    # Archived projects vanish from listings but keep full history.
+    archived: bool = False

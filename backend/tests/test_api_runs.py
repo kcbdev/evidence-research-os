@@ -194,6 +194,25 @@ def test_runs_list_newest_first_and_404(client, tmp_path):
     assert not (tmp_path / "ghost").exists()  # no mkdir side effect
 
 
+def test_archive_lifecycle(client):
+    pid = _create(client)
+    assert pid in [p["id"] for p in
+                   client.get("/api/v1/lab-projects").json()]
+    first = client.delete(f"/api/v1/lab-projects/{pid}")
+    assert first.status_code == 200
+    assert first.json() == {"id": pid, "archived": True}
+    # Vanishes from default listing, served by detail with marker:
+    assert pid not in [p["id"] for p in
+                       client.get("/api/v1/lab-projects").json()]
+    assert [p["id"] for p in client.get(
+        "/api/v1/lab-projects", params={"include_archived": True}).json()] == [pid]
+    detail = client.get(f"/api/v1/lab-projects/{pid}").json()
+    assert detail["archived"] is True
+    # Idempotent second DELETE; history intact (claims still served):
+    assert client.delete(f"/api/v1/lab-projects/{pid}").status_code == 200
+    assert client.delete("/api/v1/lab-projects/ghost").status_code == 404
+
+
 def test_plan_artifact_adr_exists():
     from pathlib import Path
     # Canonical dir is DOCS/adrs (uppercase — a lowercase `docs/`

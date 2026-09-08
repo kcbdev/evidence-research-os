@@ -11,6 +11,7 @@ export interface LabProjectSummary {
   mode: string;
   question: string;
   claims_count: number;
+  archived?: boolean; // PBI-020: list hides archived unless requested
 }
 
 export interface LabProjectDetail extends LabProjectSummary {

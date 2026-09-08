@@ -202,7 +202,9 @@ export default function Dashboard() {
       )}
       {!loading && !error && projects.length > 0 && (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          {projects.map((p) => (
+          {projects
+            .filter((p) => !p.archived)
+            .map((p) => (
             <Card key={p.id}>
               <CardHeader>
                 <CardTitle>

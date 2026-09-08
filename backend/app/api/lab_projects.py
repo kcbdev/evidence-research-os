@@ -60,9 +60,10 @@ def create_lab_project(payload: dict, request: Request):
 
 
 @router.get("")
-def list_lab_projects(request: Request):
+def list_lab_projects(request: Request, include_archived: bool = False):
     """Dashboard list. Returns [{id, title, mode, question,
-    claims_count}] — summaries only, no object payloads."""
+    claims_count}] — summaries only, no object payloads. Archived
+    projects are excluded unless include_archived=true."""
     root = _root(request)
     out = []
     if root.is_dir():
@@ -70,9 +71,11 @@ def list_lab_projects(request: Request):
             if child.is_dir() and (child / "project.yaml").exists():
                 store = LabProjectStore(root, child.name)
                 meta = store.read_meta()
+                if meta.archived and not include_archived:
+                    continue
                 out.append({
                     "id": meta.id, "title": meta.title, "mode": meta.mode,
-                    "question": meta.question,
+                    "question": meta.question, "archived": meta.archived,
                     "claims_count": len(store.list_claims()),
                 })
     return out
@@ -119,3 +122,16 @@ def update_lab_project(project_id: str, payload: dict, request: Request):
     meta.judge_model = judge
     store.write_meta(meta)
     return meta.model_dump(mode="json")
+
+
+@router.delete("/{project_id}")
+def archive_lab_project(project_id: str, request: Request):
+    """Archive (PBI-020, spec §8): sets the reversible archived flag —
+    never hard-deletes. Archived projects leave listings but stay
+    fully served by detail. Repeat DELETE is idempotent."""
+    store = _store(_root(request), project_id)
+    meta = store.read_meta()
+    if not meta.archived:
+        meta.archived = True
+        store.write_meta(meta)
+    return {"id": project_id, "archived": True}
