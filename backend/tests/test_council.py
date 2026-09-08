@@ -39,14 +39,14 @@ def _mock_llm(monkeypatch):
     def fake(model, system, user):
         seen.append({"model": model, "system": system, "user": user})
         if "Scientist" in system:
-            return SCIENTIST_TEXT
+            return SCIENTIST_TEXT, 1
         if "Investigator" in system:
-            return INVESTIGATOR_TEXT
+            return INVESTIGATOR_TEXT, 1
         if "Skeptic" in system:
-            return SKEPTIC_TEXT
-        return "targeted finding"
+            return SKEPTIC_TEXT, 1
+        return "targeted finding", 1
 
-    monkeypatch.setattr("app.graph.nodes.call_model", fake)
+    monkeypatch.setattr("app.graph.nodes.call_model_resilient", fake)
     return seen
 
 

@@ -15,8 +15,8 @@ JUDGE = "m-judge"
 
 
 def _mock(monkeypatch):
-    monkeypatch.setattr("app.graph.nodes.call_model",
-                        lambda *a, **k: "")
+    monkeypatch.setattr("app.graph.nodes.call_model_resilient",
+                        lambda *a, **k: ("", 1))
 
 
 def _seed(tmp_path, meta=None):

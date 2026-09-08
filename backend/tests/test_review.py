@@ -24,10 +24,10 @@ def _mock(monkeypatch, judge_text=JUDGE_TEXT):
     def fake(model, system, user):
         seen.append({"model": model, "system": system, "user": user})
         if "Evidence Judge" in system:
-            return judge_text
-        return "skeptic notes here"
+            return judge_text, 1
+        return "skeptic notes here", 1
 
-    monkeypatch.setattr("app.graph.nodes.call_model", fake)
+    monkeypatch.setattr("app.graph.nodes.call_model_resilient", fake)
     return seen
 
 

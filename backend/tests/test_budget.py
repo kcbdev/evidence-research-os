@@ -23,7 +23,8 @@ def _skeleton_deps(monkeypatch):
                        council_models=COUNCIL, judge_model=JUDGE)
     monkeypatch.setattr(
         "app.store.lab_project.LabProjectStore.read_meta", lambda self: meta)
-    monkeypatch.setattr("app.graph.nodes.call_model", lambda *a, **k: "")
+    monkeypatch.setattr("app.graph.nodes.call_model_resilient",
+                          lambda *a, **k: ("", 1))
     # final_output commits decisions/ entries: hermetic git identity
     # (production relies on machine config / GIT_* env per PBI-005).
     for var, val in (("GIT_AUTHOR_NAME", "t"), ("GIT_AUTHOR_EMAIL", "t@e.org"),

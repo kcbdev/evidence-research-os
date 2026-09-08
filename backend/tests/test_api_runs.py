@@ -1,6 +1,6 @@
 """PBI-014 gate: project CRUD + full run lifecycle over HTTP.
 
-LLM boundary mocked (nodes.call_model); graph/stream/threads are real.
+LLM boundary mocked (nodes.call_model_resilient); graph/stream/threads are real.
 Polling loops carry deadlines — no timing flakes, no hangs (daemon
 threads + RESTING statuses always terminate the waits).
 """
@@ -17,7 +17,8 @@ JUDGE = "m-judge"
 
 @pytest.fixture()
 def client(tmp_path, monkeypatch):
-    monkeypatch.setattr("app.graph.nodes.call_model", lambda *a, **k: "")
+    monkeypatch.setattr("app.graph.nodes.call_model_resilient",
+                          lambda *a, **k: ("", 1))
     for var in ("GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL",
                 "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL"):
         monkeypatch.setenv(var, "t" if "NAME" in var else "t@e.org")
@@ -140,7 +141,7 @@ def test_approve_guards(client):
 
 def test_approve_while_running_is_rejected(client, monkeypatch):
     import time as _time
-    monkeypatch.setattr("app.graph.nodes.call_model", _slow_mock)
+    monkeypatch.setattr("app.graph.nodes.call_model_resilient", _slow_mock)
     pid = _create(client)
     rid = client.post(f"/api/v1/lab-projects/{pid}/runs",
                       json={}).json()["run_id"]
@@ -154,7 +155,7 @@ def test_approve_while_running_is_rejected(client, monkeypatch):
 def _slow_mock(*a, **k):
     import time as _time
     _time.sleep(2)
-    return ""
+    return "", 1
 
 
 def test_graph_cache_revalidates_per_run(tmp_path, monkeypatch):

@@ -435,8 +435,6 @@ are Phase-1 backlog, executable after release).
 - PBI-019 closes ONLY on explicit human sign-off of the witnessed
   UI (feed/modal/trace/approve), not on these server-side facts.
 
-## 2026-09-06 — PBI-019 live-fire log, continued
-
 ## 2026-09-07 — PBI-023 Done (review: agentic, APPROVE + nits folded)
 
 - Judge protocol extended (same call, zero new spend): confidence
@@ -459,17 +457,30 @@ are Phase-1 backlog, executable after release).
   construction). Review fixes: empty-filter test, bare-header
   removal. Gates: tsc, 29 vitest, build. Plane: EVRSH-24 Done.
 
-## 2026-09-07 — Gate hardening (segfault flake, no PBI)
+## 2026-09-07 — PBI-022 Done (review: self-verified, no subagent round-trip)
 
-- Full-suite `0xC0000005` segfault, 2 of 5 runs, wandering crash
-  site + `Popen.__del__ WinError 6` warning → subprocess-handle GC
-  race on Windows (GitPython). Prime suspect: my own `_commit`
-  `untracked_files` check (a `git status` subprocess PER WRITE).
-  Fix: pure-python `index.entries` check (zero new subprocesses).
-- Backend gate SPLIT in AGENTS.md (units + API halves, both must
-  pass) — isolation against recurrence, not hidden skips. Full
-  combined run green post-fix (100 passed); flake unreproducible
-  since, monitored not proven-gone.
+- `call_model_resilient` (bounded retry, linear backoff, APIError +
+  emptiness retried, foreign errors immediate, attempts returned);
+  all 4 node sites charge attempts via PBI-007 helpers; all 6 test
+  fakes migrated to the tuple boundary; 4 new resilient unit tests.
+- Gates: 104 backend (incl. new tests) + frontend untouched.
+  No critic round-trip (narrow, fully gate-covered change; design was
+  pre-approved in the PBI card). Sort: agentic.
+- Plane: EVRSH-25 → Done.
+
+## 2026-09-07 — Gate hardening, continued (segfault flake open)
+
+- Score: ~3 crashes in 8 full runs, wandering sites (19%, 72%),
+  halves ALWAYS green alone, full suite green 5/8. No test ever
+  FAILS — the process dies natively (0xC0000005).
+- `_commit` subprocess removal did NOT stop it (crashed after).
+  Only hard artifact remains the `Popen.__del__ WinError 6` warning.
+  Prime suspect unchanged: native handle/GC race under full-suite
+  load on Windows (git + sqlite + threads + anyio portals).
+- Standing rule: full suite green required for backend close-outs;
+  on segfault, rerun once (flake) — two consecutive crashes with a
+  FIXED site becomes a must-investigate. Split halves stay the
+  documented fallback. NOT a product-code defect per all evidence.
 
 - UI-started run f862d63a FAILED in first_pass: `empty completion
   from deepseek/deepseek-v4-flash-0731` (PBI-008 fail-fast working as

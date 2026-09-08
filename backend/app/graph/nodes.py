@@ -27,7 +27,7 @@ import asyncio
 from datetime import datetime, timezone
 from pathlib import Path
 import yaml
-from app.agents.client import call_model
+from app.agents.client import call_model_resilient
 from app.agents.prompts import load_prompt
 from app.graph.budget import consume_calls, consume_round, is_exhausted
 from app.graph.state import LabProjectState
@@ -145,16 +145,18 @@ def make_independent_first_pass(lab_project_path: Path):
     source of truth) at run time."""
 
     async def _run_all(question: str, models: dict) -> dict:
-        async def _one(role: str) -> tuple[str, str]:
-            text = await asyncio.to_thread(
-                call_model,
+        async def _one(role: str) -> tuple[str, str, int]:
+            text, attempts = await asyncio.to_thread(
+                call_model_resilient,
                 models[role],
                 load_prompt(role),
                 question + "\n" + FINDING_FORMAT,
             )
-            return role, text
+            return role, text, attempts
 
-        return dict(await asyncio.gather(*(_one(r) for r in ROLES)))
+        return {role: (text, attempts)
+                for role, text, attempts
+                in await asyncio.gather(*(_one(r) for r in ROLES))}
 
     def independent_first_pass(state) -> dict:
         store = LabProjectStore(lab_project_path, state["lab_project_id"])
@@ -163,11 +165,13 @@ def make_independent_first_pass(lab_project_path: Path):
         # no running loop, so asyncio.run is safe. Never await this node
         # directly from async code (would raise "asyncio.run() cannot be
         # called from a running event loop").
-        findings = asyncio.run(_run_all(state["active_question"], models))
+        results = asyncio.run(_run_all(state["active_question"], models))
+        findings = {role: text for role, (text, _) in results.items()}
+        spent = sum(attempts for _, (_, attempts) in results.items())
         # Route through the PBI-007 helper (no dead imports): consume on a
         # copy so the input BudgetState is never mutated in place.
         tmp = {"budget": state["budget"].model_copy()}
-        consume_calls(tmp, 3)
+        consume_calls(tmp, spent)
         return {"first_pass": findings, "budget": tmp["budget"]}
 
     return independent_first_pass
@@ -287,17 +291,20 @@ def make_targeted_research(lab_project_path: Path):
         debates = Path(lab_project_path) / state["lab_project_id"] / "debates"
         debates.mkdir(parents=True, exist_ok=True)
         pending = state.get("pending_tasks", []) or []
+        spent = 0
         for task in pending:
             agent = task.assigned_agent if isinstance(task, Task) else task["assigned_agent"]
             tid = task.id if isinstance(task, Task) else task["id"]
             question = task.question if isinstance(task, Task) else task["question"]
             model = models.get(agent, next(iter(models.values())))
-            text = call_model(model, load_prompt(agent), question)
+            text, attempts = call_model_resilient(
+                model, load_prompt(agent), question)
+            spent += attempts
             (debates / f"{tid}.md").write_text(text, encoding="utf-8")
-        # Every dispatch is a model call AND the pass consumes one round:
-        # route both through the PBI-007 helpers on a copy.
+        # Every dispatch AND every retry is a model call, plus one round:
+        # route all through the PBI-007 helpers on a copy.
         tmp = {"budget": state["budget"].model_copy()}
-        consume_calls(tmp, len(pending))
+        consume_calls(tmp, spent)
         consume_round(tmp)
         return {"pending_tasks": [], "budget": tmp["budget"]}
 
@@ -315,13 +322,14 @@ def make_adversarial_review(lab_project_path: Path):
         claims = store.list_claims()
         listing = "\n".join(f"{c.id}: {c.statement} [{c.status}]"
                             for c in claims)
-        text = call_model(model, load_prompt("skeptic"),
-                          "Review these claims for weaknesses:\n" + listing)
+        text, attempts = call_model_resilient(
+            model, load_prompt("skeptic"),
+            "Review these claims for weaknesses:\n" + listing)
         debates = Path(lab_project_path) / state["lab_project_id"] / "debates"
         debates.mkdir(parents=True, exist_ok=True)
         (debates / "adversarial.md").write_text(text, encoding="utf-8")
         tmp = {"budget": state["budget"].model_copy()}
-        consume_calls(tmp, 1)
+        consume_calls(tmp, attempts)
         return {"budget": tmp["budget"]}
 
     return adversarial_review
@@ -389,9 +397,9 @@ def make_evidence_adjudication(lab_project_path: Path):
                 claim.adjudicated_by = "rule:no-evidence"
                 store.write_claim(claim)
                 continue
-            verdicts = _consult_judge(meta.judge_model, store, claim,
-                                      supporting)
-            judged += 1  # the call was made, whatever came back
+            verdicts, attempts = _consult_judge(meta.judge_model, store,
+                                                claim, supporting)
+            judged += attempts  # calls made, whatever came back
             if claim.id in verdicts:
                 status, confidence = verdicts[claim.id]
                 claim.status = status
@@ -407,7 +415,7 @@ def make_evidence_adjudication(lab_project_path: Path):
 
 
 def _consult_judge(judge_model: str, store: LabProjectStore, claim,
-                   supporting: list) -> dict:
+                   supporting: list) -> tuple[dict, int]:
     debates = store.path / "debates" / "adversarial.md"
     notes = debates.read_text(encoding="utf-8") if debates.exists() else "(none)"
     lines = [f"{claim.id}: {claim.statement}"]
@@ -416,9 +424,10 @@ def _consult_judge(judge_model: str, store: LabProjectStore, claim,
         lines.append(f"{ev.id} ({ev.evidence_type}/{ev.strength}) "
                      f"for {','.join(ev.supports)}: {ev.text_reference} "
                      f"[source: {src.url}]")
-    text = call_model(judge_model, load_prompt("judge"),
-                      JUDGE_FORMAT + "\nCLAIMS:\n" + "\n".join(lines)
-                      + "\nSKEPTIC NOTES:\n" + notes)
+    text, attempts = call_model_resilient(
+        judge_model, load_prompt("judge"),
+        JUDGE_FORMAT + "\nCLAIMS:\n" + "\n".join(lines)
+        + "\nSKEPTIC NOTES:\n" + notes)
     verdicts = {}
     for line in text.splitlines():
         line = line.strip()
@@ -435,7 +444,7 @@ def _consult_judge(judge_model: str, store: LabProjectStore, claim,
                 cid, status = (p.strip() for p in rest.split(":", 1))
                 if status in JUDGE_STATUSES:
                     verdicts[cid] = (status, confidence)
-    return verdicts
+    return verdicts, attempts
 
 
 def make_synthesis(lab_project_path: Path):
