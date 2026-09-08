@@ -14,6 +14,8 @@ export interface LabProjectSummary {
 }
 
 export interface LabProjectDetail extends LabProjectSummary {
+  council_models: Record<string, string>;
+  judge_model: string;
   counts: {
     claims: number;
     evidence: number;
@@ -60,6 +62,8 @@ export async function createLabProject(input: {
   title: string;
   question: string;
   mode?: string;
+  council_models?: Record<string, string>;
+  judge_model?: string;
 }): Promise<LabProjectDetail> {
   const res = await fetch(`${BASE}/api/v1/lab-projects`, {
     method: "POST",
@@ -134,6 +138,21 @@ export async function approveRun(
     throw new Error(`POST approve: ${res.status} — ${await res.text()}`);
   }
   return (await res.json()) as { run_id: string; status: string };
+}
+
+export async function updateModels(
+  projectId: string,
+  input: { council_models?: Record<string, string>; judge_model?: string },
+): Promise<LabProjectDetail> {
+  const res = await fetch(`${BASE}/api/v1/lab-projects/${projectId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    throw new Error(`PATCH lab-project: ${res.status} — ${await res.text()}`);
+  }
+  return (await res.json()) as LabProjectDetail;
 }
 
 export interface RunEvent {

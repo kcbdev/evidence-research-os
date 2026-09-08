@@ -9,18 +9,20 @@ import {
   getReport,
   listRuns,
   startRun,
+  updateModels,
   type Budget,
   type LabProjectDetail,
   type RunSummary,
 } from "@/lib/api";
 import Markdown from "@/components/Markdown";
 
-type Tab = "claims" | "runs" | "output";
+type Tab = "claims" | "runs" | "output" | "settings";
 
 const TABS: { key: Tab; label: (counts: { claims: number; runs: number }) => string }[] = [
   { key: "claims", label: (c) => `Claims (${c.claims})` },
   { key: "runs", label: (c) => `Runs (${c.runs})` },
   { key: "output", label: () => "Output" },
+  { key: "settings", label: () => "Settings" },
 ];
 
 export default function LabOverview() {
@@ -34,6 +36,13 @@ export default function LabOverview() {
   const [tab, setTab] = useState<Tab>("claims");
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
+  const [mScientist, setMScientist] = useState("");
+  const [mInvestigator, setMInvestigator] = useState("");
+  const [mSkeptic, setMSkeptic] = useState("");
+  const [mJudge, setMJudge] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setError(null);
@@ -60,6 +69,15 @@ export default function LabOverview() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    if (project) {
+      setMScientist(project.council_models.scientist ?? "");
+      setMInvestigator(project.council_models.investigator ?? "");
+      setMSkeptic(project.council_models.skeptic ?? "");
+      setMJudge(project.judge_model ?? "");
+    }
+  }, [project]);
 
   if (error) return <main className="mx-auto max-w-4xl p-8 text-red-600">{error}</main>;
   if (!project || !budget)
@@ -182,6 +200,88 @@ export default function LabOverview() {
               <Markdown text={report} />
             </article>
           )}
+        </section>
+      )}
+      {tab === "settings" && (
+        <section role="tabpanel" className="mt-4">
+          <h2 className="font-medium">Model assignment</h2>
+          <p className="text-sm text-zinc-500">
+            OpenRouter model IDs. The judge must differ from every council
+            model, or runs refuse to start.
+          </p>
+          <form
+            className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              setSaving(true);
+              setSaved(false);
+              setSaveError(null);
+              updateModels(id, {
+                council_models: {
+                  scientist: mScientist.trim(),
+                  investigator: mInvestigator.trim(),
+                  skeptic: mSkeptic.trim(),
+                },
+                judge_model: mJudge.trim(),
+              }).then(
+                async () => {
+                  setSaving(false);
+                  setSaved(true);
+                  await refresh();
+                },
+                (err: unknown) => {
+                  setSaving(false);
+                  setSaveError(
+                    err instanceof Error ? err.message : "save failed",
+                  );
+                },
+              );
+            }}
+          >
+            <input
+              aria-label="Scientist model"
+              className="rounded border px-2 py-1 font-mono text-sm"
+              placeholder="Scientist model"
+              value={mScientist}
+              onChange={(e) => setMScientist(e.target.value)}
+            />
+            <input
+              aria-label="Investigator model"
+              className="rounded border px-2 py-1 font-mono text-sm"
+              placeholder="Investigator model"
+              value={mInvestigator}
+              onChange={(e) => setMInvestigator(e.target.value)}
+            />
+            <input
+              aria-label="Skeptic model"
+              className="rounded border px-2 py-1 font-mono text-sm"
+              placeholder="Skeptic model"
+              value={mSkeptic}
+              onChange={(e) => setMSkeptic(e.target.value)}
+            />
+            <input
+              aria-label="Judge model"
+              className="rounded border px-2 py-1 font-mono text-sm"
+              placeholder="Judge model (must differ)"
+              value={mJudge}
+              onChange={(e) => setMJudge(e.target.value)}
+            />
+            <div>
+              <button
+                type="submit"
+                disabled={saving}
+                className="rounded bg-zinc-900 px-4 py-1 text-white disabled:opacity-50"
+              >
+                {saving ? "Saving…" : "Save models"}
+              </button>
+              {saved && (
+                <span className="ml-2 text-sm text-green-700">Saved.</span>
+              )}
+              {saveError && (
+                <p className="mt-2 text-sm text-red-600">{saveError}</p>
+              )}
+            </div>
+          </form>
         </section>
       )}
     </main>

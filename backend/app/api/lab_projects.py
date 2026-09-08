@@ -5,6 +5,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request
+from app.agents.config import validate_model_assignment
 from app.models.evidence import ProjectMeta
 from app.store.lab_project import LabProjectStore
 
@@ -91,3 +92,23 @@ def get_lab_project(project_id: str, request: Request):
         "tasks": len(store.list_tasks()),
         "decisions": len(store.list_decisions()),
     }}
+
+
+@router.patch("/{project_id}")
+def update_lab_project(project_id: str, payload: dict, request: Request):
+    """Update model assignment ONLY (PBI-028): {council_models?,
+    judge_model?}. Merged over stored values, validated (judge overlap
+    refused with a readable 400), committed via the store. Everything
+    else in project.yaml is untouched — budgets stay run-scoped."""
+    store = _store(_root(request), project_id)
+    meta = store.read_meta()
+    council = payload.get("council_models", meta.council_models)
+    judge = payload.get("judge_model", meta.judge_model)
+    try:
+        validate_model_assignment(council, judge)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    meta.council_models = council
+    meta.judge_model = judge
+    store.write_meta(meta)
+    return meta.model_dump(mode="json")

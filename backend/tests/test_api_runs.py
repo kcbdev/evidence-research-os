@@ -203,6 +203,29 @@ def test_plan_artifact_adr_exists():
     assert adr.is_file()
 
 
+def test_patch_models_persists_and_validates(client):
+    pid = _create(client)
+    body = {"council_models": {"scientist": "a", "investigator": "b",
+                               "skeptic": "c"},
+            "judge_model": "j"}
+    updated = client.patch(f"/api/v1/lab-projects/{pid}", json=body)
+    assert updated.status_code == 200, updated.text
+    got = client.get(f"/api/v1/lab-projects/{pid}").json()
+    assert got["council_models"]["scientist"] == "a"
+    assert got["judge_model"] == "j"
+    # Partial update keeps the rest:
+    partial = client.patch(f"/api/v1/lab-projects/{pid}",
+                           json={"judge_model": "j2"})
+    assert partial.status_code == 200
+    assert partial.json()["council_models"]["scientist"] == "a"
+    # Overlap refused with a readable reason (UI surfaces it verbatim):
+    bad = client.patch(f"/api/v1/lab-projects/{pid}",
+                       json={"judge_model": "a"})
+    assert bad.status_code == 400 and "self-preference" in bad.text
+    assert client.patch("/api/v1/lab-projects/ghost",
+                        json=body).status_code == 404
+
+
 def test_cors_allows_browser_origin(client):
     # Regression (PBI-019 witness): the control panel at :3000 fetches
     # the API at :8000 cross-origin — browsers require the ACAO header.

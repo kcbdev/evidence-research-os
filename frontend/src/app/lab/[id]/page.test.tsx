@@ -15,6 +15,8 @@ const PROJECT = {
   mode: "research",
   question: "q",
   claims_count: 2,
+  council_models: { scientist: "m-sci", investigator: "m-inv", skeptic: "m-ske" },
+  judge_model: "m-j",
   counts: { claims: 2, evidence: 1, sources: 1, ideas: 0, tasks: 0, decisions: 0 },
 };
 
@@ -49,6 +51,18 @@ beforeEach(() => {
       if (path.endsWith("/p/runs")) {
         return { ok: true, json: async () => RUNS };
       }
+      if (path.endsWith("/lab-projects/p") && init?.method === "PATCH") {
+        const body = JSON.parse(init.body as string);
+        if (body.judge_model === body.council_models?.scientist) {
+          return {
+            ok: false,
+            status: 400,
+            json: async () => ({}),
+            text: async () => "self-preference overlap",
+          };
+        }
+        return { ok: true, json: async () => ({ ...PROJECT, ...body }) };
+      }
       if (path.endsWith("/lab-projects/p")) {
         return { ok: true, json: async () => PROJECT };
       }
@@ -82,5 +96,33 @@ describe("LabOverview", () => {
       expect.stringContaining("/lab-projects/p/runs"),
       expect.objectContaining({ method: "POST" }),
     );
+  });
+
+  it("settings tab prefills, saves, and surfaces refusal", async () => {
+    render(<LabOverview />);
+    fireEvent.click(await screen.findByRole("tab", { name: "Settings" }));
+    const judge = screen.getByPlaceholderText(
+      "Judge model (must differ)",
+    ) as HTMLInputElement;
+    expect(judge.value).toBe("m-j");
+
+    fireEvent.click(screen.getByRole("button", { name: "Save models" }));
+    expect(await screen.findByText("Saved.")).toBeDefined();
+    const patches = (fetch as ReturnType<typeof vi.fn>).mock.calls.filter(
+      ([url, init]) =>
+        String(url).endsWith("/lab-projects/p") &&
+        (init as unknown as { method?: string } | undefined)?.method ===
+          "PATCH",
+    );
+    expect(patches.length).toBe(1);
+    expect(
+      JSON.parse(
+        (patches[0][1] as unknown as { body: string }).body,
+      ),
+    ).toMatchObject({ judge_model: "m-j" });
+
+    fireEvent.change(judge, { target: { value: "m-sci" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save models" }));
+    expect(await screen.findByText(/self-preference/)).toBeDefined();
   });
 });
