@@ -17,7 +17,7 @@ export default function ContradictionBadge({
 }) {
   if (opposition <= 0) return null;
   return (
-    <Badge variant="outline" title={`${opposition} opposing source(s)`}>
+    <Badge variant="outline" title={`${opposition} opposing source(s) — see evidence trace`}>
       <TriangleAlert aria-hidden="true" />
       {`${opposition} opposing`}
     </Badge>

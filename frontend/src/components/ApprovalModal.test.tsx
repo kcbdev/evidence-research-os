@@ -102,14 +102,15 @@ describe("modal dark treatment", () => {
     expect(panel?.className).toContain("dark:text-zinc-100");
   });
 
-  it("trace panel carries dark classes", async () => {
+  it("trace panel is token-driven (no hardcoded dark slab)", async () => {
     render(
       <div className="dark">
         <EvidenceTraceModal projectId="p" claimId="C-1" onClose={() => {}} />
       </div>,
     );
-    await screen.findByRole("dialog");
-    const panel = document.querySelector("div.dark\\:bg-zinc-900");
-    expect(panel?.className).toContain("dark:text-zinc-100");
+    const dialog = await screen.findByRole("dialog");
+    const panel = dialog.parentElement?.querySelector("div.bg-popover");
+    expect(panel).not.toBeNull();
+    expect(panel?.className).not.toContain("bg-white");
   });
 });

@@ -66,8 +66,8 @@ ordering only.
 | PBI-029 | Proposed | | |
 | PBI-030 | Done | | |
 | PBI-031 | Done | | |
-| PBI-032 | Active | | |
-| PBI-033 | Proposed | | |
+| PBI-032 | Done | | |
+| PBI-033 | Active | | |
 | PBI-029 | Proposed | | |
 
 ## Dependency graph

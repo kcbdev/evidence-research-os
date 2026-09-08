@@ -18,7 +18,7 @@ export default function ClaimConfidenceBar({
 }) {
   if (confidence === null) {
     return (
-      <span className="text-sm text-muted-foreground dark:text-zinc-400">
+      <span className="text-sm text-muted-foreground">
         unscored
       </span>
     );

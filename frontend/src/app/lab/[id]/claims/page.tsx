@@ -7,7 +7,6 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Empty,
-  EmptyDescription,
   EmptyHeader,
   EmptyTitle,
 } from "@/components/ui/empty";
@@ -137,7 +136,6 @@ export default function ClaimsPage() {
               <FieldLabel htmlFor="claim-minconf">Min confidence</FieldLabel>
               <Input
                 id="claim-minconf"
-                aria-label="Min confidence"
                 type="number"
                 min={0}
                 max={1}

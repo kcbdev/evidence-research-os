@@ -97,7 +97,7 @@ describe("ClaimsPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open evidence trace for C-low" }));
     // Dialog name comes from DialogTitle via aria-labelledby (base-ui) —
     // scope field asserts to the dialog element itself.
-    const dialog = await screen.findByRole("dialog");
+    const dialog = await screen.findByRole("dialog", { name: "C-low" });
     expect(dialog).toBeDefined();
     const q = within(dialog);
     expect(q.getByText("C-low")).toBeDefined(); // the title

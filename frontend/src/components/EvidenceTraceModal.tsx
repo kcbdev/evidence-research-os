@@ -51,7 +51,7 @@ export default function EvidenceTraceModal({
         if (!open) onClose();
       }}
     >
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl dark:bg-zinc-900 dark:text-zinc-100">
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{claimId}</DialogTitle>
           <DialogDescription>
