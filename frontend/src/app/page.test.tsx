@@ -94,7 +94,7 @@ describe("Dashboard", () => {
       ];
       expect(JSON.parse(postInit.body)).toMatchObject({
         title: "T",
-        council_models: { scientist: "m-sci" },
+        council_models: { scientist: "m-sci", investigator: "m-inv", skeptic: "m-ske" },
         judge_model: "m-j",
       });
     });

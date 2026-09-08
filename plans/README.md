@@ -57,7 +57,7 @@ ordering only.
 | PBI-025 | Done | | |
 | PBI-026 | Done | | |
 | PBI-027 | Done | | |
-| PBI-028 | Proposed | | |
+| PBI-028 | Done | | |
 
 ## Dependency graph
 

@@ -108,6 +108,13 @@ def update_lab_project(project_id: str, payload: dict, request: Request):
         validate_model_assignment(council, judge)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+    blanks = [role for role, model in council.items()
+              if not str(model).strip()] + ([] if str(judge).strip() else ["judge"])
+    if blanks:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Blank model IDs refused for: {', '.join(blanks)} — "
+                   "runs cannot start without real OpenRouter model IDs.")
     meta.council_models = council
     meta.judge_model = judge
     store.write_meta(meta)

@@ -203,7 +203,7 @@ def test_plan_artifact_adr_exists():
     assert adr.is_file()
 
 
-def test_patch_models_persists_and_validates(client):
+def test_patch_models_persists_and_validates(client, tmp_path):
     pid = _create(client)
     body = {"council_models": {"scientist": "a", "investigator": "b",
                                "skeptic": "c"},
@@ -222,8 +222,15 @@ def test_patch_models_persists_and_validates(client):
     bad = client.patch(f"/api/v1/lab-projects/{pid}",
                        json={"judge_model": "a"})
     assert bad.status_code == 400 and "self-preference" in bad.text
+    # ...and nothing was mutated by the refused PATCH:
+    assert client.get(f"/api/v1/lab-projects/{pid}").json()["judge_model"] == "j2"
+    # Blank model IDs refused (would corrupt runs downstream):
+    blank = client.patch(f"/api/v1/lab-projects/{pid}",
+                         json={"judge_model": "  "})
+    assert blank.status_code == 400 and "Blank model IDs" in blank.text
     assert client.patch("/api/v1/lab-projects/ghost",
                         json=body).status_code == 404
+    assert not (tmp_path / "ghost").exists()  # no mkdir side effect
 
 
 def test_cors_allows_browser_origin(client):
