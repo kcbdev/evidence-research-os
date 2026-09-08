@@ -215,7 +215,11 @@ export default function ClaimsPage() {
                   {row.confidence.toFixed(2)}
                 </TableCell>
                 <TableCell>
-                  <ContradictionBadge opposition={row.opposition} />
+                  <ContradictionBadge
+                    opposition={row.opposition}
+                    claimId={row.id}
+                    onOpen={setOpenClaim}
+                  />
                 </TableCell>
                 <TableCell>{row.statement}</TableCell>
               </TableRow>

@@ -122,3 +122,21 @@ def test_decisions_budget_report(seeded):
     (store.path / "output" / "report.md").write_text("# R\n")
     assert client.get(
         "/api/v1/lab-projects/p/output/report").json() == {"report": "# R\n"}
+
+
+def test_tasks_filter_by_claim(seeded):
+    from app.models.evidence import Task
+    client, store = seeded
+    # Seeded fixture (C-high/C-low) has no tasks yet:
+    assert client.get("/api/v1/lab-projects/p/tasks").json() == []
+    store.write_task(Task(id="T-C-low", question="Adjudicate: weak",
+                          reason="challenge", assigned_agent="investigator"))
+    store.write_task(Task(id="T-other", question="unrelated chore",
+                          reason="r", assigned_agent="scientist"))
+    by_id = client.get("/api/v1/lab-projects/p/tasks",
+                       params={"claim_id": "C-low"}).json()
+    assert [t["id"] for t in by_id] == ["T-C-low"]
+    assert client.get("/api/v1/lab-projects/p/tasks",
+                      params={"claim_id": "C-high"}).json() == []
+    assert client.get("/api/v1/lab-projects/p/tasks",
+                      params={"claim_id": "C-nope"}).status_code == 404

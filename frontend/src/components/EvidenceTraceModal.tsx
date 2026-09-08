@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
-import { getClaimDetail, type ClaimDetail } from "@/lib/api";
+import { getClaimDetail, listTasks, type ClaimDetail, type DelegatedTask } from "@/lib/api";
 import ClaimConfidenceBar from "./ClaimConfidenceBar";
 
 export default function EvidenceTraceModal({
@@ -24,11 +24,13 @@ export default function EvidenceTraceModal({
 }) {
   const [detail, setDetail] = useState<ClaimDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [tasks, setTasks] = useState<DelegatedTask[] | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     setDetail(null);
     setError(null);
+    setTasks(null);
     getClaimDetail(projectId, claimId).then(
       (d) => {
         if (!cancelled) setDetail(d);
@@ -37,6 +39,14 @@ export default function EvidenceTraceModal({
         if (!cancelled) {
           setError(err instanceof Error ? err.message : "failed to load");
         }
+      },
+    );
+    listTasks(projectId, claimId).then(
+      (t) => {
+        if (!cancelled) setTasks(t);
+      },
+      () => {
+        if (!cancelled) setTasks([]); // tasks advisory; trace stands alone
       },
     );
     return () => {
@@ -131,6 +141,33 @@ export default function EvidenceTraceModal({
                     </li>
                   );
                 })}
+              </ul>
+            </section>
+            <section>
+              <h3 className="font-medium">
+                Linked tasks ({tasks === null ? "…" : tasks.length})
+              </h3>
+              {tasks !== null && tasks.length === 0 && (
+                <p className="text-sm text-muted-foreground">
+                  No targeted research tasked for this claim.
+                </p>
+              )}
+              <ul className="mt-1 flex flex-col gap-2">
+                {(tasks ?? []).map((task) => (
+                  <li
+                    key={task.id}
+                    className="rounded-md border p-2 text-sm"
+                  >
+                    <p className="font-medium">
+                      {task.id}
+                      <span className="ml-2 font-normal text-muted-foreground">
+                        → {task.assigned_agent}
+                      </span>
+                    </p>
+                    <p className="mt-1">{task.question}</p>
+                    <p className="mt-1 text-muted-foreground">{task.reason}</p>
+                  </li>
+                ))}
               </ul>
             </section>
           </div>

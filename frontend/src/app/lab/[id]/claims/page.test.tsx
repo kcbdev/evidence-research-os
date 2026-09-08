@@ -63,6 +63,20 @@ beforeEach(() => {
       if (path.includes("/claims/C-low")) {
         return { ok: true, json: async () => DETAIL };
       }
+      if (path.includes("/tasks?claim_id=C-low")) {
+        return {
+          ok: true,
+          json: async () => [
+            {
+              id: "T-C-low",
+              question: "Adjudicate conflicting evidence",
+              reason: "Skeptic challenge",
+              required_sources: [],
+              assigned_agent: "investigator",
+            },
+          ],
+        };
+      }
       if (path.includes("/claims")) {
         const query = path.split("?")[1] ?? "";
         let rows = ROWS;
@@ -110,6 +124,19 @@ describe("ClaimsPage", () => {
     expect(q.getByText("Source Two")).toBeDefined();
     expect(q.getByText(/tier 6/)).toBeDefined();
     expect(q.getByText("Overall")).toBeDefined();
+    expect(q.getByText("T-C-low")).toBeDefined();
+    expect(q.getByText("Adjudicate conflicting evidence")).toBeDefined();
+  });
+
+  it("badge button opens the trace modal", async () => {
+    render(<ClaimsPage />);
+    await screen.findByText("strong claim");
+    fireEvent.click(screen.getByRole("button", { name: /2 opposing/ }));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toBeDefined();
+    expect(
+      within(dialog).getByText("Adjudicate conflicting evidence"),
+    ).toBeDefined();
   });
 
   it("filter narrows via refetch", async () => {

@@ -237,6 +237,24 @@ export function getClaimDetail(
   );
 }
 
+export interface DelegatedTask {
+  id: string;
+  question: string;
+  reason: string;
+  required_sources: string[];
+  assigned_agent: string;
+}
+
+export function listTasks(
+  projectId: string,
+  claimId?: string,
+): Promise<DelegatedTask[]> {
+  const query = claimId ? `?claim_id=${encodeURIComponent(claimId)}` : "";
+  return get<DelegatedTask[]>(
+    `/api/v1/lab-projects/${projectId}/tasks${query}`,
+  );
+}
+
 const STREAM_TYPES = ["node", "human_checkpoint", "run_done"] as const;
 
 export function streamRun(

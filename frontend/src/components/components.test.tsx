@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import ClaimConfidenceBar from "./ClaimConfidenceBar";
 import ContradictionBadge from "./ContradictionBadge";
 
@@ -34,12 +34,18 @@ describe("ClaimConfidenceBar", () => {
 
 describe("ContradictionBadge", () => {
   it("renders nothing without opposition", () => {
-    const { container } = render(<ContradictionBadge opposition={0} />);
+    const { container } = render(
+      <ContradictionBadge opposition={0} claimId="C-1" onOpen={() => {}} />,
+    );
     expect(container.textContent).toBe("");
   });
 
-  it("renders the count with opposition", () => {
-    render(<ContradictionBadge opposition={2} />);
-    expect(screen.getByText("2 opposing")).toBeDefined();
+  it("renders a button opening the trace modal", () => {
+    const onOpen = vi.fn();
+    render(
+      <ContradictionBadge opposition={2} claimId="C-9" onOpen={onOpen} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /2 opposing/ }));
+    expect(onOpen).toHaveBeenCalledWith("C-9");
   });
 });

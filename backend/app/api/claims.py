@@ -132,3 +132,30 @@ def get_report(project_id: str, request: Request):
     if not report.is_file():
         raise HTTPException(status_code=404, detail="no report yet")
     return {"report": report.read_text(encoding="utf-8")}
+
+
+def task_matches_claim(task, claim_id: str, claim_statement: str) -> bool:
+    """Link heuristic (PBI-021): the T-<claim> id convention first,
+    falling back to the claim statement embedded in the task question
+    ("Adjudicate conflicting evidence on: <statement>"). Either signal
+    suffices; nothing else qualifies."""
+    if task.id == f"T-{claim_id}":
+        return True
+    return bool(claim_statement) and claim_statement in task.question
+
+
+@router.get("/{project_id}/tasks")
+def list_tasks(project_id: str, request: Request,
+               claim_id: str | None = None):
+    """Targeted-delegation queue, optionally filtered to one claim.
+    Powers the trace modal's Linked-tasks section (PBI-021)."""
+    store = _store(_root(request), project_id)
+    tasks = store.list_tasks()
+    if claim_id is not None:
+        try:
+            statement = store.read_claim(claim_id).statement
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="claim not found")
+        tasks = [t for t in tasks
+                 if task_matches_claim(t, claim_id, statement)]
+    return [t.model_dump(mode="json") for t in tasks]
