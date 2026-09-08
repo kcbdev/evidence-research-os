@@ -528,3 +528,6 @@ are Phase-1 backlog, executable after release).
 
 ## 2026-09-08 - PBI-033 In Review (manual - needs human eyeball)
 - Run view + feed + gauge + modal on shadcn; logic byte-identical (critic-verified). Review fixes: dead X removed, 44px targets, main landmark, token modal. Responsive: 375 all routes + 768 run/modal measured clean; 1024/1440 reasoned. Gates: tsc, 37 vitest, build. Critic: CHANGES-REQUESTED addressed; sort MANUAL per critic (design authority = user). Plane: EVRSH-32 In Progress. NOTE: local In Review maps to Plane In Progress (no such Plane state).
+
+## 2026-09-08 - PBI-033 Done + UX TRACK COMPLETE (eyeball approved)
+- User approved the restyled UI. EVRSH-32 Done. Track EVRSH-30..33 all Done. Project: 33 issues, 29 Done, 1 In Progress (PBI-005 infra), 3 Backlog (020, 021, 029). Control panel now: shadcn v4, dark-first OLED, AppShell nav, responsive measured, checklist signed.
