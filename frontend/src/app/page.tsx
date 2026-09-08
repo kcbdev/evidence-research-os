@@ -190,7 +190,7 @@ export default function Dashboard() {
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
-      {!loading && !error && projects.length === 0 && (
+      {!loading && !error && projects.filter((p) => !p.archived).length === 0 && (
         <Empty>
           <EmptyHeader>
             <EmptyTitle>No Lab Projects yet</EmptyTitle>

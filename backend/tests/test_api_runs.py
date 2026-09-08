@@ -194,8 +194,14 @@ def test_runs_list_newest_first_and_404(client, tmp_path):
     assert not (tmp_path / "ghost").exists()  # no mkdir side effect
 
 
-def test_archive_lifecycle(client):
+def test_archive_lifecycle(client, tmp_path):
+    from app.models.evidence import Claim, Decision
+    from app.store.lab_project import LabProjectStore
     pid = _create(client)
+    store = LabProjectStore(tmp_path, pid)
+    store.write_claim(Claim(id="C-1", statement="history must survive"))
+    store.write_decision(Decision(id="D-1", what="w", why="y",
+                                  timestamp="2026-09-08T10:00:00Z"))
     assert pid in [p["id"] for p in
                    client.get("/api/v1/lab-projects").json()]
     first = client.delete(f"/api/v1/lab-projects/{pid}")
@@ -208,9 +214,15 @@ def test_archive_lifecycle(client):
         "/api/v1/lab-projects", params={"include_archived": True}).json()] == [pid]
     detail = client.get(f"/api/v1/lab-projects/{pid}").json()
     assert detail["archived"] is True
-    # Idempotent second DELETE; history intact (claims still served):
-    assert client.delete(f"/api/v1/lab-projects/{pid}").status_code == 200
+    # History intact across archive AND second DELETE:
+    assert detail["counts"]["claims"] == 1
+    assert len(store.list_decisions()) == 1
+    second = client.delete(f"/api/v1/lab-projects/{pid}")
+    assert second.status_code == 200
+    assert second.json() == {"id": pid, "archived": True}
+    assert client.get(f"/api/v1/lab-projects/{pid}").json()["counts"]["claims"] == 1
     assert client.delete("/api/v1/lab-projects/ghost").status_code == 404
+    assert not (tmp_path / "ghost").exists()  # no mkdir side effect
 
 
 def test_plan_artifact_adr_exists():
