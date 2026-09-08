@@ -500,3 +500,8 @@ are Phase-1 backlog, executable after release).
 
 ## 2026-09-08 - Plane discipline constitutionalized
 - User directive: always synced. AGENTS.md section 4 now carries the rule (link every PBI, issues at creation, transitions propagate, reconcile on drift). Backlog review: EVRSH-18 (020) + EVRSH-20 (021) NOT due (post-release backlog, correct). EVRSH-25 (022) transitioned to Done. Project now 25 issues: 23 Done, 2 In Progress (005 infra, 019 release).
+
+## 2026-09-08 - PBI-019 re-witness run COMPLETED (awaiting sign-off)
+- Run 18a35c7b (budget 40/3, retry+confidence code): full path, pause (11 events), USER APPROVED in browser, resumed, done (14 events). D-approve + D-terminal:completed recorded.
+- PBI-023 proven live: 16 of 26 claims carry judge-graded confidence above 0 (old runs zeros correctly remain unscored). Report 7721 chars rendered. No empty-completion failure, no wedge, no CORS issue this run.
+- PBI-019 closes ONLY on explicit human sign-off of the witnessed UI (dossier modal, confidence bars, history tab, dark, report).
