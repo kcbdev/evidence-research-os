@@ -57,6 +57,12 @@ source of truth; every derived index is regeneratable and gitignored.
   keyed by URL/DOI hash — check before every fetch, no exceptions.
 - **Micro-commits:** one logical change per commit, conventional message;
   legacy history (pre-onboarding: none — repo was docs-only) left untouched.
+- **Plane sync discipline (always-synced, no silent local work):** every
+  PBI links its issue (`Plane: <workspace>/<identifier>` in Context);
+  new PBIs get their issues at creation time; every status transition
+  (Active → In Review → Done) propagates to Plane on close-out;
+  `Backlog` stays until moved to `Todo`. If local cards and Plane ever
+  disagree, stop and reconcile before executing further.
 - **Human checkpoints** after PLAN and after SYNTHESIS (per-Lab-Project
   configurable); graph pauses via `interrupt_before=["human_checkpoint"]`,
   resumes via `POST .../runs/{run_id}/approve`. No parallel pause mechanism.

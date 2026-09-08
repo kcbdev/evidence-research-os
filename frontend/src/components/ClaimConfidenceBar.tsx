@@ -22,10 +22,10 @@ export default function ClaimConfidenceBar({
     <dl className="space-y-1">
       {DIMS.map(({ key, label }) => (
         <div key={key} className="flex items-center gap-2 text-xs">
-          <dt className="w-28 shrink-0 text-zinc-600">{label}</dt>
-          <dd className="h-2 flex-1 rounded bg-zinc-200">
+          <dt className="w-28 shrink-0 text-zinc-600 dark:text-zinc-400">{label}</dt>
+          <dd className="h-2 flex-1 rounded bg-zinc-200 dark:bg-zinc-700">
             <div
-              className="h-2 rounded bg-zinc-800"
+              className="h-2 rounded bg-zinc-800 dark:bg-zinc-200"
               style={{ width: `${Math.round(confidence[key] * 100)}%` }}
             />
           </dd>

@@ -32,6 +32,8 @@ ordering only.
 23. PBI-023 — Adjudication writes confidence (needs PBI-012; witness finding)
 24. PBI-024 — Runs history (needs PBI-014; witness finding)
 25. PBI-025 — Presentation pass (needs PBI-016/017; witness finding)
+26. PBI-026 — Approval dossier (needs PBI-015/018; witness finding)
+27. PBI-027 — Modal dark mode (needs PBI-017/018; witness finding)
 
 ## Statuses (`Proposed` → `Active` → `In Review` → `Done` / `Blocked`)
 
@@ -48,10 +50,12 @@ ordering only.
 | PBI-009 | Done | PBI-019 | In Review |
 | PBI-010 | Done | PBI-020 | Proposed |
 | PBI-021 | Proposed | | |
-| PBI-022 | Proposed | | |
+| PBI-022 | Done | | |
 | PBI-023 | Done | | |
 | PBI-024 | Done | | |
 | PBI-025 | Done | | |
+| PBI-026 | Active | | |
+| PBI-027 | Active | | |
 
 ## Dependency graph
 

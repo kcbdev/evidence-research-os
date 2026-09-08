@@ -16,7 +16,7 @@ export default function ContradictionBadge({
   return (
     <span
       title={`${opposition} opposing source(s) — see evidence trace`}
-      className="rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800"
+      className="rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900 dark:text-amber-200"
     >
       <span aria-hidden="true">⚠ </span>
       {`${opposition} opposing`}
