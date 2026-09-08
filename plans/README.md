@@ -65,8 +65,8 @@ ordering only.
 | PBI-028 | Done | | |
 | PBI-029 | Proposed | | |
 | PBI-030 | Done | | |
-| PBI-031 | Active | | |
-| PBI-032 | Proposed | | |
+| PBI-031 | Done | | |
+| PBI-032 | Active | | |
 | PBI-033 | Proposed | | |
 | PBI-029 | Proposed | | |
 

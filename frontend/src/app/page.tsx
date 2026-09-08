@@ -20,7 +20,6 @@ import {
 } from "@/components/ui/empty";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { createLabProject, listLabProjects, type LabProjectSummary } from "@/lib/api";
 
@@ -91,7 +90,7 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <main className="flex flex-col gap-6" aria-label="Dashboard">
       <div>
         <h1 className="text-2xl font-semibold">Evidence Research OS</h1>
         <p className="text-sm text-muted-foreground">
@@ -112,7 +111,7 @@ export default function Dashboard() {
                   id="lp-title"
                   aria-label="Project title"
                   placeholder="Title"
-                  value={title}
+                  className="min-h-[44px]"                  value={title}
                   onChange={(e) => setTitle(e.target.value)}
                 />
               </Field>
@@ -122,6 +121,7 @@ export default function Dashboard() {
                   id="lp-question"
                   aria-label="Research question"
                   placeholder="Research question"
+                  className="min-h-[44px]"
                   value={question}
                   onChange={(e) => setQuestion(e.target.value)}
                 />
@@ -132,7 +132,7 @@ export default function Dashboard() {
                   id="lp-scientist"
                   aria-label="Scientist model"
                   placeholder="Scientist model (OpenRouter ID)"
-                  className="font-mono"
+                  className="font-mono min-h-[44px]"
                   value={scientist}
                   onChange={(e) => setScientist(e.target.value)}
                 />
@@ -143,7 +143,7 @@ export default function Dashboard() {
                   id="lp-investigator"
                   aria-label="Investigator model"
                   placeholder="Investigator model (OpenRouter ID)"
-                  className="font-mono"
+                  className="font-mono min-h-[44px]"
                   value={investigator}
                   onChange={(e) => setInvestigator(e.target.value)}
                 />
@@ -154,7 +154,7 @@ export default function Dashboard() {
                   id="lp-skeptic"
                   aria-label="Skeptic model"
                   placeholder="Skeptic model (OpenRouter ID)"
-                  className="font-mono"
+                  className="font-mono min-h-[44px]"
                   value={skeptic}
                   onChange={(e) => setSkeptic(e.target.value)}
                 />
@@ -165,12 +165,12 @@ export default function Dashboard() {
                   id="lp-judge"
                   aria-label="Judge model"
                   placeholder="Judge model (OpenRouter ID, must differ)"
-                  className="font-mono"
+                  className="font-mono min-h-[44px]"
                   value={judge}
                   onChange={(e) => setJudge(e.target.value)}
                 />
               </Field>
-              <Button type="submit" disabled={creating}>
+              <Button type="submit" disabled={creating} className="min-h-[44px]">
                 {creating ? "Creating…" : "Create"}
               </Button>
             </FieldGroup>
@@ -222,7 +222,6 @@ export default function Dashboard() {
           ))}
         </div>
       )}
-      <Separator />
-    </div>
+    </main>
   );
 }

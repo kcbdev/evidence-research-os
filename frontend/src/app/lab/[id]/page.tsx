@@ -125,7 +125,7 @@ export default function LabOverview() {
   const counts = { claims: project.counts.claims, runs: runs.length };
 
   return (
-    <div className="flex flex-col gap-6">
+    <main className="flex flex-col gap-6" aria-label="Lab overview">
       <div>
         <h1 className="text-2xl font-semibold">{project.title}</h1>
         <p className="mt-1 text-muted-foreground">{project.question}</p>
@@ -145,21 +145,23 @@ export default function LabOverview() {
             {budget.rounds_used}/{budget.max_research_rounds}
           </p>
           {budget.exhausted && (
-            <p className="text-sm font-medium text-amber-700">
-              Budget exhausted — runs end cleanly.
+            <p className="mt-2">
+              <Badge variant="outline">Budget exhausted — runs end cleanly.</Badge>
             </p>
           )}
         </CardContent>
       </Card>
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)}>
-        <TabsList aria-label="Lab sections">
-          {TABS.map(({ key, label }) => (
-            <TabsTrigger key={key} value={key}>
-              {label(counts)}
-            </TabsTrigger>
-          ))}
-        </TabsList>
+        <div className="overflow-x-auto">
+          <TabsList aria-label="Lab sections">
+            {TABS.map(({ key, label }) => (
+              <TabsTrigger key={key} value={key} className="min-h-[44px]">
+                {label(counts)}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </div>
 
         <TabsContent value="claims">
           <Card>
@@ -176,6 +178,7 @@ export default function LabOverview() {
             <div>
               <Button
                 disabled={starting}
+                className="min-h-[44px]"
                 onClick={() => {
                   setStarting(true);
                   setError(null);
@@ -209,6 +212,7 @@ export default function LabOverview() {
                 </EmptyHeader>
               </Empty>
             ) : (
+            <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -252,6 +256,7 @@ export default function LabOverview() {
                   ))}
                 </TableBody>
               </Table>
+            </div>
             )}
           </div>
         </TabsContent>
@@ -317,7 +322,7 @@ export default function LabOverview() {
                       id="m-scientist"
                       aria-label="Scientist model"
                       placeholder="Scientist model"
-                      className="font-mono"
+                  className="min-h-[44px] font-mono"
                       value={mScientist}
                       onChange={(e) => setMScientist(e.target.value)}
                     />
@@ -328,7 +333,7 @@ export default function LabOverview() {
                       id="m-investigator"
                       aria-label="Investigator model"
                       placeholder="Investigator model"
-                      className="font-mono"
+                  className="min-h-[44px] font-mono"
                       value={mInvestigator}
                       onChange={(e) => setMInvestigator(e.target.value)}
                     />
@@ -339,7 +344,7 @@ export default function LabOverview() {
                       id="m-skeptic"
                       aria-label="Skeptic model"
                       placeholder="Skeptic model"
-                      className="font-mono"
+                  className="min-h-[44px] font-mono"
                       value={mSkeptic}
                       onChange={(e) => setMSkeptic(e.target.value)}
                     />
@@ -350,18 +355,20 @@ export default function LabOverview() {
                       id="m-judge"
                       aria-label="Judge model"
                       placeholder="Judge model (must differ)"
-                      className="font-mono"
+                  className="min-h-[44px] font-mono"
                       value={mJudge}
                       onChange={(e) => setMJudge(e.target.value)}
                     />
                   </Field>
                   <div className="flex items-center gap-2">
-                    <Button type="submit" disabled={saving}>
+                    <Button type="submit" disabled={saving} className="min-h-[44px]">
                       {saving ? "Saving…" : "Save models"}
                     </Button>
-                    {saved && (
-                      <span className="text-sm text-green-700">Saved.</span>
-                    )}
+              {saved && (
+                <Badge variant="secondary" className="ml-2">
+                  Saved.
+                </Badge>
+              )}
                   </div>
                   {saveError && (
                     <p className="text-sm text-destructive">{saveError}</p>
@@ -372,6 +379,6 @@ export default function LabOverview() {
           </Card>
         </TabsContent>
       </Tabs>
-    </div>
+    </main>
   );
 }
