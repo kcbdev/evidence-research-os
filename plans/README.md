@@ -36,6 +36,10 @@ ordering only.
 27. PBI-027 — Modal dark mode (needs PBI-017/018; witness finding)
 28. PBI-028 — Model settings UI (needs PBI-014/016; witness follow-up, backlog)
 29. PBI-029 — Persist runs (needs PBI-014; witness follow-up, backlog)
+30. PBI-030 — shadcn foundation + AppShell (needs none; UX overhaul)
+31. PBI-031 — Dashboard + overview on shadcn (needs PBI-030)
+32. PBI-032 — Claims + trace dialog on shadcn (needs PBI-030)
+33. PBI-033 — Run view on shadcn + sign-off (needs PBI-031/032)
 
 ## Statuses (`Proposed` → `Active` → `In Review` → `Done` / `Blocked`)
 
@@ -59,6 +63,11 @@ ordering only.
 | PBI-026 | Done | | |
 | PBI-027 | Done | | |
 | PBI-028 | Done | | |
+| PBI-029 | Proposed | | |
+| PBI-030 | Proposed | | |
+| PBI-031 | Proposed | | |
+| PBI-032 | Proposed | | |
+| PBI-033 | Proposed | | |
 | PBI-029 | Proposed | | |
 
 ## Dependency graph
