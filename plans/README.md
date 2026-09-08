@@ -54,8 +54,8 @@ ordering only.
 | PBI-023 | Done | | |
 | PBI-024 | Done | | |
 | PBI-025 | Done | | |
-| PBI-026 | Active | | |
-| PBI-027 | Active | | |
+| PBI-026 | Done | | |
+| PBI-027 | Done | | |
 
 ## Dependency graph
 

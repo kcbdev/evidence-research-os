@@ -469,7 +469,6 @@ are Phase-1 backlog, executable after release).
 - Plane: EVRSH-25 → Done.
 
 ## 2026-09-07 — Gate hardening, continued (segfault flake open)
-
 - Score: ~3 crashes in 8 full runs, wandering sites (19%, 72%),
   halves ALWAYS green alone, full suite green 5/8. No test ever
   FAILS — the process dies natively (0xC0000005).
@@ -492,3 +491,12 @@ are Phase-1 backlog, executable after release).
 - Restarted run d156072c (budget 40/3) for the pause witness.
 - Residual risk retired: the failed-status machinery itself proven
   (run → failed + error surfaced, no stuck "running").
+
+## 2026-09-08 - PBI-026 Done (review: agentic, via CHANGES-REQUESTED)
+- Modal now shows claims-by-status dossier + evidence/sources totals + claims-table link (new tab) + publish/reject semantics. Review fixes: totals wired from project detail, numeric/target/rel pins, failure-path test, dark nits. Gates: tsc, 34 vitest, build. Plane: EVRSH-27 Done.
+
+## 2026-09-08 - PBI-027 Done (review: agentic, via CHANGES-REQUESTED)
+- Both modals (+bars/badge) carry dark: variants; light mode untouched (additive only). Grep confirms no third overlay. Class-presence tests (right for jsdom). Human eyeball in dark mode still owed at re-witness. Plane: EVRSH-26 Done.
+
+## 2026-09-08 - Plane discipline constitutionalized
+- User directive: always synced. AGENTS.md section 4 now carries the rule (link every PBI, issues at creation, transitions propagate, reconcile on drift). Backlog review: EVRSH-18 (020) + EVRSH-20 (021) NOT due (post-release backlog, correct). EVRSH-25 (022) transitioned to Done. Project now 25 issues: 23 Done, 2 In Progress (005 infra, 019 release).
