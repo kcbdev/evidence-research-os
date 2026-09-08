@@ -525,3 +525,6 @@ are Phase-1 backlog, executable after release).
 
 ## 2026-09-08 - PBI-033 responsive evidence (Playwright, live dev server)
 - 375px, overflowX=false: dashboard, overview, claims (26 rows, table scrolls internally), run view. 768px: run view clean + trace dialog opens (title correct, no overflow). 1024/1440: reasoned, not measured (max-w-4xl containers center; same code path as 768). Modal-open at 375 not directly measured (dialog max-width is viewport-relative by construction) - noted gap.
+
+## 2026-09-08 - PBI-033 In Review (manual - needs human eyeball)
+- Run view + feed + gauge + modal on shadcn; logic byte-identical (critic-verified). Review fixes: dead X removed, 44px targets, main landmark, token modal. Responsive: 375 all routes + 768 run/modal measured clean; 1024/1440 reasoned. Gates: tsc, 37 vitest, build. Critic: CHANGES-REQUESTED addressed; sort MANUAL per critic (design authority = user). Plane: EVRSH-32 In Progress. NOTE: local In Review maps to Plane In Progress (no such Plane state).
