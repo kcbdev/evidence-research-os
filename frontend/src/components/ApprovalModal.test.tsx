@@ -88,26 +88,28 @@ describe("ApprovalModal dossier", () => {
       screen.getByRole("button", { name: "Reject" }).hasAttribute("disabled"),
     ).toBe(false);
   });
-
-describe("modal dark treatment", () => {  it("approval panel carries dark classes", () => {
-    const { container } = render(
+describe("modal dark treatment", () => {
+  it("approval panel carries dark classes", async () => {
+    render(
       <div className="dark">
         <ApprovalModal projectId="p" runId="r" onResolved={() => {}} />
       </div>,
     );
-    const panel = container.querySelector('[role="dialog"] > div');
-    expect(panel?.className).toContain("dark:bg-zinc-900");
+    // role="dialog" sits on the overlay wrapper; the panel is a sibling
+    // inside the portal — query document-wide. Mount is async.
+    await screen.findByRole("dialog");
+    const panel = document.querySelector("div.dark\\:bg-zinc-900");
     expect(panel?.className).toContain("dark:text-zinc-100");
   });
 
-  it("trace panel carries dark classes", () => {
-    const { container } = render(
+  it("trace panel carries dark classes", async () => {
+    render(
       <div className="dark">
         <EvidenceTraceModal projectId="p" claimId="C-1" onClose={() => {}} />
       </div>,
     );
-    const panel = container.querySelector('[role="dialog"] > div');
-    expect(panel?.className).toContain("dark:bg-zinc-900");
+    await screen.findByRole("dialog");
+    const panel = document.querySelector("div.dark\\:bg-zinc-900");
     expect(panel?.className).toContain("dark:text-zinc-100");
   });
 });

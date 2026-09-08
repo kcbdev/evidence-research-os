@@ -80,18 +80,27 @@ beforeEach(() => {
 });
 
 describe("ClaimsPage", () => {
+  async function selectOption(name: string) {
+    // Base-UI items need pointer sequence, not click alone (probed).
+    fireEvent.click(screen.getByRole("combobox", { name: "Status filter" }));
+    const option = await screen.findByRole("option", { name });
+    fireEvent.pointerDown(option);
+    fireEvent.pointerUp(option);
+    fireEvent.click(option);
+  }
+
   it("renders rows with badges and opens the trace modal", async () => {
     render(<ClaimsPage />);
     expect(await screen.findByText("strong claim")).toBeDefined();
     expect(screen.getByText("2 opposing")).toBeDefined();
 
     fireEvent.click(screen.getByRole("button", { name: "Open evidence trace for C-low" }));
-    // Modal trace matches the detail payload field-for-field:
-    const dialog = await screen.findByRole("dialog", {
-      name: "Evidence trace for C-low",
-    });
+    // Dialog name comes from DialogTitle via aria-labelledby (base-ui) —
+    // scope field asserts to the dialog element itself.
+    const dialog = await screen.findByRole("dialog");
     expect(dialog).toBeDefined();
     const q = within(dialog);
+    expect(q.getByText("C-low")).toBeDefined(); // the title
     expect(q.getByText("weak claim")).toBeDefined();
     expect(q.getByText(/DISPUTED/)).toBeDefined();
     expect(q.getByText(/m-judge/)).toBeDefined();
@@ -106,9 +115,7 @@ describe("ClaimsPage", () => {
   it("filter narrows via refetch", async () => {
     render(<ClaimsPage />);
     await screen.findByText("strong claim");
-    fireEvent.change(screen.getByLabelText("Status filter"), {
-      target: { value: "DISPUTED" },
-    });
+    await selectOption("DISPUTED");
     expect(await screen.findByText("weak claim")).toBeDefined();
     expect(screen.queryByText("strong claim")).toBeNull();
     const calls = (fetch as ReturnType<typeof vi.fn>).mock.calls.map(
@@ -120,9 +127,7 @@ describe("ClaimsPage", () => {
   it("empty result shows the no-match message, not a bare table", async () => {
     render(<ClaimsPage />);
     await screen.findByText("strong claim");
-    fireEvent.change(screen.getByLabelText("Status filter"), {
-      target: { value: "CONTRADICTED" },
-    });
+    await selectOption("CONTRADICTED");
     expect(await screen.findByText("No claims match these filters.")).toBeDefined();
     expect(screen.queryByRole("table")).toBeNull();
   });

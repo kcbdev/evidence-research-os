@@ -3,6 +3,34 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyTitle,
+} from "@/components/ui/empty";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { listClaims, type ClaimRow } from "@/lib/api";
 import ContradictionBadge from "@/components/ContradictionBadge";
 import EvidenceTraceModal from "@/components/EvidenceTraceModal";
@@ -11,7 +39,6 @@ type SortKey = "confidence" | "status";
 type SortDir = 1 | -1;
 
 const STATUSES = [
-  "",
   "SUPPORTED",
   "STRONGLY_SUPPORTED",
   "WEAKLY_SUPPORTED",
@@ -73,110 +100,137 @@ export default function ClaimsPage() {
   });
 
   return (
-    <main className="mx-auto max-w-4xl p-8">
-      <Link href={`/lab/${id}`} className="text-sm underline">
-        ← Lab overview
-      </Link>
-      <h1 className="mt-2 text-2xl font-semibold">Claims</h1>
+    <div className="flex flex-col gap-6">
+      <div>
+        <Link href={`/lab/${id}`} className="text-sm underline">
+          ← Lab overview
+        </Link>
+        <h1 className="mt-2 text-2xl font-semibold">Claims</h1>
+      </div>
 
-      <form
-        className="mt-4 flex flex-wrap items-end gap-3"
-        onSubmit={(e) => e.preventDefault()}
-        aria-label="Claim filters"
-      >
-        <label className="text-sm">
-          Status{" "}
-          <select
-            aria-label="Status filter"
-            value={status}
-            onChange={(e) => setStatus(e.target.value)}
-            className="rounded border px-2 py-1"
-          >
-            {STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {s === "" ? "any" : s}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="text-sm">
-          Min confidence{" "}
-          <input
-            aria-label="Min confidence"
-            type="number"
-            min={0}
-            max={1}
-            step={0.1}
-            value={minConfidence}
-            onChange={(e) => setMinConfidence(e.target.value)}
-            className="w-20 rounded border px-2 py-1"
-          />
-        </label>
-        <label className="text-sm">
-          <input
-            type="checkbox"
-            aria-label="Opposition only"
-            checked={oppositionOnly}
-            onChange={(e) => setOppositionOnly(e.target.checked)}
-          />{" "}
-          Opposition only
-        </label>
+      <form onSubmit={(e) => e.preventDefault()} aria-label="Claim filters">
+        <FieldGroup>
+          <div className="flex flex-wrap items-end gap-4">
+            <Field className="w-56">
+              <FieldLabel htmlFor="claim-status">Status</FieldLabel>
+              <Select
+                value={status || "any"}
+                onValueChange={(v) => setStatus(v === "any" ? "" : (v ?? ""))}
+              >
+                <SelectTrigger id="claim-status" aria-label="Status filter">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectLabel>Status</SelectLabel>
+                    <SelectItem value="any">any</SelectItem>
+                    {STATUSES.map((s) => (
+                      <SelectItem key={s} value={s}>
+                        {s}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field className="w-32">
+              <FieldLabel htmlFor="claim-minconf">Min confidence</FieldLabel>
+              <Input
+                id="claim-minconf"
+                aria-label="Min confidence"
+                type="number"
+                min={0}
+                max={1}
+                step={0.1}
+                value={minConfidence}
+                onChange={(e) => setMinConfidence(e.target.value)}
+              />
+            </Field>
+            <label className="flex min-h-[44px] items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                aria-label="Opposition only"
+                checked={oppositionOnly}
+                onChange={(e) => setOppositionOnly(e.target.checked)}
+              />
+              Opposition only
+            </label>
+          </div>
+        </FieldGroup>
       </form>
 
-      {loading && <p className="mt-4">Loading…</p>}
-      {error && <p className="mt-4 text-red-600">{error}</p>}
+      {loading && (
+        <div className="flex flex-col gap-2" aria-label="Loading">
+          <Skeleton className="h-10" />
+          <Skeleton className="h-10" />
+          <Skeleton className="h-10" />
+        </div>
+      )}
+      {error && (
+        <Alert variant="destructive">
+          <AlertTitle>Something went wrong</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
       {!loading && !error && sorted.length > 0 && (
-        <table className="mt-4 w-full text-left text-sm">
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>
-                <button onClick={() => toggleSort("status")} className="underline">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="sticky left-0 bg-background">ID</TableHead>
+              <TableHead>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => toggleSort("status")}
+                >
                   Status {sortKey === "status" ? (sortDir === 1 ? "▲" : "▼") : ""}
-                </button>
-              </th>
-              <th>
-                <button
+                </Button>
+              </TableHead>
+              <TableHead>
+                <Button
+                  variant="ghost"
+                  size="sm"
                   onClick={() => toggleSort("confidence")}
-                  className="underline"
                 >
                   Confidence{" "}
                   {sortKey === "confidence" ? (sortDir === 1 ? "▲" : "▼") : ""}
-                </button>
-              </th>
-              <th>Flags</th>
-              <th>Statement</th>
-            </tr>
-          </thead>
-          <tbody>
+                </Button>
+              </TableHead>
+              <TableHead>Flags</TableHead>
+              <TableHead>Statement</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {sorted.map((row) => (
-              <tr key={row.id} className="border-t hover:bg-zinc-50">
-                <td className="py-1 pr-2 font-mono">
-                  <button
+              <TableRow key={row.id}>
+                <TableCell className="sticky left-0 bg-background font-mono">
+                  <Button
+                    variant="link"
                     onClick={() => setOpenClaim(row.id)}
-                    className="underline"
                     aria-label={`Open evidence trace for ${row.id}`}
                   >
                     {row.id}
-                  </button>
-                </td>
-                <td className="pr-2">{row.status}</td>
-                <td className="pr-2 tabular-nums">
+                  </Button>
+                </TableCell>
+                <TableCell>{row.status}</TableCell>
+                <TableCell className="tabular-nums">
                   {row.confidence.toFixed(2)}
-                </td>
-                <td className="pr-2">
+                </TableCell>
+                <TableCell>
                   <ContradictionBadge opposition={row.opposition} />
-                </td>
-                <td>{row.statement}</td>
-              </tr>
+                </TableCell>
+                <TableCell>{row.statement}</TableCell>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       )}
       {!loading && !error && sorted.length === 0 && (
-        <p className="mt-4 text-sm text-zinc-500">
-          No claims match these filters.
-        </p>
+        <Empty>
+          <EmptyHeader>
+            <EmptyTitle>No claims match these filters.</EmptyTitle>
+          </EmptyHeader>
+        </Empty>
       )}
       {openClaim && (
         <EvidenceTraceModal
@@ -185,6 +239,6 @@ export default function ClaimsPage() {
           onClose={() => setOpenClaim(null)}
         />
       )}
-    </main>
+    </div>
   );
 }

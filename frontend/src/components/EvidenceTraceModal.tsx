@@ -1,6 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Skeleton } from "@/components/ui/skeleton";
 import { getClaimDetail, type ClaimDetail } from "@/lib/api";
 import ClaimConfidenceBar from "./ClaimConfidenceBar";
 
@@ -35,42 +44,36 @@ export default function EvidenceTraceModal({
     };
   }, [projectId, claimId]);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={`Evidence trace for ${claimId}`}
-      className="fixed inset-0 z-10 flex items-start justify-center overflow-y-auto bg-black/50 p-8"
-      onClick={onClose}
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
     >
-      <div
-        className="w-full max-w-2xl rounded bg-white p-6 dark:bg-zinc-900 dark:text-zinc-100"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-start justify-between">
-          <h2 className="text-lg font-semibold">{claimId}</h2>
-          <button onClick={onClose} aria-label="Close" className="underline">
-            Close
-          </button>
-        </div>
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl dark:bg-zinc-900 dark:text-zinc-100">
+        <DialogHeader>
+          <DialogTitle>{claimId}</DialogTitle>
+          <DialogDescription>
+            Claim → evidence → source trace. One click per row.
+          </DialogDescription>
+        </DialogHeader>
         {error && (
-          <p className="mt-2 text-red-600 dark:text-red-400">{error}</p>
+          <Alert variant="destructive">
+            <AlertTitle>Something went wrong</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
         )}
         {!error && !detail && (
-          <p className="mt-2 dark:text-zinc-400">Loading trace…</p>
+          <div className="flex flex-col gap-2" aria-label="Loading">
+            <Skeleton className="h-6" />
+            <Skeleton className="h-24" />
+          </div>
         )}
         {detail && (
-          <div className="mt-2 space-y-4">
+          <div className="flex flex-col gap-4">
             <p>{detail.claim.statement}</p>
-            <p className="text-sm text-zinc-600 dark:text-zinc-400">
+            <p className="text-sm text-muted-foreground">
               Status: {detail.claim.status} · Adjudicated by:{" "}
               {detail.claim.adjudicated_by ?? "pending"}
             </p>
@@ -80,12 +83,12 @@ export default function EvidenceTraceModal({
                 Evidence ({detail.evidence.length})
               </h3>
               {detail.evidence.length === 0 && (
-                <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                <p className="text-sm text-muted-foreground">
                   No backing evidence — an unsupported claim is never
                   SUPPORTED, no matter who agrees.
                 </p>
               )}
-              <ul className="mt-1 space-y-2">
+              <ul className="mt-1 flex flex-col gap-2">
                 {detail.evidence.map((ev) => {
                   const src = detail.sources.find(
                     (s) => s.id === ev.source_id,
@@ -93,18 +96,18 @@ export default function EvidenceTraceModal({
                   return (
                     <li
                       key={ev.id}
-                      className="rounded border p-2 text-sm dark:border-zinc-700"
+                      className="rounded-md border p-2 text-sm"
                     >
                       <p className="font-medium">
                         {ev.id}
-                        <span className="ml-2 font-normal text-zinc-500 dark:text-zinc-400">
+                        <span className="ml-2 font-normal text-muted-foreground">
                           {ev.evidence_type}/{ev.strength}
                         </span>
                       </p>
                       <blockquote className="mt-1 border-l-2 border-zinc-300 pl-2 dark:border-zinc-600">
                         {ev.text_reference}
                       </blockquote>
-                      <p className="mt-1 text-zinc-600 dark:text-zinc-400">
+                      <p className="mt-1 text-muted-foreground">
                         {ev.location.section ?? ""}{" "}
                         {ev.location.page !== undefined &&
                           `(p. ${ev.location.page})`}
@@ -132,7 +135,7 @@ export default function EvidenceTraceModal({
             </section>
           </div>
         )}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
