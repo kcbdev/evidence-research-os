@@ -2,6 +2,26 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyTitle,
+} from "@/components/ui/empty";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 import { createLabProject, listLabProjects, type LabProjectSummary } from "@/lib/api";
 
 export default function Dashboard() {
@@ -71,84 +91,138 @@ export default function Dashboard() {
   }
 
   return (
-    <main className="mx-auto max-w-4xl p-8">
-      <h1 className="text-2xl font-semibold">Evidence Research OS</h1>
-      <p className="mt-1 text-sm text-zinc-600">
-        Lab Projects — one workspace per research question.
-      </p>
+    <div className="flex flex-col gap-6">
+      <div>
+        <h1 className="text-2xl font-semibold">Evidence Research OS</h1>
+        <p className="text-sm text-muted-foreground">
+          Lab Projects — one workspace per research question.
+        </p>
+      </div>
 
-      <form onSubmit={onCreate} className="mt-6 rounded border p-4">
-        <h2 className="font-medium">New Lab Project</h2>
-        <input
-          aria-label="Project title"
-          className="mt-2 w-full rounded border px-2 py-1"
-          placeholder="Title"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-        />
-        <input
-          aria-label="Research question"
-          className="mt-2 w-full rounded border px-2 py-1"
-          placeholder="Research question"
-          value={question}
-          onChange={(e) => setQuestion(e.target.value)}
-        />
-        <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <input
-            aria-label="Scientist model"
-            className="rounded border px-2 py-1 font-mono text-sm"
-            placeholder="Scientist model (OpenRouter ID)"
-            value={scientist}
-            onChange={(e) => setScientist(e.target.value)}
-          />
-          <input
-            aria-label="Investigator model"
-            className="rounded border px-2 py-1 font-mono text-sm"
-            placeholder="Investigator model (OpenRouter ID)"
-            value={investigator}
-            onChange={(e) => setInvestigator(e.target.value)}
-          />
-          <input
-            aria-label="Skeptic model"
-            className="rounded border px-2 py-1 font-mono text-sm"
-            placeholder="Skeptic model (OpenRouter ID)"
-            value={skeptic}
-            onChange={(e) => setSkeptic(e.target.value)}
-          />
-          <input
-            aria-label="Judge model"
-            className="rounded border px-2 py-1 font-mono text-sm"
-            placeholder="Judge model (OpenRouter ID, must differ)"
-            value={judge}
-            onChange={(e) => setJudge(e.target.value)}
-          />
+      <Card>
+        <CardHeader>
+          <CardTitle>New Lab Project</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={onCreate}>
+            <FieldGroup>
+              <Field>
+                <FieldLabel htmlFor="lp-title">Title</FieldLabel>
+                <Input
+                  id="lp-title"
+                  aria-label="Project title"
+                  placeholder="Title"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="lp-question">Research question</FieldLabel>
+                <Input
+                  id="lp-question"
+                  aria-label="Research question"
+                  placeholder="Research question"
+                  value={question}
+                  onChange={(e) => setQuestion(e.target.value)}
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="lp-scientist">Scientist model</FieldLabel>
+                <Input
+                  id="lp-scientist"
+                  aria-label="Scientist model"
+                  placeholder="Scientist model (OpenRouter ID)"
+                  className="font-mono"
+                  value={scientist}
+                  onChange={(e) => setScientist(e.target.value)}
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="lp-investigator">Investigator model</FieldLabel>
+                <Input
+                  id="lp-investigator"
+                  aria-label="Investigator model"
+                  placeholder="Investigator model (OpenRouter ID)"
+                  className="font-mono"
+                  value={investigator}
+                  onChange={(e) => setInvestigator(e.target.value)}
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="lp-skeptic">Skeptic model</FieldLabel>
+                <Input
+                  id="lp-skeptic"
+                  aria-label="Skeptic model"
+                  placeholder="Skeptic model (OpenRouter ID)"
+                  className="font-mono"
+                  value={skeptic}
+                  onChange={(e) => setSkeptic(e.target.value)}
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="lp-judge">Judge model</FieldLabel>
+                <Input
+                  id="lp-judge"
+                  aria-label="Judge model"
+                  placeholder="Judge model (OpenRouter ID, must differ)"
+                  className="font-mono"
+                  value={judge}
+                  onChange={(e) => setJudge(e.target.value)}
+                />
+              </Field>
+              <Button type="submit" disabled={creating}>
+                {creating ? "Creating…" : "Create"}
+              </Button>
+            </FieldGroup>
+          </form>
+        </CardContent>
+      </Card>
+
+      {loading && (
+        <div className="flex flex-col gap-2" aria-label="Loading">
+          <Skeleton className="h-20" />
+          <Skeleton className="h-20" />
         </div>
-        <button
-          type="submit"
-          disabled={creating}
-          className="mt-2 rounded bg-zinc-900 px-4 py-1 text-white disabled:opacity-50"
-        >
-          {creating ? "Creating…" : "Create"}
-        </button>
-      </form>
-
-      {loading && <p className="mt-4">Loading…</p>}
-      {error && <p className="mt-4 text-red-600">{error}</p>}
-      <ul className="mt-4 space-y-2">
-        {projects.map((p) => (
-          <li key={p.id} className="rounded border p-3">
-            <Link href={`/lab/${p.id}`} className="font-medium underline">
-              {p.title}
-            </Link>
-            <span className="ml-2 text-xs text-zinc-500">{p.mode}</span>
-            <p className="text-sm text-zinc-600">{p.question}</p>
-            <p className="text-xs text-zinc-500">{p.claims_count} claims</p>
-          </li>
-        ))}
-      </ul>
-      {!loading && !error && projects.length === 0 && (
-        <p className="mt-4 text-sm text-zinc-500">No Lab Projects yet.</p>
       )}
-    </main>
+      {error && (
+        <Alert variant="destructive">
+          <AlertTitle>Something went wrong</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+      {!loading && !error && projects.length === 0 && (
+        <Empty>
+          <EmptyHeader>
+            <EmptyTitle>No Lab Projects yet</EmptyTitle>
+            <EmptyDescription>
+              Create one above to start researching.
+            </EmptyDescription>
+          </EmptyHeader>
+        </Empty>
+      )}
+      {!loading && !error && projects.length > 0 && (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          {projects.map((p) => (
+            <Card key={p.id}>
+              <CardHeader>
+                <CardTitle>
+                  <Link href={`/lab/${p.id}`} className="underline">
+                    {p.title}
+                  </Link>
+                </CardTitle>
+                <CardDescription>{p.question}</CardDescription>
+              </CardHeader>
+              <CardContent className="flex items-center gap-2">
+                <Badge variant="secondary">{p.mode}</Badge>
+                <span className="text-sm text-muted-foreground">
+                  {p.claims_count} claims
+                </span>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+      <Separator />
+    </div>
   );
 }

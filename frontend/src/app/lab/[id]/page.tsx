@@ -3,6 +3,34 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyTitle,
+} from "@/components/ui/empty";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   getBudget,
   getLabProject,
@@ -79,211 +107,271 @@ export default function LabOverview() {
     }
   }, [project]);
 
-  if (error) return <main className="mx-auto max-w-4xl p-8 text-red-600">{error}</main>;
+  if (error)
+    return (
+      <Alert variant="destructive">
+        <AlertTitle>Something went wrong</AlertTitle>
+        <AlertDescription>{error}</AlertDescription>
+      </Alert>
+    );
   if (!project || !budget)
-    return <main className="mx-auto max-w-4xl p-8">Loading…</main>;
+    return (
+      <div className="flex flex-col gap-2" aria-label="Loading">
+        <Skeleton className="h-10" />
+        <Skeleton className="h-32" />
+      </div>
+    );
 
   const counts = { claims: project.counts.claims, runs: runs.length };
 
   return (
-    <main className="mx-auto max-w-4xl p-8">
-      <Link href="/" className="text-sm underline">
-        ← Dashboard
-      </Link>
-      <h1 className="mt-2 text-2xl font-semibold">{project.title}</h1>
-      <p className="mt-1 text-zinc-600">{project.question}</p>
-      <p className="mt-1 text-xs text-zinc-500">
-        mode: {project.mode} · {project.counts.claims} claims ·{" "}
-        {project.counts.evidence} evidence · {project.counts.sources} sources
-      </p>
-
-      <section aria-label="Budget" className="mt-4 rounded border p-3">
-        <h2 className="font-medium">Budget</h2>
-        <p className="text-sm">
-          Calls {budget.calls_used}/{budget.max_model_calls} · Rounds{" "}
-          {budget.rounds_used}/{budget.max_research_rounds}
+    <div className="flex flex-col gap-6">
+      <div>
+        <h1 className="text-2xl font-semibold">{project.title}</h1>
+        <p className="mt-1 text-muted-foreground">{project.question}</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          mode: {project.mode} · {project.counts.claims} claims ·{" "}
+          {project.counts.evidence} evidence · {project.counts.sources} sources
         </p>
-        {budget.exhausted && (
-          <p className="text-sm font-medium text-amber-700">
-            Budget exhausted — runs end cleanly.
-          </p>
-        )}
-      </section>
-
-      <div role="tablist" aria-label="Lab sections" className="mt-4 flex gap-2">
-        {TABS.map(({ key, label }) => (
-          <button
-            key={key}
-            role="tab"
-            aria-selected={tab === key}
-            onClick={() => setTab(key)}
-            className={`rounded border px-3 py-1 ${
-              tab === key ? "bg-zinc-900 text-white" : ""
-            }`}
-          >
-            {label(counts)}
-          </button>
-        ))}
       </div>
 
-      {tab === "claims" && (
-        <section role="tabpanel" className="mt-4">
-          <Link href={`/lab/${id}/claims`} className="underline">
-            Open claims table →
-          </Link>
-        </section>
-      )}
-      {tab === "runs" && (
-        <section role="tabpanel" className="mt-4 space-y-3">
-          <button
-            disabled={starting}
-            onClick={() => {
-              setStarting(true);
-              setError(null);
-              startRun(id).then(
-                (run) => router.push(`/lab/${id}/runs/${run.run_id}`),
-                (err: unknown) => {
-                  setError(
-                    err instanceof Error ? err.message : "start failed",
-                  );
-                  setStarting(false);
-                },
-              );
-            }}
-            className="rounded bg-zinc-900 px-4 py-1 text-white disabled:opacity-50"
-          >
-            {starting ? "Starting…" : "Start run"}
-          </button>
-          {runsFailed ? (
-            <p className="text-sm text-red-600">
-              Couldn’t load run history.
-            </p>
-          ) : runs.length === 0 ? (
-            <p className="text-sm text-zinc-500">
-              No runs yet. History appears here (newest first); it resets
-              if the backend restarts.
-            </p>
-          ) : (
-            <ul className="space-y-2">
-              {runs.map((run) => (
-                <li key={run.run_id} className="rounded border p-3 text-sm">
-                  <Link
-                    href={`/lab/${id}/runs/${run.run_id}`}
-                    className="font-mono underline"
-                  >
-                    {run.run_id}
-                  </Link>
-                  <span className="ml-2">{run.status}</span>
-                  {run.needs_approval && (
-                    <span className="ml-2 font-medium text-amber-700">
-                      needs approval
-                    </span>
-                  )}
-                  <span className="ml-2 text-zinc-500">
-                    {run.events_count} events
-                  </span>
-                  {run.error && (
-                    <p className="text-red-600">{run.error}</p>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      )}
-      {tab === "output" && (
-        <section role="tabpanel" className="mt-4">
-          {report === null ? (
-            <p className="text-sm text-zinc-500">No report yet.</p>
-          ) : (
-            <article className="rounded border p-4">
-              <Markdown text={report} />
-            </article>
-          )}
-        </section>
-      )}
-      {tab === "settings" && (
-        <section role="tabpanel" className="mt-4">
-          <h2 className="font-medium">Model assignment</h2>
-          <p className="text-sm text-zinc-500">
-            OpenRouter model IDs. The judge must differ from every council
-            model, or runs refuse to start.
+      <Card>
+        <CardHeader>
+          <CardTitle>Budget</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm">
+            Calls {budget.calls_used}/{budget.max_model_calls} · Rounds{" "}
+            {budget.rounds_used}/{budget.max_research_rounds}
           </p>
-          <form
-            className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2"
-            onSubmit={(e) => {
-              e.preventDefault();
-              setSaving(true);
-              setSaved(false);
-              setSaveError(null);
-              updateModels(id, {
-                council_models: {
-                  scientist: mScientist.trim(),
-                  investigator: mInvestigator.trim(),
-                  skeptic: mSkeptic.trim(),
-                },
-                judge_model: mJudge.trim(),
-              }).then(
-                async () => {
-                  setSaving(false);
-                  setSaved(true);
-                  await refresh();
-                },
-                (err: unknown) => {
-                  setSaving(false);
-                  setSaveError(
-                    err instanceof Error ? err.message : "save failed",
-                  );
-                },
-              );
-            }}
-          >
-            <input
-              aria-label="Scientist model"
-              className="rounded border px-2 py-1 font-mono text-sm"
-              placeholder="Scientist model"
-              value={mScientist}
-              onChange={(e) => setMScientist(e.target.value)}
-            />
-            <input
-              aria-label="Investigator model"
-              className="rounded border px-2 py-1 font-mono text-sm"
-              placeholder="Investigator model"
-              value={mInvestigator}
-              onChange={(e) => setMInvestigator(e.target.value)}
-            />
-            <input
-              aria-label="Skeptic model"
-              className="rounded border px-2 py-1 font-mono text-sm"
-              placeholder="Skeptic model"
-              value={mSkeptic}
-              onChange={(e) => setMSkeptic(e.target.value)}
-            />
-            <input
-              aria-label="Judge model"
-              className="rounded border px-2 py-1 font-mono text-sm"
-              placeholder="Judge model (must differ)"
-              value={mJudge}
-              onChange={(e) => setMJudge(e.target.value)}
-            />
+          {budget.exhausted && (
+            <p className="text-sm font-medium text-amber-700">
+              Budget exhausted — runs end cleanly.
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)}>
+        <TabsList aria-label="Lab sections">
+          {TABS.map(({ key, label }) => (
+            <TabsTrigger key={key} value={key}>
+              {label(counts)}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+
+        <TabsContent value="claims">
+          <Card>
+            <CardContent>
+              <Link href={`/lab/${id}/claims`} className="underline">
+                Open claims table →
+              </Link>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="runs">
+          <div className="flex flex-col gap-4">
             <div>
-              <button
-                type="submit"
-                disabled={saving}
-                className="rounded bg-zinc-900 px-4 py-1 text-white disabled:opacity-50"
+              <Button
+                disabled={starting}
+                onClick={() => {
+                  setStarting(true);
+                  setError(null);
+                  startRun(id).then(
+                    (run) => router.push(`/lab/${id}/runs/${run.run_id}`),
+                    (err: unknown) => {
+                      setError(
+                        err instanceof Error ? err.message : "start failed",
+                      );
+                      setStarting(false);
+                    },
+                  );
+                }}
               >
-                {saving ? "Saving…" : "Save models"}
-              </button>
-              {saved && (
-                <span className="ml-2 text-sm text-green-700">Saved.</span>
-              )}
-              {saveError && (
-                <p className="mt-2 text-sm text-red-600">{saveError}</p>
-              )}
+                {starting ? "Starting…" : "Start run"}
+              </Button>
             </div>
-          </form>
-        </section>
-      )}
-    </main>
+            {runsFailed ? (
+              <Alert variant="destructive">
+                <AlertTitle>History unavailable</AlertTitle>
+                <AlertDescription>Couldn’t load run history.</AlertDescription>
+              </Alert>
+            ) : runs.length === 0 ? (
+              <Empty>
+                <EmptyHeader>
+                  <EmptyTitle>No runs yet</EmptyTitle>
+                  <EmptyDescription>
+                    History appears here (newest first); it resets if the
+                    backend restarts.
+                  </EmptyDescription>
+                </EmptyHeader>
+              </Empty>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Run</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Events</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {runs.map((run) => (
+                    <TableRow key={run.run_id}>
+                      <TableCell className="font-mono">
+                        <Link
+                          href={`/lab/${id}/runs/${run.run_id}`}
+                          className="underline"
+                        >
+                          {run.run_id}
+                        </Link>
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={
+                            run.status === "failed" ? "destructive" : "secondary"
+                          }
+                        >
+                          {run.status}
+                        </Badge>
+                        {run.needs_approval && (
+                          <Badge variant="outline" className="ml-2">
+                            needs approval
+                          </Badge>
+                        )}
+                        {run.error && (
+                          <p className="text-destructive text-sm">{run.error}</p>
+                        )}
+                      </TableCell>
+                      <TableCell className="tabular-nums">
+                        {run.events_count}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="output">
+          {report === null ? (
+            <Empty>
+              <EmptyHeader>
+                <EmptyTitle>No report yet</EmptyTitle>
+              </EmptyHeader>
+            </Empty>
+          ) : (
+            <Card>
+              <CardContent>
+                <Markdown text={report} />
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        <TabsContent value="settings">
+          <Card>
+            <CardHeader>
+              <CardTitle>Model assignment</CardTitle>
+              <CardDescription>
+                OpenRouter model IDs. The judge must differ from every
+                council model, or runs refuse to start.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  setSaving(true);
+                  setSaved(false);
+                  setSaveError(null);
+                  updateModels(id, {
+                    council_models: {
+                      scientist: mScientist.trim(),
+                      investigator: mInvestigator.trim(),
+                      skeptic: mSkeptic.trim(),
+                    },
+                    judge_model: mJudge.trim(),
+                  }).then(
+                    async () => {
+                      setSaving(false);
+                      setSaved(true);
+                      await refresh();
+                    },
+                    (err: unknown) => {
+                      setSaving(false);
+                      setSaveError(
+                        err instanceof Error ? err.message : "save failed",
+                      );
+                    },
+                  );
+                }}
+              >
+                <FieldGroup>
+                  <Field>
+                    <FieldLabel htmlFor="m-scientist">Scientist model</FieldLabel>
+                    <Input
+                      id="m-scientist"
+                      aria-label="Scientist model"
+                      placeholder="Scientist model"
+                      className="font-mono"
+                      value={mScientist}
+                      onChange={(e) => setMScientist(e.target.value)}
+                    />
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="m-investigator">Investigator model</FieldLabel>
+                    <Input
+                      id="m-investigator"
+                      aria-label="Investigator model"
+                      placeholder="Investigator model"
+                      className="font-mono"
+                      value={mInvestigator}
+                      onChange={(e) => setMInvestigator(e.target.value)}
+                    />
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="m-skeptic">Skeptic model</FieldLabel>
+                    <Input
+                      id="m-skeptic"
+                      aria-label="Skeptic model"
+                      placeholder="Skeptic model"
+                      className="font-mono"
+                      value={mSkeptic}
+                      onChange={(e) => setMSkeptic(e.target.value)}
+                    />
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="m-judge">Judge model</FieldLabel>
+                    <Input
+                      id="m-judge"
+                      aria-label="Judge model"
+                      placeholder="Judge model (must differ)"
+                      className="font-mono"
+                      value={mJudge}
+                      onChange={(e) => setMJudge(e.target.value)}
+                    />
+                  </Field>
+                  <div className="flex items-center gap-2">
+                    <Button type="submit" disabled={saving}>
+                      {saving ? "Saving…" : "Save models"}
+                    </Button>
+                    {saved && (
+                      <span className="text-sm text-green-700">Saved.</span>
+                    )}
+                  </div>
+                  {saveError && (
+                    <p className="text-sm text-destructive">{saveError}</p>
+                  )}
+                </FieldGroup>
+              </form>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+    </div>
   );
 }

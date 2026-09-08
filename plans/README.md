@@ -66,7 +66,6 @@ ordering only.
 | PBI-029 | Proposed | | |
 | PBI-030 | Done | | |
 | PBI-031 | Active | | |
-| PBI-031 | Proposed | | |
 | PBI-032 | Proposed | | |
 | PBI-033 | Proposed | | |
 | PBI-029 | Proposed | | |
