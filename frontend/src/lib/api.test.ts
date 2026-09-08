@@ -52,7 +52,8 @@ afterEach(() => {
 
 function mockFetchOnce(payload: unknown, ok = true, status = 200) {
   const json = vi.fn(async () => payload);
-  const fetchMock = vi.fn(async () => ({ ok, status, json }));
+  const text = vi.fn(async () => (ok ? "" : "Not Found"));
+  const fetchMock = vi.fn(async () => ({ ok, status, json, text }));
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
 }
@@ -67,9 +68,12 @@ describe("REST helpers", () => {
     );
   });
 
-  it("throws on HTTP error", async () => {
+  it("throws on HTTP error with the server reason", async () => {
     mockFetchOnce({ detail: "x" }, false, 404);
-    await expect(getBudget("p")).rejects.toThrow("GET");
+    await expect(getBudget("p")).rejects.toThrow(
+      "GET /api/v1/lab-projects/p/budget: 404",
+    );
+    await expect(getBudget("p")).rejects.toThrow("Not Found");
   });
 
   it("creates via POST with JSON body", async () => {

@@ -508,3 +508,7 @@ are Phase-1 backlog, executable after release).
 
 ## 2026-09-08 - MVP RELEASED (PBI-019 Done, EVRSH-21 Done)
 - Human signed off after re-witness. Project: 27 issues, 24 Done, 1 In Progress (PBI-005 infra), 2 Backlog (020, 021). Total live spend: .12. Remaining tracks: PBI-005 deploy, Phase-1 backlog (020, 021), open backlog (search_web provider, msgpack allowlist, recursion limits, checkpoint file placement, run persistence), proposed UI/UX shadcn pass.
+
+## 2026-09-08 - Witness follow-up: fail-closed confusion + error swallowing
+- User's new UI-created project refused runs (400): fail-closed auto/auto models working as designed, but api.ts DISCARDED the server reason (bare status). Fixed: error bodies surface in all api.ts throws + test pins reason text. No critic round-trip (4-line witness fix, gate-covered; same precedent as CORS/UTF-8 fixes under PBI-019).
+- Unblocked the project via store.write_meta model config (committed). Proper fix filed as PBI-028 (settings UI + PATCH endpoint, EVRSH-28 Backlog). Console font-preload + DevTools + HMR lines: dev-only noise, not issues. Report 404 pre-synthesis: by design (empty state).
