@@ -512,3 +512,6 @@ are Phase-1 backlog, executable after release).
 ## 2026-09-08 - Witness follow-up: fail-closed confusion + error swallowing
 - User's new UI-created project refused runs (400): fail-closed auto/auto models working as designed, but api.ts DISCARDED the server reason (bare status). Fixed: error bodies surface in all api.ts throws + test pins reason text. No critic round-trip (4-line witness fix, gate-covered; same precedent as CORS/UTF-8 fixes under PBI-019).
 - Unblocked the project via store.write_meta model config (committed). Proper fix filed as PBI-028 (settings UI + PATCH endpoint, EVRSH-28 Backlog). Console font-preload + DevTools + HMR lines: dev-only noise, not issues. Report 404 pre-synthesis: by design (empty state).
+
+## 2026-09-08 - PBI-028 Done (review: agentic, APPROVE + nits folded)
+- Required model fields in create form (blocked-empty, posts assignment); Settings tab (prefill, save, local save-error, Saved. indicator); PATCH endpoint (merge, overlap 400, blank refusal, 404-safe); api.ts error bodies surfaced everywhere. Critic APPROVE; took blank-refusal + mkdir-pin + full-payload asserts. Gates: backend file green, tsc, 36 vitest, build. Plane: EVRSH-28 Done. Restart of backend required for the endpoint to go live (done below).
