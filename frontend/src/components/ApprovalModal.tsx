@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { approveRun, listClaims } from "@/lib/api";
+import { approveRun, getLabProject, listClaims } from "@/lib/api";
 
 export default function ApprovalModal({
   projectId,
@@ -15,16 +15,29 @@ export default function ApprovalModal({
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [dossier, setDossier] = useState<{ status: string }[] | null>(null);
+  const [dossier, setDossier] = useState<{
+    rows: { status: string }[];
+    evidence: number | null;
+    sources: number | null;
+  } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    listClaims(projectId).then(
-      (rows) => {
-        if (!cancelled) setDossier(rows);
-      },
-      () => {
-        if (!cancelled) setDossier([]); // dossier is advisory, never blocking
+    void Promise.allSettled([listClaims(projectId), getLabProject(projectId)]).then(
+      ([claimsRes, projectRes]) => {
+        if (cancelled) return;
+        // Advisory only: partial data still renders, buttons never block.
+        setDossier({
+          rows: claimsRes.status === "fulfilled" ? claimsRes.value : [],
+          evidence:
+            projectRes.status === "fulfilled"
+              ? projectRes.value.counts.evidence
+              : null,
+          sources:
+            projectRes.status === "fulfilled"
+              ? projectRes.value.counts.sources
+              : null,
+        });
       },
     );
     return () => {
@@ -48,7 +61,7 @@ export default function ApprovalModal({
   const counts =
     dossier === null
       ? null
-      : dossier.reduce<Record<string, number>>((acc, row) => {
+      : dossier.rows.reduce<Record<string, number>>((acc, row) => {
           acc[row.status] = (acc[row.status] ?? 0) + 1;
           return acc;
         }, {});
@@ -75,8 +88,18 @@ export default function ApprovalModal({
           <dl className="mt-2 text-sm">
             <div className="flex justify-between">
               <dt>Total claims</dt>
-              <dd className="tabular-nums">{dossier?.length ?? 0}</dd>
+              <dd className="tabular-nums">{dossier?.rows.length ?? 0}</dd>
             </div>
+            {dossier !== null &&
+              dossier.evidence !== null &&
+              dossier.sources !== null && (
+                <div className="flex justify-between text-zinc-600 dark:text-zinc-400">
+                  <dt>Evidence · Sources</dt>
+                  <dd className="tabular-nums">
+                    {dossier.evidence} · {dossier.sources}
+                  </dd>
+                </div>
+              )}
             {Object.entries(counts).map(([status, n]) => (
               <div key={status} className="flex justify-between">
                 <dt>{status}</dt>

@@ -8,6 +8,15 @@ const CLAIMS = [
   { id: "C-2", status: "DISPUTED", confidence: 0.3, opposition: 1, statement: "s2" },
 ];
 
+const PROJECT = {
+  id: "p",
+  title: "T",
+  mode: "research",
+  question: "q",
+  claims_count: 2,
+  counts: { claims: 2, evidence: 5, sources: 3, ideas: 0, tasks: 0, decisions: 0 },
+};
+
 beforeEach(() => {
   vi.stubGlobal(
     "fetch",
@@ -15,6 +24,9 @@ beforeEach(() => {
       const path = String(url);
       if (path.endsWith("/claims")) {
         return { ok: true, json: async () => CLAIMS };
+      }
+      if (path.endsWith("/lab-projects/p")) {
+        return { ok: true, json: async () => PROJECT };
       }
       if (path.endsWith("/approve")) {
         return { ok: true, json: async () => ({ run_id: "r", status: "running" }) };
@@ -32,8 +44,12 @@ describe("ApprovalModal dossier", () => {
     expect(await screen.findByText("Total claims")).toBeDefined();
     expect(screen.getByText("SUPPORTED")).toBeDefined();
     expect(screen.getByText("DISPUTED")).toBeDefined();
+    expect(screen.getByText("2", { selector: "dd" }) || null).toBeDefined();
+    expect(screen.getByText(/5 · 3/)).toBeDefined();
     const link = screen.getByRole("link", { name: /Inspect the claims table/ });
     expect(link.getAttribute("href")).toBe("/lab/p/claims");
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("rel")).toContain("noreferrer");
     expect(screen.getByText(/publishes/)).toBeDefined();
     expect(screen.getByText(/nothing is published/)).toBeDefined();
   });
@@ -58,8 +74,22 @@ describe("ApprovalModal dossier", () => {
   });
 });
 
-describe("modal dark treatment", () => {
-  it("approval panel carries dark classes", () => {
+  it("dossier failure never blocks the buttons", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new Error("network down");
+      }),
+    );
+    render(<ApprovalModal projectId="p" runId="r" onResolved={() => {}} />);
+    const approve = await screen.findByRole("button", { name: "Approve" });
+    expect(approve.hasAttribute("disabled")).toBe(false);
+    expect(
+      screen.getByRole("button", { name: "Reject" }).hasAttribute("disabled"),
+    ).toBe(false);
+  });
+
+describe("modal dark treatment", () => {  it("approval panel carries dark classes", () => {
     const { container } = render(
       <div className="dark">
         <ApprovalModal projectId="p" runId="r" onResolved={() => {}} />

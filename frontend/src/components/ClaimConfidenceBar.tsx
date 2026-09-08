@@ -16,7 +16,7 @@ export default function ClaimConfidenceBar({
   confidence: Confidence | null;
 }) {
   if (confidence === null) {
-    return <span className="text-sm text-zinc-500">unscored</span>;
+    return <span className="text-sm text-zinc-500 dark:text-zinc-400">unscored</span>;
   }
   return (
     <dl className="space-y-1">

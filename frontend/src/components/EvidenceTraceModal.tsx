@@ -64,7 +64,9 @@ export default function EvidenceTraceModal({
         {error && (
           <p className="mt-2 text-red-600 dark:text-red-400">{error}</p>
         )}
-        {!error && !detail && <p className="mt-2">Loading trace…</p>}
+        {!error && !detail && (
+          <p className="mt-2 dark:text-zinc-400">Loading trace…</p>
+        )}
         {detail && (
           <div className="mt-2 space-y-4">
             <p>{detail.claim.statement}</p>
@@ -99,7 +101,7 @@ export default function EvidenceTraceModal({
                           {ev.evidence_type}/{ev.strength}
                         </span>
                       </p>
-                      <blockquote className="mt-1 border-l-2 pl-2">
+                      <blockquote className="mt-1 border-l-2 border-zinc-300 pl-2 dark:border-zinc-600">
                         {ev.text_reference}
                       </blockquote>
                       <p className="mt-1 text-zinc-600 dark:text-zinc-400">
