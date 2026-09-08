@@ -1,5 +1,7 @@
 "use client";
 
+import { Progress } from "@/components/ui/progress";
+import { Skeleton } from "@/components/ui/skeleton";
 import type { Budget } from "@/lib/api";
 
 /**
@@ -11,36 +13,36 @@ import type { Budget } from "@/lib/api";
  */
 export default function BudgetGauge({ budget }: { budget: Budget | null }) {
   if (budget === null) {
-    return <p className="text-sm text-zinc-500">Loading budget…</p>;
+    return (
+      <div className="flex flex-col gap-2" aria-label="Loading budget">
+        <Skeleton className="h-4" />
+        <Skeleton className="h-4" />
+      </div>
+    );
   }
   const pct = (used: number, max: number) =>
     max > 0 ? Math.min(100, Math.round((used / max) * 100)) : 0;
-  const callsPct = pct(budget.calls_used, budget.max_model_calls);
-  const roundsPct = pct(budget.rounds_used, budget.max_research_rounds);
   return (
-    <div className="space-y-2 text-sm">
-      <div>
+    <div className="flex flex-col gap-3 text-sm">
+      <div className="flex flex-col gap-1">
         <p>
           Calls {budget.calls_used}/{budget.max_model_calls}
         </p>
-        <div className="h-2 rounded bg-zinc-200">
-          <div className="h-2 rounded bg-zinc-800" style={{ width: `${callsPct}%` }} />
-        </div>
+        <Progress
+          value={pct(budget.calls_used, budget.max_model_calls)}
+          className="motion-reduce:transition-none"
+        />
       </div>
-      <div>
+      <div className="flex flex-col gap-1">
         <p>
           Rounds {budget.rounds_used}/{budget.max_research_rounds}
         </p>
-        <div className="h-2 rounded bg-zinc-200">
-          <div
-            className="h-2 rounded bg-zinc-800"
-            style={{ width: `${roundsPct}%` }}
-          />
-        </div>
+        <Progress
+          value={pct(budget.rounds_used, budget.max_research_rounds)}
+          className="motion-reduce:transition-none"
+        />
       </div>
-      {budget.exhausted && (
-        <p className="font-medium text-amber-700">Budget exhausted.</p>
-      )}
+      {budget.exhausted && <p className="font-medium">Budget exhausted.</p>}
     </div>
   );
 }

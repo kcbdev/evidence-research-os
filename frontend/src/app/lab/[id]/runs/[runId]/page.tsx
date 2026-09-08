@@ -3,6 +3,14 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import {
   getBudget,
   getRun,
@@ -121,32 +129,49 @@ export default function RunView() {
   }
 
   return (
-    <main className="mx-auto max-w-4xl p-8">
-      <Link href={`/lab/${id}`} className="text-sm underline">
-        ← Lab overview
-      </Link>
-      <h1 className="mt-2 font-mono text-lg">Run {runId}</h1>
+    <div className="flex flex-col gap-6">
+      <div>
+        <Link href={`/lab/${id}`} className="text-sm underline">
+          ← Lab overview
+        </Link>
+        <h1 className="mt-2 font-mono text-lg">Run {runId}</h1>
+      </div>
       {completed && (
-        <p className="mt-2 rounded border p-2 text-sm">Run completed.</p>
+        <Alert>
+          <AlertTitle>Run completed.</AlertTitle>
+        </Alert>
       )}
-      {endNote && <p className="mt-2 text-sm">{endNote}</p>}
+      {endNote && <p className="text-sm text-muted-foreground">{endNote}</p>}
       {!completed && (
-        <button className="mt-2 text-sm underline" onClick={() => void checkStatus()}>
-          Check status
-        </button>
+        <div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="min-h-[44px]"
+            onClick={() => void checkStatus()}
+          >
+            Check status
+          </Button>
+        </div>
       )}
 
-      <section aria-label="Budget" className="mt-4 rounded border p-3">
-        <h2 className="font-medium">Budget</h2>
-        <BudgetGauge budget={budget} />
-      </section>
+      <Card>
+        <CardHeader>
+          <CardTitle>Budget</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <BudgetGauge budget={budget} />
+        </CardContent>
+      </Card>
 
-      <section aria-label="Activity" className="mt-4 rounded border p-3">
-        <h2 className="font-medium">Activity</h2>
-        <div className="mt-2">
+      <Card>
+        <CardHeader>
+          <CardTitle>Activity</CardTitle>
+        </CardHeader>
+        <CardContent>
           <RunActivityFeed events={events} />
-        </div>
-      </section>
+        </CardContent>
+      </Card>
 
       {needsApproval && !completed && (
         <ApprovalModal
@@ -155,6 +180,6 @@ export default function RunView() {
           onResolved={onResolved}
         />
       )}
-    </main>
+    </div>
   );
 }

@@ -1,0 +1,38 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - banner [ref=e3]:
+      - link "Evidence Research OS" [ref=e5] [cursor=pointer]:
+        - /url: /
+    - main "Dashboard" [ref=e7]:
+      - generic [ref=e8]:
+        - heading "Evidence Research OS" [level=1] [ref=e9]
+        - paragraph [ref=e10]: Lab Projects — one workspace per research question.
+      - generic [ref=e11]:
+        - generic [ref=e12]: New Lab Project
+        - generic [ref=e16]:
+          - group [ref=e17]:
+            - generic [ref=e18]: Title
+            - textbox "Project title" [ref=e19]:
+              - /placeholder: Title
+          - group [ref=e20]:
+            - generic [ref=e21]: Research question
+            - textbox "Research question" [ref=e22]
+          - group [ref=e23]:
+            - generic [ref=e24]: Scientist model
+            - textbox "Scientist model" [ref=e25]:
+              - /placeholder: Scientist model (OpenRouter ID)
+          - group [ref=e26]:
+            - generic [ref=e27]: Investigator model
+            - textbox "Investigator model" [ref=e28]:
+              - /placeholder: Investigator model (OpenRouter ID)
+          - group [ref=e29]:
+            - generic [ref=e30]: Skeptic model
+            - textbox "Skeptic model" [ref=e31]:
+              - /placeholder: Skeptic model (OpenRouter ID)
+          - group [ref=e32]:
+            - generic [ref=e33]: Judge model
+            - textbox "Judge model" [ref=e34]:
+              - /placeholder: Judge model (OpenRouter ID, must differ)
+          - button "Create" [ref=e35]
+      - generic "Loading" [ref=e36]
+  - button "Open Next.js Dev Tools" [ref=e44] [cursor=pointer]

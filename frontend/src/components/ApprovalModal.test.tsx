@@ -26,7 +26,13 @@ beforeEach(() => {
         return { ok: true, json: async () => CLAIMS };
       }
       if (path.endsWith("/lab-projects/p")) {
-        return { ok: true, json: async () => PROJECT };
+        return {
+          ok: true,
+          json: async () => ({
+            id: "p",
+            counts: { evidence: 5, sources: 3 },
+          }),
+        };
       }
       if (path.endsWith("/approve")) {
         return { ok: true, json: async () => ({ run_id: "r", status: "running" }) };
@@ -44,6 +50,7 @@ describe("ApprovalModal dossier", () => {
     expect(await screen.findByText("Total claims")).toBeDefined();
     expect(screen.getByText("SUPPORTED")).toBeDefined();
     expect(screen.getByText("DISPUTED")).toBeDefined();
+    expect(screen.getByText(/5 · 3/)).toBeDefined();
     expect(screen.getByText("2", { selector: "dd" }) || null).toBeDefined();
     expect(screen.getByText(/5 · 3/)).toBeDefined();
     const link = screen.getByRole("link", { name: /Inspect the claims table/ });
@@ -89,17 +96,16 @@ describe("ApprovalModal dossier", () => {
     ).toBe(false);
   });
 describe("modal dark treatment", () => {
-  it("approval panel carries dark classes", async () => {
+  it("approval panel is token-driven (no hardcoded dark slab)", async () => {
     render(
       <div className="dark">
         <ApprovalModal projectId="p" runId="r" onResolved={() => {}} />
       </div>,
     );
-    // role="dialog" sits on the overlay wrapper; the panel is a sibling
-    // inside the portal — query document-wide. Mount is async.
     await screen.findByRole("dialog");
-    const panel = document.querySelector("div.dark\\:bg-zinc-900");
-    expect(panel?.className).toContain("dark:text-zinc-100");
+    const panel = document.querySelector("div.bg-popover");
+    expect(panel).not.toBeNull();
+    expect(panel?.className).not.toContain("bg-white");
   });
 
   it("trace panel is token-driven (no hardcoded dark slab)", async () => {
