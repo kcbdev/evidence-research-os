@@ -505,3 +505,6 @@ are Phase-1 backlog, executable after release).
 - Run 18a35c7b (budget 40/3, retry+confidence code): full path, pause (11 events), USER APPROVED in browser, resumed, done (14 events). D-approve + D-terminal:completed recorded.
 - PBI-023 proven live: 16 of 26 claims carry judge-graded confidence above 0 (old runs zeros correctly remain unscored). Report 7721 chars rendered. No empty-completion failure, no wedge, no CORS issue this run.
 - PBI-019 closes ONLY on explicit human sign-off of the witnessed UI (dossier modal, confidence bars, history tab, dark, report).
+
+## 2026-09-08 - MVP RELEASED (PBI-019 Done, EVRSH-21 Done)
+- Human signed off after re-witness. Project: 27 issues, 24 Done, 1 In Progress (PBI-005 infra), 2 Backlog (020, 021). Total live spend: .12. Remaining tracks: PBI-005 deploy, Phase-1 backlog (020, 021), open backlog (search_web provider, msgpack allowlist, recursion limits, checkpoint file placement, run persistence), proposed UI/UX shadcn pass.
