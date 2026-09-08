@@ -47,6 +47,17 @@ ROLES = ("scientist", "investigator", "skeptic")
 CHALLENGE_OVERLAP = 0.4
 
 
+def _has_substance(text: str) -> bool:
+    """MVP-crude floor for model-emitted lines (PBI-019 witness: a live
+    model wrote `CLAIM: ...` and the parser enshrined literal dots as a
+    claim). A finding must carry prose: >= 10 chars with >= 2
+    alphanumeric words. Below that is a placeholder, not a finding —
+    dropped. English-token assumption (space-split); non-alphabetic
+    scripts need a revisit, not silent judging today."""
+    words = [w for w in text.split() if any(c.isalnum() for c in w)]
+    return len(text.strip()) >= 10 and len(words) >= 2
+
+
 def _tokens(text: str) -> set[str]:
     out = set()
     for raw in text.lower().split():
@@ -211,6 +222,11 @@ def _extract_role(store: LabProjectStore, role: str, events: list,
     claimed_evidence = 0
     for event in events:
         if event[0] == "claim":
+            if not _has_substance(event[1]):
+                continue  # placeholder, not a finding (witness: "...").
+                # NOTE: current_claim deliberately NOT reset — trailing
+                # evidence after a stray placeholder still attaches to the
+                # last real claim (recall-tolerant; revisit if abused).
             ci += 1
             current_claim = f"C-{role}-{ci:03d}"
             claimed_evidence = 0
@@ -219,6 +235,8 @@ def _extract_role(store: LabProjectStore, role: str, events: list,
             if current_claim is None or claimed_evidence >= per_claim:
                 continue
             _, excerpt, url, loc, etype = event
+            if not _has_substance(excerpt):
+                continue
             if url not in url_to_source:
                 if len(url_to_source) >= max_sources:
                     continue

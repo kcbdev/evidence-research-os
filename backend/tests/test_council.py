@@ -153,9 +153,9 @@ def test_extraction_enforces_per_claim_cap(tmp_path, monkeypatch):
     store = _seed_project(tmp_path, _meta({"max_sources_per_claim": 1}))
     node = nodes.make_evidence_extraction(tmp_path)
     node(_state(first_pass={"scientist": (
-        "CLAIM: s\n"
-        "EVIDENCE: one || https://e.org/1 || p1\n"
-        "EVIDENCE: two || https://e.org/2 || p2\n")}))
+        "CLAIM: Per-claim cap test statement here\n"
+        "EVIDENCE: First supporting excerpt text || https://e.org/1 || p1\n"
+        "EVIDENCE: Second supporting excerpt text || https://e.org/2 || p2\n")}))
     assert [e.id for e in store.list_evidence()] == ["E-scientist-001"]
 
 
@@ -168,10 +168,10 @@ def test_extraction_enforces_global_source_cap(tmp_path, monkeypatch):
                               retrieved_at=TS, quality_tier=1))
     node = nodes.make_evidence_extraction(tmp_path)
     node(_state(first_pass={"scientist": (
-        "CLAIM: s\n"
-        "EVIDENCE: one || https://e.org/1 || p1\n"
-        "EVIDENCE: two || https://e.org/2 || p2\n"
-        "EVIDENCE: three || https://e.org/3 || p3\n")}))
+        "CLAIM: Per-claim cap test statement here\n"
+        "EVIDENCE: First supporting excerpt text || https://e.org/1 || p1\n"
+        "EVIDENCE: Second supporting excerpt text || https://e.org/2 || p2\n"
+        "EVIDENCE: Third supporting excerpt text || https://e.org/3 || p3\n")}))
     urls = sorted(s.url for s in store.list_sources())
     # Pre-existing source counts toward the cap: only ONE new source minted.
     assert urls == ["https://e.org/1", "https://e.org/old"]
@@ -213,6 +213,22 @@ def test_targeted_counts_calls_and_round(tmp_path, monkeypatch):
     assert out["pending_tasks"] == []
     assert (out["budget"].calls_used, out["budget"].rounds_used) == (2, 1)
     assert budget.calls_used == 0  # input copy, not mutation
+
+
+def test_degenerate_findings_dropped(tmp_path, monkeypatch):
+    # Live witness: a model wrote `CLAIM: ...` and the table showed
+    # literal dots. Placeholders carry no prose — dropped, unnumbered.
+    _mock_llm(monkeypatch)
+    store = _seed_project(tmp_path)
+    nodes.make_evidence_extraction(tmp_path)(_state(first_pass={
+        "scientist": (
+            "CLAIM: ...\n"
+            "EVIDENCE: ... || https://e.org/x || p1\n"
+            "CLAIM: Real finding with substance here\n"
+            "EVIDENCE: Solid excerpt text || https://e.org/y || p2\n")}))
+    assert [c.id for c in store.list_claims()] == ["C-scientist-001"]
+    assert [e.id for e in store.list_evidence()] == ["E-scientist-001"]
+    assert [s.url for s in store.list_sources()] == ["https://e.org/y"]
 
 
 def test_conflict_detects_challenge_match(tmp_path, monkeypatch):
