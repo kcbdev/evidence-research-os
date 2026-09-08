@@ -22,8 +22,9 @@ verified at each breakpoint.
   - All 5 routes restyled: `/`, `/lab/[id]`, `/lab/[id]/claims`,
     `/lab/[id]/runs/[runId]`, plus both dialogs.
   - Dark-first OLED tokens (#0F172A bg, slate scale, green-500
-    accent); light mode keeps working (no regression) but is not
-    design-reviewed.
+    accent), enforced via `.dark` on `<html>` (user directive: keep
+    dark theme). Light-mode support is deferred to a future toggle
+    PBI — no silent OS switching.
   - Responsive: mobile-first; tables scroll-x with sticky first
     column OR collapse to cards where trivial; grids stack; tabs
     scroll; touch targets ≥ 44px; no horizontal page scroll.

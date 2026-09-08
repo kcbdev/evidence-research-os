@@ -22,7 +22,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      // Dark enforced (PBI-030): dark-first OLED system per user
+      // directive; OS preference no longer switches themes. A manual
+      // light toggle is a future PBI if ever wanted.
+      className={`dark ${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
         <AppShell>{children}</AppShell>
