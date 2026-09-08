@@ -515,3 +515,7 @@ are Phase-1 backlog, executable after release).
 
 ## 2026-09-08 - PBI-028 Done (review: agentic, APPROVE + nits folded)
 - Required model fields in create form (blocked-empty, posts assignment); Settings tab (prefill, save, local save-error, Saved. indicator); PATCH endpoint (merge, overlap 400, blank refusal, 404-safe); api.ts error bodies surfaced everywhere. Critic APPROVE; took blank-refusal + mkdir-pin + full-payload asserts. Gates: backend file green, tsc, 36 vitest, build. Plane: EVRSH-28 Done. Restart of backend required for the endpoint to go live (done below).
+
+## 2026-09-08 - Witness follow-up: junk dots claim + vanished run
+- Live model wrote CLAIM: ... and the table showed literal dots. Fix: _has_substance floor (10 chars + 2 alnum words) in extraction, critic-approved, toy fixtures honestly lengthened. Junk row + 2 orphan evidence files ops-removed from slm history (git rm + commit).
+- Vanished run explained: my PBI-028 backend restart killed the in-flight run (registry is memory-only). No new checkpoint thread existed, so nothing was lost mid-flight that the API ever served. Structural fix filed as PBI-029 (persist runs, EVRSH-29 Backlog, not due). Restart discipline added: check live runs before bouncing the server.

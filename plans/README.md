@@ -35,6 +35,7 @@ ordering only.
 26. PBI-026 — Approval dossier (needs PBI-015/018; witness finding)
 27. PBI-027 — Modal dark mode (needs PBI-017/018; witness finding)
 28. PBI-028 — Model settings UI (needs PBI-014/016; witness follow-up, backlog)
+29. PBI-029 — Persist runs (needs PBI-014; witness follow-up, backlog)
 
 ## Statuses (`Proposed` → `Active` → `In Review` → `Done` / `Blocked`)
 
@@ -58,6 +59,7 @@ ordering only.
 | PBI-026 | Done | | |
 | PBI-027 | Done | | |
 | PBI-028 | Done | | |
+| PBI-029 | Proposed | | |
 
 ## Dependency graph
 
