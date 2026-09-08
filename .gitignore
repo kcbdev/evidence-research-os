@@ -17,3 +17,5 @@ lab-projects/*
 Thumbs.db
 # Local server/process logs (never committed)
 *.log
+# Playwright MCP snapshots (local verification artifacts)
+.playwright-mcp/

@@ -83,7 +83,10 @@ export default function ApprovalModal({
     // Approve/Reject (parent unmounts on resolve), so onOpenChange is
     // intentionally a no-op rather than a close handler.
     <Dialog open onOpenChange={() => {}}>
-      <DialogContent aria-label="Human checkpoint approval">
+      <DialogContent
+        aria-label="Human checkpoint approval"
+        showCloseButton={false}
+      >
         <DialogHeader>
           <DialogTitle>Human checkpoint approval</DialogTitle>
           <DialogDescription>
@@ -138,6 +141,7 @@ export default function ApprovalModal({
                 id="approval-note"
                 aria-label="Approval note"
                 placeholder="Note (optional)"
+                className="min-h-[44px]"
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
               />
@@ -146,12 +150,19 @@ export default function ApprovalModal({
           </FieldGroup>
         </form>
         <DialogFooter>
-          <Button disabled={busy} onClick={() => void decide("approve")}>
+          <Button
+            disabled={busy}
+            type="button"
+            className="min-h-[44px]"
+            onClick={() => void decide("approve")}
+          >
             Approve
           </Button>
           <Button
             disabled={busy}
+            type="button"
             variant="outline"
+            className="min-h-[44px]"
             onClick={() => void decide("reject")}
           >
             Reject

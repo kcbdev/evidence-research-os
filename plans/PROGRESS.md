@@ -519,3 +519,9 @@ are Phase-1 backlog, executable after release).
 ## 2026-09-08 - Witness follow-up: junk dots claim + vanished run
 - Live model wrote CLAIM: ... and the table showed literal dots. Fix: _has_substance floor (10 chars + 2 alnum words) in extraction, critic-approved, toy fixtures honestly lengthened. Junk row + 2 orphan evidence files ops-removed from slm history (git rm + commit).
 - Vanished run explained: my PBI-028 backend restart killed the in-flight run (registry is memory-only). No new checkpoint thread existed, so nothing was lost mid-flight that the API ever served. Structural fix filed as PBI-029 (persist runs, EVRSH-29 Backlog, not due). Restart discipline added: check live runs before bouncing the server.
+
+## 2026-09-08 - PBI-032 Done (review: agentic, via CHANGES-REQUESTED)
+- Claims + trace on shadcn (Table/Dialog/Progress/Badge/Field/Alert/Empty/Skeleton). Review fixes: token discipline (no dark: overrides on shadcn wrappers), accessible-name lock, no-op (unused import), badge copy restore. Base-ui probes proved: pointer-sequence for Select options, labelledby-wins naming, portal sibling structure, async mount. Gates: tsc, 37 vitest, build. Plane: EVRSH-32 Done.
+
+## 2026-09-08 - PBI-033 responsive evidence (Playwright, live dev server)
+- 375px, overflowX=false: dashboard, overview, claims (26 rows, table scrolls internally), run view. 768px: run view clean + trace dialog opens (title correct, no overflow). 1024/1440: reasoned, not measured (max-w-4xl containers center; same code path as 768). Modal-open at 375 not directly measured (dialog max-width is viewport-relative by construction) - noted gap.

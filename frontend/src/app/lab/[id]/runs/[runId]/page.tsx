@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Alert, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -129,7 +129,7 @@ export default function RunView() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <main className="flex flex-col gap-6" aria-label="Run view">
       <div>
         <Link href={`/lab/${id}`} className="text-sm underline">
           ← Lab overview
@@ -141,7 +141,11 @@ export default function RunView() {
           <AlertTitle>Run completed.</AlertTitle>
         </Alert>
       )}
-      {endNote && <p className="text-sm text-muted-foreground">{endNote}</p>}
+      {endNote && (
+        <p role="status" className="text-sm text-muted-foreground">
+          {endNote}
+        </p>
+      )}
       {!completed && (
         <div>
           <Button
@@ -180,6 +184,6 @@ export default function RunView() {
           onResolved={onResolved}
         />
       )}
-    </div>
+    </main>
   );
 }
