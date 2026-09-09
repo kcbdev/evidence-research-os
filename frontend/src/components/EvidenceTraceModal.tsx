@@ -156,6 +156,7 @@ export default function EvidenceTraceModal({
                 {(tasks ?? []).map((task) => (
                   <li
                     key={task.id}
+                    id={`task-${task.id}`}
                     className="rounded-md border p-2 text-sm"
                   >
                     <p className="font-medium">
@@ -166,6 +167,11 @@ export default function EvidenceTraceModal({
                     </p>
                     <p className="mt-1">{task.question}</p>
                     <p className="mt-1 text-muted-foreground">{task.reason}</p>
+                    {task.required_sources.length > 0 && (
+                      <p className="mt-1 text-muted-foreground">
+                        Needs: {task.required_sources.join(", ")}
+                      </p>
+                    )}
                   </li>
                 ))}
               </ul>

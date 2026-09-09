@@ -139,6 +139,90 @@ describe("ClaimsPage", () => {
     ).toBeDefined();
   });
 
+  it("modal shows empty tasks honestly, trace stands alone", async () => {
+    render(<ClaimsPage />);
+    await screen.findByText("strong claim");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const path = String(url);
+        if (path.includes("/claims/C-low")) {
+          return {
+            ok: true,
+            json: async () => ({
+              claim: {
+                id: "C-low",
+                statement: "weak claim",
+                status: "DISPUTED",
+                supporting_sources: [],
+                opposing_sources: [],
+                confidence: null,
+                adjudicated_by: null,
+              },
+              evidence: [],
+              sources: [],
+            }),
+          };
+        }
+        if (path.includes("/tasks")) {
+          return { ok: true, json: async () => [] };
+        }
+        if (path.includes("/claims")) {
+          return { ok: true, json: async () => [] };
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /2 opposing/ }));
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      within(dialog).getByText("No targeted research tasked for this claim."),
+    ).toBeDefined();
+    expect(within(dialog).getByText("weak claim")).toBeDefined();
+  });
+
+  it("tasks fetch failure leaves the trace standing", async () => {
+    render(<ClaimsPage />);
+    await screen.findByText("strong claim");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const path = String(url);
+        if (path.includes("/tasks")) {
+          throw new Error("tasks down");
+        }
+        if (path.includes("/claims/C-low")) {
+          return {
+            ok: true,
+            json: async () => ({
+              claim: {
+                id: "C-low",
+                statement: "weak claim",
+                status: "DISPUTED",
+                supporting_sources: [],
+                opposing_sources: [],
+                confidence: null,
+                adjudicated_by: null,
+              },
+              evidence: [],
+              sources: [],
+            }),
+          };
+        }
+        if (path.includes("/claims")) {
+          return { ok: true, json: async () => [] };
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /2 opposing/ }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("weak claim")).toBeDefined();
+    expect(
+      within(dialog).getByText("No targeted research tasked for this claim."),
+    ).toBeDefined();
+  });
+
   it("filter narrows via refetch", async () => {
     render(<ClaimsPage />);
     await screen.findByText("strong claim");

@@ -140,3 +140,17 @@ def test_tasks_filter_by_claim(seeded):
                       params={"claim_id": "C-high"}).json() == []
     assert client.get("/api/v1/lab-projects/p/tasks",
                       params={"claim_id": "C-nope"}).status_code == 404
+    # Branch isolation: statement-fallback WITHOUT id convention...
+    store.write_task(Task(id="T-custom-7", question="Adjudicate: weak",
+                          reason="r", assigned_agent="scientist"))
+    assert [t["id"] for t in client.get(
+        "/api/v1/lab-projects/p/tasks",
+        params={"claim_id": "C-low"}).json()] == ["T-C-low", "T-custom-7"]
+    # ...and id-match WITHOUT statement presence:
+    store.write_task(Task(id="T-C-high", question="totally unrelated",
+                          reason="r", assigned_agent="scientist"))
+    assert [t["id"] for t in client.get(
+        "/api/v1/lab-projects/p/tasks",
+        params={"claim_id": "C-high"}).json()] == ["T-C-high"]
+    # Unfiltered queue lists everything:
+    assert len(client.get("/api/v1/lab-projects/p/tasks").json()) == 4
