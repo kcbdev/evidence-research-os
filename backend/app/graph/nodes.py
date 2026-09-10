@@ -213,15 +213,16 @@ def _brainstorm_pass(lab_project_path: Path, state) -> dict:
         spent += attempts
         if idea is None:
             continue  # unparsable proposal: charged, not written
+        if not idea["hypothesis"] or not idea["falsification_condition"]:
+            continue  # no falsification test, no hypothesis (the
+            # ideator prompt's own rule) — charged, not written
         n = len(store.list_ideas()) + 1
-        exp = None
-        if idea["hypothesis"] and idea["falsification_condition"]:
-            exp = ProposedExperiment(
+        store.write_idea(Idea(
+            id=f"I-{n:03d}", statement=idea["statement"],
+            proposed_experiment=ProposedExperiment(
                 hypothesis=idea["hypothesis"],
                 falsification_condition=idea["falsification_condition"],
-                feasibility=idea["feasibility"])
-        store.write_idea(Idea(id=f"I-{n:03d}", statement=idea["statement"],
-                              proposed_experiment=exp))
+                feasibility=idea["feasibility"])))
         statements.append(idea["statement"])
     tmp = {"budget": state["budget"].model_copy()}
     consume_calls(tmp, spent)
@@ -280,7 +281,9 @@ def make_novelty_check(lab_project_path: Path):
             verdict, against = _parse_novelty(text)
             known = {p.id for p in priors} | {idea.id}
             idea.novelty_check = NoveltyCheck(
-                status=verdict, against=[a for a in against if a in known])
+                status=verdict,
+                against=[a for a in against
+                         if a in known and a != idea.id])
             store.write_idea(idea)
             priors.append(idea)
         tmp = {"budget": state["budget"].model_copy()}

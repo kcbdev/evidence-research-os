@@ -93,19 +93,29 @@ def _runs_db(root: Path) -> sqlite3.Connection:
     db.execute("""CREATE TABLE IF NOT EXISTS runs
         (run_id TEXT PRIMARY KEY, project_id TEXT, status TEXT,
          events_json TEXT, error TEXT, updated_at TEXT)""")
+    # PBI-034: schema evolution without wiping history — the approve lazy
+    # path needs the run's own mode (a payload-overridden brainstorm run
+    # on a research project must not recompile as research after a
+    # restart). PBI-044 extends this helper with started_at/duration_s.
+    cols = {r[1] for r in db.execute("PRAGMA table_info(runs)")}
+    if "mode" not in cols:
+        db.execute("ALTER TABLE runs ADD COLUMN mode TEXT")
     db.commit()
     return db
 
 
 def _save_run(root: Path, rec: dict):
     with _lock:
+        mode = rec.get("mode") or (rec.get("initial") or {}).get(
+            "mode", "research")
         snapshot = (rec["run_id"], rec["project_id"], rec["status"],
                     json.dumps(rec["events"]), rec["error"],
-                    datetime.now(timezone.utc).isoformat())
+                    datetime.now(timezone.utc).isoformat(), mode)
     db = _runs_db(root)
     try:
-        db.execute("INSERT OR REPLACE INTO runs VALUES (?,?,?,?,?,?)",
-                   snapshot)
+        db.execute("INSERT OR REPLACE INTO runs "
+                   "(run_id, project_id, status, events_json, error, "
+                   "updated_at, mode) VALUES (?,?,?,?,?,?,?)", snapshot)
         db.commit()
     finally:
         db.close()
@@ -124,14 +134,14 @@ def rehydrate_runs(root: Path) -> int:
         db = _runs_db(root)
         try:
             rows = db.execute(
-                "SELECT run_id, project_id, status, events_json, error "
-                "FROM runs").fetchall()
+                "SELECT run_id, project_id, status, events_json, error, "
+                "mode FROM runs").fetchall()
         finally:
             db.close()
     except sqlite3.Error:
         return 0  # file-level corruption: never crash startup
     revived = 0
-    for run_id, project_id, status, events_json, error in rows:
+    for run_id, project_id, status, events_json, error, mode in rows:
         try:
             events = json.loads(events_json or "[]")
             assert isinstance(events, list)
@@ -143,7 +153,8 @@ def rehydrate_runs(root: Path) -> int:
             _runs[run_id] = {"run_id": run_id, "project_id": project_id,
                              "status": status, "events": events,
                              "error": error, "graph": None,
-                             "initial": None, "root": str(root)}
+                             "initial": None, "root": str(root),
+                             "mode": mode or "research"}
         revived += 1
     return revived
 
@@ -152,7 +163,8 @@ def _payload(rec: dict) -> dict:
     return {"run_id": rec["run_id"], "project_id": rec["project_id"],
             "status": rec["status"], "events": list(rec["events"]),
             "needs_approval": rec["status"] == "awaiting_approval",
-            "error": rec["error"]}
+            "error": rec["error"],
+            "mode": rec.get("mode", "research")}
 
 
 def _pump(run_id: str, initial=None):
@@ -230,7 +242,7 @@ def start_run(project_id: str, payload: dict, request: Request):
         _runs[run_id] = {"run_id": run_id, "project_id": project_id,
                          "status": "running", "events": [], "error": None,
                          "graph": graph, "initial": initial,
-                         "root": str(root)}
+                         "root": str(root), "mode": mode}
     _save_run(root, _runs[run_id])
     threading.Thread(target=_pump, args=(run_id,), kwargs={"initial": initial},
                      daemon=True).start()
@@ -322,11 +334,13 @@ def approve_run(project_id: str, run_id: str, payload: dict,
     if decision == "approve" and rec.get("graph") is None:
         try:
             meta = store.read_meta()
-            # PBI-034: the run's own mode survives in initial (rehydrate
-            # drops graph/initial, but live records keep them) — fall back
-            # to project mode only for pre-034 records without initial.
+            # PBI-034: the run's own persisted mode wins (a brainstorm run
+            # started by payload override on a research project must
+            # recompile as brainstorm). meta.mode is last resort, for
+            # genuinely modeless legacy rows only.
             initial = rec.get("initial") or {}
-            mode = initial.get("mode", meta.mode)
+            mode = (rec.get("mode") or initial.get("mode")
+                    or meta.mode)
             rec["graph"] = get_graph(_root(request), project_id,
                                      meta.council_models, meta.judge_model,
                                      mode)

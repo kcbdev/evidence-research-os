@@ -23,8 +23,9 @@ FEASIBILITY = ("high", "medium", "low")
 def parse_idea(text: str) -> dict | None:
     """Parse IDEA/HYPOTHESIS/FALSIFICATION/FEASIBILITY lines.
 
-    Returns None when there is no substantial IDEA line — same floor as
-    the findings parser (PBI-019 witness): >= 10 chars, no placeholders.
+    Returns None when there is no IDEA line of >= 10 chars (length
+    floor only — a long placeholder still parses; the human promotion
+    gate and skeptic review are the quality backstops, not this parser).
     FEASIBILITY outside the literal degrades to "medium" (a bad tag voids
     only the tag, never the idea — PBI-023 pattern).
     """

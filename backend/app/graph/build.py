@@ -70,7 +70,8 @@ def build_graph(lab_project_path: Path,
     if mode == "brainstorm":
         # PBI-034: divergence branch — novelty replaces conflict; the
         # shared tail (review → adjudication → synthesis → audit →
-        # checkpoint → output) is empty-safe on zero claims.
+        # checkpoint → output) is empty-safe on zero claims. Research-only
+        # nodes stay registered but intentionally disconnected here.
         g.add_node("novelty_check", nodes.make_novelty_check(lab_project_path))
         g.add_edge("independent_first_pass", "novelty_check")
         g.add_edge("novelty_check", "adversarial_review")

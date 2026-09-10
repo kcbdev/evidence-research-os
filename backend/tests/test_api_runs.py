@@ -284,10 +284,15 @@ def test_live_run_rehydrates_as_interrupted(client, tmp_path):
     _runs_db(tmp_path).close()  # schema only; rows below simulate a crash
     db = sqlite3.connect(str(tmp_path / "runs.db"))
     try:
-        db.execute("INSERT OR REPLACE INTO runs VALUES (?,?,?,?,?,?)",
-                   ("r-dead", pid, "running", "[]", None, "t"))
-        db.execute("INSERT OR REPLACE INTO runs VALUES (?,?,?,?,?,?)",
-                   ("r-junk", pid, "running", "not-json{{{", None, "t"))
+        db.execute("INSERT OR REPLACE INTO runs "
+                   "(run_id, project_id, status, events_json, error, "
+                   "updated_at, mode) VALUES (?,?,?,?,?,?,?)",
+                   ("r-dead", pid, "running", "[]", None, "t", "research"))
+        db.execute("INSERT OR REPLACE INTO runs "
+                   "(run_id, project_id, status, events_json, error, "
+                   "updated_at, mode) VALUES (?,?,?,?,?,?,?)",
+                   ("r-junk", pid, "running", "not-json{{{", None, "t",
+                    "research"))
         db.commit()
     finally:
         db.close()

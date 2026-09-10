@@ -144,6 +144,67 @@ def test_build_graph_rejects_bad_mode_and_missing_ideator(tmp_path):
         build_graph(tmp_path / "y", no_ide, JUDGE, "brainstorm")
 
 
+def test_judge_overlapping_ideator_refused(tmp_path):
+    # The ideator is a fourth council chair: judge == ideator value is
+    # self-preference bias, refused by the same fail-closed check.
+    overlap = dict(COUNCIL)
+    with pytest.raises(ValueError):
+        build_graph(tmp_path / "z", overlap, overlap["ideator"],
+                     "brainstorm")
+
+
+def test_novelty_node_writes_verdicts(tmp_path, monkeypatch):
+    from app.graph.nodes import make_novelty_check
+    from app.models.evidence import BudgetState, Idea, NoveltyCheck, ProjectMeta
+    monkeypatch.setattr("app.graph.nodes.call_model_resilient",
+                        lambda *a, **k: (
+                            "VERDICT: DUPLICATE\nAGAINST: I-001", 1))
+    for var in ("GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL",
+                "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL"):
+        monkeypatch.setenv(var, "t" if "NAME" in var else "t@e.org")
+    root = tmp_path / "nov"
+    store = LabProjectStore(root, "p")
+    store.write_meta(ProjectMeta(
+        id="p", title="t", question="q",
+        created_at="2026-09-05T10:00:00Z",
+        council_models=dict(COUNCIL), judge_model=JUDGE))
+    store.write_idea(Idea(id="I-001", statement="prior angle",
+                        novelty_check=NoveltyCheck(status="novel",
+                                                   against=[])))
+    store.write_idea(Idea(id="I-002", statement="restated prior angle"))
+    state = {"lab_project_id": "p", "mode": "brainstorm",
+             "budget": BudgetState()}
+    out = make_novelty_check(root)(state)
+    dup = store.read_idea("I-002")
+    assert dup.novelty_check.status == "duplicate"
+    assert dup.novelty_check.against == ["I-001"]
+    assert out["budget"].calls_used == 1  # one verdict call, charged
+
+
+def test_idea_without_falsification_skipped_but_charged(tmp_path,
+                                                        monkeypatch):
+    from app.graph.nodes import _brainstorm_pass
+    from app.models.evidence import BudgetState, ProjectMeta
+    monkeypatch.setattr(
+        "app.agents.ideator.call_model_resilient",
+        lambda *a, **k: ("IDEA: a wish with no test\nFEASIBILITY: high", 1))
+    for var in ("GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL",
+                "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL"):
+        monkeypatch.setenv(var, "t" if "NAME" in var else "t@e.org")
+    root = tmp_path / "wish"
+    store = LabProjectStore(root, "p")
+    store.write_meta(ProjectMeta(
+        id="p", title="t", question="q",
+        created_at="2026-09-05T10:00:00Z",
+        council_models=dict(COUNCIL), judge_model=JUDGE))
+    state = {"lab_project_id": "p", "mode": "brainstorm",
+             "active_question": "q", "budget": BudgetState(),
+             "session_id": "s"}
+    out = _brainstorm_pass(root, state)
+    assert store.list_ideas() == []  # no falsification, no hypothesis
+    assert out["budget"].calls_used == 5  # ...but every attempt charged
+
+
 # --- API: validation ---
 
 def test_start_run_rejects_unknown_mode(client):
@@ -184,3 +245,22 @@ def test_brainstorm_run_writes_ideas_only(client, tmp_path):
                 json={"decision": "approve"})
     final = _wait_for(client, pid, rid, {"done"})
     assert final["needs_approval"] is False
+
+
+def test_restart_preserves_brainstorm_mode(client, tmp_path):
+    from app.api.runs import rehydrate_runs
+    # Project default is research; the run overrides to brainstorm —
+    # after a simulated restart the approve must recompile brainstorm,
+    # not the project default.
+    pid = _create(client)
+    rid = client.post(f"/api/v1/lab-projects/{pid}/runs",
+                      json={"mode": "brainstorm"}).json()["run_id"]
+    _wait_for(client, pid, rid, {"awaiting_approval"})
+    runs_mod._runs.clear()
+    clear_graph_cache()
+    assert rehydrate_runs(tmp_path) >= 1
+    revived = client.get(f"/api/v1/lab-projects/{pid}/runs/{rid}").json()
+    assert revived["mode"] == "brainstorm"
+    client.post(f"/api/v1/lab-projects/{pid}/runs/{rid}/approve",
+                json={"decision": "approve"})
+    assert _wait_for(client, pid, rid, {"done"})["status"] == "done"
