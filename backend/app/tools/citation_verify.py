@@ -13,7 +13,8 @@ pincite directly. A fetch failure IS the existence FAIL.
 import os
 from pathlib import Path
 from app.agents.client import call_model_resilient
-from app.models.evidence import AuditCheck
+from app.models.evidence import AuditCheck, ClaimAudit
+from app.store.lab_project import LabProjectStore
 from app.store.settings import SettingsStore
 from app.tools.cache import cached_fetch_url
 
@@ -77,3 +78,62 @@ def check_support_match(claim_statement: str, evidence_text_reference: str,
         "FAIL" if head.startswith("FAIL") else "WARNING")
     return AuditCheck(stage="support_match", status=status,
                       detail=result.strip()), attempts
+
+
+def run_audit(lab_root: Path, project_id: str, session_id: str,
+              claim_filter: str | None = None) -> tuple[list[ClaimAudit], int]:
+    """Audit every (claim, evidence) pair — or one claim when scoped.
+    Shared by the graph node (PBI-039) and the rerun endpoint (PBI-040)
+    so both produce identical rows. Returns (rows, auditor_attempts);
+    the caller charges the attempts and persists the AuditRun."""
+    store = LabProjectStore(Path(lab_root), project_id)
+    auditor = resolve_auditor(Path(lab_root))
+    project_dir = Path(lab_root) / project_id
+    results: list[ClaimAudit] = []
+    spent = 0
+    known = {s.id for s in store.list_sources()}
+    for claim in store.list_claims():
+        if claim_filter is not None and claim.id != claim_filter:
+            continue
+        cited = list(claim.supporting_sources) + list(claim.opposing_sources)
+        missing = [sid for sid in cited if sid not in known]
+        if missing:
+            results.append(ClaimAudit(
+                claim_id=claim.id, evidence_id=None,
+                checks=[AuditCheck(
+                    stage="existence", status="FAIL",
+                    detail="cited source ids have no source object: "
+                           + ", ".join(sorted(set(missing))))]))
+        for ev in store.list_evidence():
+            if claim.id not in ev.supports:
+                continue
+            try:
+                source = store.read_source(ev.source_id)
+            except FileNotFoundError:
+                results.append(ClaimAudit(
+                    claim_id=claim.id, evidence_id=ev.id,
+                    checks=[AuditCheck(
+                        stage="existence", status="FAIL",
+                        detail=f"source object {ev.source_id} missing"),
+                        AuditCheck(
+                        stage="pincite", status="WARNING",
+                        detail="no source text (existence failed)"),
+                        AuditCheck(
+                        stage="support_match", status="WARNING",
+                        detail="no source text (existence failed)")]))
+                continue
+            text, existence = check_existence(source.url, project_dir,
+                                              session_id)
+            pincite = check_pincite(ev.location, text)
+            if text is None:
+                support, attempts = AuditCheck(
+                    stage="support_match", status="WARNING",
+                    detail="no source text (existence failed)"), 0
+            else:
+                support, attempts = check_support_match(
+                    claim.statement, ev.text_reference, auditor)
+            spent += attempts
+            results.append(ClaimAudit(
+                claim_id=claim.id, evidence_id=ev.id,
+                checks=[existence, pincite, support]))
+    return results, spent

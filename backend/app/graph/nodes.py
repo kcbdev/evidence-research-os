@@ -31,7 +31,7 @@ from app.agents.client import call_model_resilient
 from app.agents.prompts import load_prompt, get_skeptic_rubric
 from app.graph.budget import consume_calls, consume_round, is_exhausted
 from app.graph.state import LabProjectState
-from app.models.evidence import AuditCheck, Claim, Decision, Evidence, Idea, NoveltyCheck, ProposedExperiment, Source, Task
+from app.models.evidence import Claim, Decision, Evidence, Idea, NoveltyCheck, ProposedExperiment, Source, Task
 from app.store.lab_project import LabProjectStore
 
 FINDING_FORMAT = """
@@ -648,61 +648,12 @@ def make_citation_audit(lab_project_path: Path):
 
     def citation_audit(state) -> dict:
         from datetime import datetime, timezone
-        from app.models.evidence import AuditRun, ClaimAudit
-        from app.tools.citation_verify import (
-            check_existence, check_pincite, check_support_match,
-            resolve_auditor)
+        from app.models.evidence import AuditRun
+        from app.tools.citation_verify import run_audit
         store = LabProjectStore(lab_project_path, state["lab_project_id"])
-        session = state["session_id"]
-        auditor = resolve_auditor(Path(lab_project_path))
-        results: list[ClaimAudit] = []
-        spent = 0
-        known = {s.id for s in store.list_sources()}
-        for claim in store.list_claims():
-            cited = list(claim.supporting_sources) + list(claim.opposing_sources)
-            missing = [sid for sid in cited if sid not in known]
-            if missing:
-                results.append(ClaimAudit(
-                    claim_id=claim.id, evidence_id=None,
-                    checks=[AuditCheck(
-                        stage="existence", status="FAIL",
-                        detail="cited source ids have no source object: "
-                               + ", ".join(sorted(set(missing))))]))
-            for ev in store.list_evidence():
-                if claim.id not in ev.supports:
-                    continue
-                try:
-                    source = store.read_source(ev.source_id)
-                except FileNotFoundError:
-                    results.append(ClaimAudit(
-                        claim_id=claim.id, evidence_id=ev.id,
-                        checks=[AuditCheck(
-                            stage="existence", status="FAIL",
-                            detail=f"source object {ev.source_id} missing"),
-                            AuditCheck(
-                                stage="pincite", status="WARNING",
-                                detail="no source text (existence failed)"),
-                            AuditCheck(
-                                stage="support_match", status="WARNING",
-                                detail="no source text (existence failed)")]))
-                    continue
-                text, existence = check_existence(
-                    source.url, Path(lab_project_path) / state["lab_project_id"],
-                    session)
-                pincite = check_pincite(ev.location, text)
-                if text is None:
-                    # No source text: judging support blind would spend a
-                    # call for noise — WARNING with reason, zero attempts.
-                    support, attempts = AuditCheck(
-                        stage="support_match", status="WARNING",
-                        detail="no source text (existence failed)"), 0
-                else:
-                    support, attempts = check_support_match(
-                        claim.statement, ev.text_reference, auditor)
-                spent += attempts
-                results.append(ClaimAudit(
-                    claim_id=claim.id, evidence_id=ev.id,
-                    checks=[existence, pincite, support]))
+        results, spent = run_audit(Path(lab_project_path),
+                                   state["lab_project_id"],
+                                   state["session_id"])
         n = len(store.list_audit_runs()) + 1
         store.write_audit_run(AuditRun(
             id=f"A-{n:03d}", created_at=datetime.now(timezone.utc),
