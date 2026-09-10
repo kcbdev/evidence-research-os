@@ -248,8 +248,8 @@ def start_run(project_id: str, payload: dict, request: Request):
     judge = payload.get("judge_model", meta.judge_model)
     mode = payload.get("mode", meta.mode)
     # PBI-034: mode is validated here (422), not deep in the graph —
-    # fail-closed before any thread/record exists.
-    if mode not in ("research", "brainstorm"):
+    # fail-closed before any thread/record exists. PBI-048 adds academic.
+    if mode not in ("research", "brainstorm", "academic"):
         raise HTTPException(status_code=422,
                             detail=f"unknown mode: {mode!r}")
     try:

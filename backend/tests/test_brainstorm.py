@@ -143,7 +143,7 @@ def test_research_topology_unchanged(tmp_path, monkeypatch):
 
 def test_build_graph_rejects_bad_mode_and_missing_ideator(tmp_path):
     with pytest.raises(ValueError):
-        build_graph(tmp_path / "x", COUNCIL, JUDGE, "academic")
+        build_graph(tmp_path / "x", COUNCIL, JUDGE, "poetry")
     no_ide = {k: v for k, v in COUNCIL.items() if k != "ideator"}
     with pytest.raises(ValueError):
         build_graph(tmp_path / "y", no_ide, JUDGE, "brainstorm")
@@ -215,7 +215,7 @@ def test_idea_without_falsification_skipped_but_charged(tmp_path,
 def test_start_run_rejects_unknown_mode(client):
     pid = _create(client)
     resp = client.post(f"/api/v1/lab-projects/{pid}/runs",
-                       json={"mode": "academic"})
+                       json={"mode": "poetry"})
     assert resp.status_code == 422
 
 

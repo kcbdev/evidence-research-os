@@ -140,7 +140,7 @@ class BudgetState(BaseModel):
 class ProjectMeta(BaseModel):
     id: str
     title: str
-    mode: Literal["research", "brainstorm"] = "research"
+    mode: Literal["research", "brainstorm", "academic"] = "research"
     question: str
     created_at: datetime
     budget: BudgetState = BudgetState()

@@ -5,7 +5,7 @@ from app.models.evidence import Task, BudgetState
 
 class LabProjectState(TypedDict):
     lab_project_id: str
-    mode: Literal["research", "brainstorm"]
+    mode: Literal["research", "brainstorm", "academic"]
     active_question: str
     budget: BudgetState
     pending_tasks: list[Task]

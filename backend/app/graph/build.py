@@ -27,7 +27,7 @@ def build_graph(lab_project_path: Path,
     # every construction site — tests, shells, PBI-014 run start —
     # supplies the project.yaml model assignment explicitly.
     validate_model_assignment(council_models, judge_model)
-    if mode not in ("research", "brainstorm"):
+    if mode not in ("research", "brainstorm", "academic"):
         raise ValueError(f"unknown mode: {mode!r}")
     if mode == "brainstorm" and "ideator" not in council_models:
         raise ValueError(
@@ -55,6 +55,10 @@ def build_graph(lab_project_path: Path,
                  nodes.make_adversarial_review(lab_project_path))
     g.add_node("evidence_adjudication",
                  nodes.make_evidence_adjudication(lab_project_path))
+    g.add_node("methodology_analysis",
+                 nodes.make_methodology_analysis(lab_project_path))
+    g.add_node("reproducibility_audit",
+                 nodes.make_reproducibility_audit(lab_project_path))
     g.add_node("synthesis", nodes.make_synthesis(lab_project_path))
     g.add_node("citation_audit",
                  nodes.make_citation_audit(lab_project_path))
@@ -88,7 +92,15 @@ def build_graph(lab_project_path: Path,
     g.add_conditional_edges("conflict_detection", _after_conflict)
     g.add_edge("targeted_research", "conflict_detection")   # loop back
     g.add_edge("adversarial_review", "evidence_adjudication")
-    g.add_edge("evidence_adjudication", "synthesis")
+    if mode == "academic":
+        # PBI-048: publication-grade segment — methodology + repro
+        # between adjudication and synthesis. Research/brainstorm skip
+        # it (cost); the nodes stay registered but disconnected there.
+        g.add_edge("evidence_adjudication", "methodology_analysis")
+        g.add_edge("methodology_analysis", "reproducibility_audit")
+        g.add_edge("reproducibility_audit", "synthesis")
+    else:
+        g.add_edge("evidence_adjudication", "synthesis")
     g.add_edge("synthesis", "citation_audit")
     # Same accepted pattern as the conflict branch (PBI-013 owns the
     # PBI-007 stop): if the budget already exhausted upstream (review /

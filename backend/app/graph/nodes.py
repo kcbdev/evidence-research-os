@@ -514,6 +514,13 @@ JUDGE_STATUSES = ("SUPPORTED", "STRONGLY_SUPPORTED", "WEAKLY_SUPPORTED",
                   "DISPUTED", "CONTRADICTED", "INSUFFICIENT_EVIDENCE",
                   "UNVERIFIABLE")
 
+METHODOLOGY_FORMAT = """
+Assess methodological strength per claim below from its evidence ONLY.
+Respond with one line per claim: SCORE <claim-id>: <0-1 float> — <one line of reasoning>
+Skip claims whose evidence you cannot assess (omit the line — unparseable
+output leaves the claim untouched, never fabricated).
+"""
+
 JUDGE_FORMAT = """
 Adjudicate each claim below from the evidence graph ONLY.
 Respond with one line per claim: STATUS <claim-id>: <STATUS>
@@ -620,6 +627,113 @@ def _consult_judge(judge_model: str, store: LabProjectStore, claim,
                 if status in JUDGE_STATUSES:
                     verdicts[cid] = (status, confidence)
     return verdicts, attempts
+
+
+def _parse_methodology_scores(text: str) -> dict[str, float]:
+    """Parse SCORE <id>: <float> lines. Unparseable lines are dropped
+    (fail-safe: a bad line voids itself, never a verdict)."""
+    out = {}
+    for line in (text or "").splitlines():
+        line = line.strip()
+        if not line.startswith("SCORE "):
+            continue
+        rest = line[len("SCORE "):]
+        if ":" not in rest:
+            continue
+        cid, _, tail = rest.partition(":")
+        try:
+            score = float(tail.strip().split()[0])
+        except (ValueError, IndexError):
+            continue
+        if 0.0 <= score <= 1.0:
+            out[cid.strip()] = score
+    return out
+
+
+def make_methodology_analysis(lab_project_path: Path):
+    """Academic-only (PBI-048): the judge re-scores methodological
+    strength per evidenced claim, with reasoning to debates/. Only the
+    methodological_strength dimension is refined — every other
+    adjudicated field is untouched. Claims without confidence or
+    without evidence are skipped, not fabricated."""
+
+    def methodology_analysis(state) -> dict:
+        store = LabProjectStore(lab_project_path, state["lab_project_id"])
+        meta = store.read_meta()
+        by_claim: dict[str, list] = {}
+        for ev in store.list_evidence():
+            for cid in ev.supports:
+                by_claim.setdefault(cid, []).append(ev)
+        lines = []
+        for claim in store.list_claims():
+            if claim.confidence is None or claim.id not in by_claim:
+                continue
+            excerpts = "; ".join(
+                e.text_reference for e in by_claim[claim.id])
+            lines.append(f"{claim.id}: {claim.statement} "
+                         f"[currently {claim.confidence.methodological_strength:.2f}] "
+                         f"Evidence: {excerpts}")
+        spent = 0
+        if lines:
+            text, spent = call_model_resilient(
+                meta.judge_model, load_prompt("judge"),
+                METHODOLOGY_FORMAT + "\nCLAIMS:\n" + "\n".join(lines))
+            debates = Path(lab_project_path) / state["lab_project_id"] / "debates"
+            debates.mkdir(parents=True, exist_ok=True)
+            (debates / "methodology.md").write_text(text, encoding="utf-8")
+            for cid, score in _parse_methodology_scores(text).items():
+                try:
+                    claim = store.read_claim(cid)
+                except FileNotFoundError:
+                    continue  # hallucinated id: dropped, not enshrined
+                if claim.confidence is not None:
+                    claim.confidence.methodological_strength = score
+                    store.write_claim(claim)
+        tmp = {"budget": state["budget"].model_copy()}
+        consume_calls(tmp, spent)
+        return {"budget": tmp["budget"]}
+
+    return methodology_analysis
+
+
+def make_reproducibility_audit(lab_project_path: Path):
+    """Academic-only (PBI-048): deterministic per-evidence checks — source
+    object exists, location names a page or section, excerpt has
+    substance, source fetchable through the cache. No LLM, no budget
+    spend. Verdicts land in debates/reproducibility.md (run artifact,
+    ADR-0001); nothing else is mutated."""
+
+    def reproducibility_audit(state) -> dict:
+        from app.tools.cache import cached_fetch_url
+        store = LabProjectStore(lab_project_path, state["lab_project_id"])
+        project_dir = Path(lab_project_path) / state["lab_project_id"]
+        out = ["# Reproducibility audit", ""]
+        for ev in sorted(store.list_evidence(), key=lambda e: e.id):
+            verdicts = []
+            try:
+                source = store.read_source(ev.source_id)
+            except FileNotFoundError:
+                out.append(f"- {ev.id}: FAIL — source {ev.source_id} missing")
+                continue
+            loc = ev.location or {}
+            if loc.get("page") is None and not loc.get("section"):
+                verdicts.append("WARN: no page/section pincite")
+            if not _has_substance(ev.text_reference):
+                verdicts.append("WARN: excerpt has no substance")
+            try:
+                cached_fetch_url(project_dir, state["session_id"],
+                                 source.url)
+            except Exception as exc:
+                verdicts.append(f"FAIL: source unfetchable ({exc})")
+            out.append(f"- {ev.id}: "
+                       + ("PASS" if not verdicts else "; ".join(verdicts)))
+        debates = Path(lab_project_path) / state["lab_project_id"] / "debates"
+        debates.mkdir(parents=True, exist_ok=True)
+        (debates / "reproducibility.md").write_text(
+            "\n".join(out) + "\n", encoding="utf-8")
+        return {}
+
+    return reproducibility_audit
 
 
 def make_synthesis(lab_project_path: Path):
