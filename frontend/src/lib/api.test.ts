@@ -90,13 +90,13 @@ describe("REST helpers", () => {
     await listClaims("p", {
       status: "DISPUTED",
       min_confidence: 0.5,
-      has_opposition: true,
+      contradictions_only: true,
     });
     const [url] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(url).toContain("/api/v1/lab-projects/p/claims?");
     expect(url).toContain("status=DISPUTED");
     expect(url).toContain("min_confidence=0.5");
-    expect(url).toContain("has_opposition=true");
+    expect(url).toContain("contradictions_only=true");
   });
 
   it("omits unset filters", async () => {

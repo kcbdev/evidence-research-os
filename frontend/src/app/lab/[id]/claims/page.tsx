@@ -67,7 +67,7 @@ export default function ClaimsPage() {
         await listClaims(id, {
           status: status || undefined,
           min_confidence: minConfidence === "" ? undefined : Number(minConfidence),
-          has_opposition: oppositionOnly || undefined,
+          contradictions_only: oppositionOnly || undefined,
         }),
       );
     } catch (err) {

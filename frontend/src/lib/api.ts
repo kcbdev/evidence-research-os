@@ -221,7 +221,7 @@ export interface ClaimDetail {
 export interface ClaimFilters {
   status?: string;
   min_confidence?: number;
-  has_opposition?: boolean;
+  contradictions_only?: boolean;
 }
 
 export function listClaims(
@@ -233,8 +233,8 @@ export function listClaims(
   if (filters.min_confidence !== undefined) {
     params.set("min_confidence", String(filters.min_confidence));
   }
-  if (filters.has_opposition !== undefined) {
-    params.set("has_opposition", String(filters.has_opposition));
+  if (filters.contradictions_only) {
+    params.set("contradictions_only", "true");
   }
   const query = params.toString();
   return get<ClaimRow[]>(
@@ -267,6 +267,28 @@ export function listTasks(
   return get<DelegatedTask[]>(
     `/api/v1/lab-projects/${projectId}/tasks${query}`,
   );
+}
+
+export interface GraphData {
+  nodes: {
+    id: string;
+    type: "claim" | "source" | "evidence";
+    status?: string;
+    statement?: string;
+    title?: string;
+    url?: string;
+    excerpt?: string;
+    strength?: string;
+  }[];
+  edges: { from: string; to: string; relation: string }[];
+}
+
+export function getGraph(
+  projectId: string,
+  statusFilter?: string,
+): Promise<GraphData> {
+  const query = statusFilter ? `?status_filter=${encodeURIComponent(statusFilter)}` : "";
+  return get<GraphData>(`/api/v1/lab-projects/${projectId}/graph${query}`);
 }
 
 export interface Idea {
