@@ -6,7 +6,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app import config
-from app.api import claims, lab_projects, runs
+from app.api import claims, ideas, lab_projects, runs
 
 
 def _allowed_origins() -> list[str]:
@@ -40,6 +40,7 @@ def create_app(lab_root=None) -> FastAPI:
     app.include_router(runs.router, prefix="/api/v1/lab-projects")
     # PBI-015 sequences after PBI-014: same file, never parallel.
     app.include_router(claims.router, prefix="/api/v1/lab-projects")
+    app.include_router(ideas.router, prefix="/api/v1/lab-projects")
     return app
 
 
