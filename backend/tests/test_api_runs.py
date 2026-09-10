@@ -259,7 +259,10 @@ def test_runs_list_newest_first_and_404(client, tmp_path):
     rows = client.get(f"/api/v1/lab-projects/{pid}/runs").json()
     assert [r["run_id"] for r in rows] == [r2, r1]
     assert set(rows[0]) == {"run_id", "status", "needs_approval",
-                            "events_count", "error"}
+                            "events_count", "error", "mode",
+                            "started_at", "duration_s"}  # PBI-044 shape
+    assert rows[0]["mode"] == "research"
+    assert rows[0]["started_at"] is not None
     assert client.get("/api/v1/lab-projects/ghost/runs").status_code == 404
     assert not (tmp_path / "ghost").exists()  # no mkdir side effect
 
