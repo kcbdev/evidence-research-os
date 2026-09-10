@@ -51,11 +51,15 @@ const DETAIL = {
   ],
 };
 
+let searchParams = new URLSearchParams();
+
 vi.mock("next/navigation", () => ({
   useParams: () => ({ id: "p" }),
+  useSearchParams: () => searchParams,
 }));
 
 beforeEach(() => {
+  searchParams = new URLSearchParams();
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string) => {
@@ -251,5 +255,13 @@ describe("ClaimsPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /Confidence/ }));
     const flipped = await screen.findAllByRole("row");
     expect(flipped[1].textContent).toContain("C-low");
+  });
+
+  it("?claim= deep link opens the trace modal directly", async () => {
+    searchParams = new URLSearchParams("claim=C-low");
+    render(<ClaimsPage />);
+    // Trace modal for C-low opens with no click (table row also matches).
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog.textContent).toContain("C-low");
   });
 });

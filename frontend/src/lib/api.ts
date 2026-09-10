@@ -291,6 +291,22 @@ export function getGraph(
   return get<GraphData>(`/api/v1/lab-projects/${projectId}/graph${query}`);
 }
 
+export interface SearchHit {
+  project_id: string;
+  project_title: string;
+  claim_id: string | null;
+  matching_text: string;
+  score: number;
+}
+
+export function searchProjects(
+  q: string,
+  limit = 20,
+): Promise<SearchHit[]> {
+  const params = new URLSearchParams({ q, limit: String(limit) });
+  return get<SearchHit[]>(`/api/v1/search?${params.toString()}`);
+}
+
 export interface Idea {
   id: string;
   statement: string;

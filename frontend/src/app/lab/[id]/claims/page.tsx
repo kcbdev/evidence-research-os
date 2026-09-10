@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useParams, useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -48,7 +48,18 @@ const STATUSES = [
 ];
 
 export default function ClaimsPage() {
+  return (
+    <Suspense>
+      <ClaimsBody />
+    </Suspense>
+  );
+}
+
+function ClaimsBody() {
   const { id } = useParams<{ id: string }>();
+  // PBI-047: deep links (?claim=C-xxx, e.g. from cross-project search)
+  // open the trace modal directly.
+  const deepClaim = useSearchParams().get("claim");
   const [rows, setRows] = useState<ClaimRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -58,6 +69,10 @@ export default function ClaimsPage() {
   const [sortKey, setSortKey] = useState<SortKey>("confidence");
   const [sortDir, setSortDir] = useState<SortDir>(-1);
   const [openClaim, setOpenClaim] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (deepClaim) setOpenClaim(deepClaim);
+  }, [deepClaim]);
 
   const refresh = useCallback(async () => {
     setLoading(true);

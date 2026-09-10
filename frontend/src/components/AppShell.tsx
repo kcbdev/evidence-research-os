@@ -21,6 +21,14 @@ export default function AppShell({
           <Link href="/" className="font-semibold">
             Evidence Research OS
           </Link>
+          {/* PBI-047: Search nav renders only now that the cross-project
+              index exists (no dead UI before this phase). */}
+          <Link
+            href="/search"
+            className="ml-auto min-h-[44px] inline-flex items-center text-sm underline"
+          >
+            Search
+          </Link>
           {trail && trail.length > 0 && (
             <nav aria-label="Breadcrumb" className="text-sm text-muted-foreground">
               {trail.map((crumb, i) => (
