@@ -49,6 +49,73 @@ def _wait_for(client, pid, rid, want, deadline=30.0):
     raise AssertionError(f"run {rid} never reached {want}")
 
 
+# --- PBI-044: retry + record evolution ---
+
+def test_retry_failed_run_resumes_same_id(client, tmp_path, monkeypatch):
+    pid = _create(client)
+
+    def _boom(*a, **k):
+        raise RuntimeError("model exploded")
+    monkeypatch.setattr("app.graph.nodes.call_model_resilient", _boom)
+    rid = client.post(f"/api/v1/lab-projects/{pid}/runs",
+                      json={}).json()["run_id"]
+    failed = _wait_for(client, pid, rid, {"failed"})
+    assert failed["error"] is not None
+    before = failed["events"]
+    # Wrong statuses 400 (paused run is not retryable).
+    monkeypatch.setattr("app.graph.nodes.call_model_resilient",
+                        lambda *a, **k: ("", 1))
+    pid2 = _create(client)
+    rid2 = client.post(f"/api/v1/lab-projects/{pid2}/runs",
+                       json={}).json()["run_id"]
+    _wait_for(client, pid2, rid2, {"awaiting_approval"})
+    assert client.post(
+        f"/api/v1/lab-projects/{pid2}/runs/{rid2}/retry").status_code == 400
+    assert client.post(
+        f"/api/v1/lab-projects/{pid}/runs/nope/retry").status_code == 404
+    # Heal the model, retry the failed run: same id, events append, done.
+    resp = client.post(f"/api/v1/lab-projects/{pid}/runs/{rid}/retry")
+    assert resp.json() == {"run_id": rid, "status": "running"}
+    final = _wait_for(client, pid, rid, {"done", "awaiting_approval"})
+    assert final["run_id"] == rid
+    assert len(final["events"]) >= len(before)
+    assert final["started_at"] is not None
+    if final["status"] == "done":
+        assert final["duration_s"] is not None
+        assert final["duration_s"] >= 0
+
+
+def test_legacy_six_col_db_migrates_with_history(client, tmp_path):
+    import sqlite3
+    from app.api.runs import _runs_db
+    db = sqlite3.connect(str(tmp_path / "runs.db"))
+    try:
+        db.execute("""CREATE TABLE runs
+            (run_id TEXT PRIMARY KEY, project_id TEXT, status TEXT,
+             events_json TEXT, error TEXT, updated_at TEXT)""")
+        db.execute("INSERT INTO runs VALUES (?,?,?,?,?,?)",
+                   ("r-old", "p-old", "done", "[]", None, "t"))
+        db.commit()
+    finally:
+        db.close()
+    _runs_db(tmp_path).close()  # migrate, don't wipe
+    db = sqlite3.connect(str(tmp_path / "runs.db"))
+    try:
+        cols = {r[1] for r in db.execute("PRAGMA table_info(runs)")}
+        row = db.execute(
+            "SELECT run_id, status FROM runs WHERE run_id = 'r-old'"
+            ).fetchone()
+    finally:
+        db.close()
+    assert {"mode", "started_at", "duration_s"} <= cols
+    assert row == ("r-old", "done")
+    assert rehydrate_runs(tmp_path) == 1
+    revived = client.get(
+        "/api/v1/lab-projects/p-old/runs/r-old").json()
+    assert revived["mode"] == "research"  # legacy default
+    assert revived["started_at"] is None
+
+
 def test_create_list_get_project(client):
     pid = _create(client)
     ids = [p["id"] for p in client.get("/api/v1/lab-projects").json()]

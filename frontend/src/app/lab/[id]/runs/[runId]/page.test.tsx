@@ -67,6 +67,10 @@ beforeEach(() => {
       if (path.endsWith("/approve")) {
         return { ok: true, json: async () => ({ run_id: "r", status: "running" }) };
       }
+      if (path.endsWith("/retry")) {
+        runStatus = "running";
+        return { ok: true, json: async () => ({ run_id: "r", status: "running" }) };
+      }
       if (path.endsWith("/runs/r")) {
         return {
           ok: true,
@@ -187,6 +191,46 @@ describe("RunView", () => {
     await screen.findByText("Run completed.");
     await new Promise((r) => setTimeout(r, 50));
     expect(FakeEventSource.instances.length).toBe(0);
+  });
+
+  it("shows retry on failed runs and resubscribes after retry", async () => {
+    runStatus = "failed";
+    // error text comes through the status payload
+    const origFetch = globalThis.fetch;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: { method?: string; body?: string }) => {
+        const path = String(url);
+        if (path.endsWith("/budget")) {
+          return { ok: true, json: async () => BUDGET };
+        }
+        if (path.endsWith("/retry")) {
+          runStatus = "running";
+          return { ok: true, json: async () => ({ run_id: "r", status: "running" }) };
+        }
+        if (path.endsWith("/runs/r")) {
+          return {
+            ok: true,
+            json: async () => ({
+              run_id: "r",
+              project_id: "p",
+              status: runStatus,
+              events: [],
+              needs_approval: false,
+              error: "model exploded",
+            }),
+          };
+        }
+        return (origFetch as typeof fetch)(url, init);
+      }),
+    );
+    render(<RunView />);
+    expect(await screen.findByText("model exploded")).toBeDefined();
+    expect(FakeEventSource.instances.length).toBe(0);
+    fireEvent.click(screen.getByText("Retry from last checkpoint"));
+    await vi.waitFor(() => {
+      expect(FakeEventSource.instances.length).toBe(1);
+    });
   });
 
   it("reset-on-open prevents replay duplicates", async () => {

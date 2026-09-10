@@ -86,6 +86,24 @@ def _record(run_id: str) -> dict:
         raise HTTPException(status_code=404, detail="run not found")
 
 
+def _ensure_graph(request: Request, store: LabProjectStore,
+                  rec: dict, project_id: str):
+    """Lazy recompile for records whose compiled graph is gone (post-
+    restart rehydrates). Rebuilds from current project.yaml in the RUN's
+    own persisted mode (PBI-034) — a tampered config ValueErrors, which
+    callers map to 400 leaving no phantom records.
+    NOTE: no outer `with _lock` here — get_graph() takes _lock itself
+    and threading.Lock is non-reentrant (self-deadlock caught by the
+    restart test's faulthandler dump)."""
+    if rec.get("graph") is not None:
+        return
+    meta = store.read_meta()
+    initial = rec.get("initial") or {}
+    mode = (rec.get("mode") or initial.get("mode") or meta.mode)
+    rec["graph"] = get_graph(_root(request), project_id,
+                             meta.council_models, meta.judge_model, mode)
+
+
 def _runs_db(root: Path) -> sqlite3.Connection:
     """Single runs.db beside the projects (runtime state, untracked —
     same class as checkpoints: regeneratable only by re-running)."""
@@ -93,29 +111,42 @@ def _runs_db(root: Path) -> sqlite3.Connection:
     db.execute("""CREATE TABLE IF NOT EXISTS runs
         (run_id TEXT PRIMARY KEY, project_id TEXT, status TEXT,
          events_json TEXT, error TEXT, updated_at TEXT)""")
-    # PBI-034: schema evolution without wiping history — the approve lazy
-    # path needs the run's own mode (a payload-overridden brainstorm run
-    # on a research project must not recompile as research after a
-    # restart). PBI-044 extends this helper with started_at/duration_s.
+    # Schema evolution without wiping history (PBI-034 added mode;
+    # PBI-044 adds started_at/duration_s the same way). CREATE TABLE
+    # alone cannot migrate existing DBs; ALTER-if-missing can.
     cols = {r[1] for r in db.execute("PRAGMA table_info(runs)")}
-    if "mode" not in cols:
-        db.execute("ALTER TABLE runs ADD COLUMN mode TEXT")
+    for col, ctype in (("mode", "TEXT"), ("started_at", "TEXT"),
+                       ("duration_s", "REAL")):
+        if col not in cols:
+            db.execute(f"ALTER TABLE runs ADD COLUMN {col} {ctype}")
     db.commit()
     return db
 
 
 def _save_run(root: Path, rec: dict):
+    now = datetime.now(timezone.utc)
     with _lock:
         mode = rec.get("mode") or (rec.get("initial") or {}).get(
             "mode", "research")
+        # duration_s is set only at rest (running rows stay NULL —
+        # a live duration would lie on every poll).
+        duration = None
+        started = rec.get("started_at")
+        if rec["status"] in RESTING and started:
+            try:
+                duration = (now - datetime.fromisoformat(started)
+                            ).total_seconds()
+            except ValueError:
+                duration = None
         snapshot = (rec["run_id"], rec["project_id"], rec["status"],
                     json.dumps(rec["events"]), rec["error"],
-                    datetime.now(timezone.utc).isoformat(), mode)
+                    now.isoformat(), mode, started, duration)
     db = _runs_db(root)
     try:
         db.execute("INSERT OR REPLACE INTO runs "
                    "(run_id, project_id, status, events_json, error, "
-                   "updated_at, mode) VALUES (?,?,?,?,?,?,?)", snapshot)
+                   "updated_at, mode, started_at, duration_s) "
+                   "VALUES (?,?,?,?,?,?,?,?,?)", snapshot)
         db.commit()
     finally:
         db.close()
@@ -135,13 +166,13 @@ def rehydrate_runs(root: Path) -> int:
         try:
             rows = db.execute(
                 "SELECT run_id, project_id, status, events_json, error, "
-                "mode FROM runs").fetchall()
+                "mode, started_at, duration_s FROM runs").fetchall()
         finally:
             db.close()
     except sqlite3.Error:
         return 0  # file-level corruption: never crash startup
     revived = 0
-    for run_id, project_id, status, events_json, error, mode in rows:
+    for run_id, project_id, status, events_json, error, mode, started_at, duration_s in rows:
         try:
             events = json.loads(events_json or "[]")
             assert isinstance(events, list)
@@ -154,7 +185,9 @@ def rehydrate_runs(root: Path) -> int:
                              "status": status, "events": events,
                              "error": error, "graph": None,
                              "initial": None, "root": str(root),
-                             "mode": mode or "research"}
+                             "mode": mode or "research",
+                             "started_at": started_at,
+                             "duration_s": duration_s}
         revived += 1
     return revived
 
@@ -164,7 +197,9 @@ def _payload(rec: dict) -> dict:
             "status": rec["status"], "events": list(rec["events"]),
             "needs_approval": rec["status"] == "awaiting_approval",
             "error": rec["error"],
-            "mode": rec.get("mode", "research")}
+            "mode": rec.get("mode", "research"),
+            "started_at": rec.get("started_at"),
+            "duration_s": rec.get("duration_s")}
 
 
 def _pump(run_id: str, initial=None):
@@ -229,6 +264,7 @@ def start_run(project_id: str, payload: dict, request: Request):
         if key in (payload.get("budget") or {}):
             setattr(budget, key, payload["budget"][key])
     run_id = uuid.uuid4().hex[:12]
+    started_at = datetime.now(timezone.utc).isoformat()
     initial = {
         "lab_project_id": project_id,
         "mode": mode,
@@ -242,7 +278,8 @@ def start_run(project_id: str, payload: dict, request: Request):
         _runs[run_id] = {"run_id": run_id, "project_id": project_id,
                          "status": "running", "events": [], "error": None,
                          "graph": graph, "initial": initial,
-                         "root": str(root), "mode": mode}
+                         "root": str(root), "mode": mode,
+                         "started_at": started_at, "duration_s": None}
     _save_run(root, _runs[run_id])
     threading.Thread(target=_pump, args=(run_id,), kwargs={"initial": initial},
                      daemon=True).start()
@@ -257,13 +294,18 @@ def list_runs(project_id: str, request: Request):
     restarts; pre-restart live runs reappear as "interrupted"."""
     _store(_root(request), project_id)  # 404 for unknown projects
     with _lock:
-        snapshot = [(r["run_id"], r["status"], len(r["events"]), r["error"])
+        snapshot = [(r["run_id"], r["status"], len(r["events"]), r["error"],
+                     r.get("mode", "research"), r.get("started_at"),
+                     r.get("duration_s"))
                     for r in _runs.values()
                     if r["project_id"] == project_id]
     return [{"run_id": rid, "status": status,
              "needs_approval": status == "awaiting_approval",
-             "events_count": count, "error": error}
-            for rid, status, count, error in reversed(snapshot)]
+             "events_count": count, "error": error,
+             "mode": mode, "started_at": started_at,
+             "duration_s": duration_s}
+            for rid, status, count, error, mode, started_at, duration_s
+            in reversed(snapshot)]
 
 
 @router.get("/{project_id}/runs/{run_id}")
@@ -325,25 +367,12 @@ def approve_run(project_id: str, run_id: str, payload: dict,
                             detail="decision must be approve or reject")
     store = _store(_root(request), project_id)
     # Lazy graph recompile BEFORE any decision is recorded: after a restart
-    # the record exists (rehydrated) but the compiled graph doesn't — rebuild
-    # from current project.yaml. A tampered config (e.g. judge overlap)
-    # 400s here like start_run, leaving no phantom D-approve-* record.
-    # NOTE: no outer `with _lock` here — get_graph() takes _lock itself
-    # and threading.Lock is non-reentrant (self-deadlock caught by the
-    # restart test's faulthandler dump).
+    # the record exists (rehydrated) but the compiled graph doesn't.
+    # A tampered config (e.g. judge overlap) 400s here like start_run,
+    # leaving no phantom D-approve-* record.
     if decision == "approve" and rec.get("graph") is None:
         try:
-            meta = store.read_meta()
-            # PBI-034: the run's own persisted mode wins (a brainstorm run
-            # started by payload override on a research project must
-            # recompile as brainstorm). meta.mode is last resort, for
-            # genuinely modeless legacy rows only.
-            initial = rec.get("initial") or {}
-            mode = (rec.get("mode") or initial.get("mode")
-                    or meta.mode)
-            rec["graph"] = get_graph(_root(request), project_id,
-                                     meta.council_models, meta.judge_model,
-                                     mode)
+            _ensure_graph(request, store, rec, project_id)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
     past = {"approve": "approved", "reject": "rejected"}[decision]
@@ -360,5 +389,36 @@ def approve_run(project_id: str, run_id: str, payload: dict,
     with _lock:
         rec["status"] = "running"
     _save_run(_root(request), rec)
+    threading.Thread(target=_pump, args=(run_id,), daemon=True).start()
+    return {"run_id": run_id, "status": "running"}
+
+
+@router.post("/{project_id}/runs/{run_id}/retry")
+def retry_run(project_id: str, run_id: str, request: Request):
+    """Explicit recovery (PBI-044): re-drive a `failed` or `interrupted`
+    run from its LangGraph checkpoint under the SAME run_id/thread
+    (run==thread contract kept — no new id, continuation events append).
+    400 for any other status. Interrupted runs CAN retry: threads die
+    with the process, but checkpoints persist — this explicit action is
+    the honest resume path PBI-029 forbade only silently."""
+    rec = _record(run_id)
+    if rec["project_id"] != project_id:
+        raise HTTPException(status_code=404, detail="run not found")
+    with _lock:
+        status = rec["status"]
+    if status not in ("failed", "interrupted"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"run is {status}: only failed/interrupted runs retry")
+    store = _store(_root(request), project_id)
+    try:
+        _ensure_graph(request, store, rec, project_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    with _lock:
+        rec["status"] = "running"
+        rec["error"] = None
+    _save_run(_root(request), rec)
+    # No initial: stream(None, config) resumes the thread checkpoint.
     threading.Thread(target=_pump, args=(run_id,), daemon=True).start()
     return {"run_id": run_id, "status": "running"}

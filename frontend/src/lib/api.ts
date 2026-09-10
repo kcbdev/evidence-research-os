@@ -121,6 +121,20 @@ export function getRun(projectId: string, runId: string): Promise<RunStatus> {
   );
 }
 
+export async function retryRun(
+  projectId: string,
+  runId: string,
+): Promise<{ run_id: string; status: string }> {
+  const res = await fetch(
+    `${BASE}/api/v1/lab-projects/${projectId}/runs/${runId}/retry`,
+    { method: "POST" },
+  );
+  if (!res.ok) {
+    throw new Error(`POST retry: ${res.status} — ${await res.text()}`);
+  }
+  return (await res.json()) as { run_id: string; status: string };
+}
+
 export async function approveRun(
   projectId: string,
   runId: string,

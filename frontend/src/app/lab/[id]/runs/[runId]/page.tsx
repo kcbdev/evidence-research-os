@@ -14,6 +14,7 @@ import {
 import {
   getBudget,
   getRun,
+  retryRun,
   streamRun,
   type Budget,
   type RunEvent,
@@ -43,6 +44,8 @@ export default function RunView() {
   const [endNote, setEndNote] = useState<string | null>(null);
   const [budget, setBudget] = useState<Budget | null>(null);
   const [connectKey, setConnectKey] = useState(0);
+  const [failed, setFailed] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState(false);
   const streamsRef = useRef<(() => void)[]>([]);
   // Set once this mount resolves a checkpoint: later replays of the same
   // historic checkpoint event must not reopen the modal (single pause
@@ -64,6 +67,15 @@ export default function RunView() {
           // Resting run: render from the status payload, no subscription.
           setEvents(s.events.filter(isNodeEvent));
           setCompleted(true);
+          return;
+        }
+        if (s.status === "failed" || s.status === "interrupted") {
+          // Resting but recoverable: show the error + retry, no stream
+          // (the stream would terminate immediately on a resting status).
+          setEvents(s.events.filter(isNodeEvent));
+          setFailed(s.status === "failed"
+            ? (s.error ?? "Run failed.")
+            : "Run was interrupted by a backend restart. Checkpoints persist — retry resumes explicitly.");
           return;
         }
         if (s.status === "awaiting_approval") {
@@ -128,6 +140,22 @@ export default function RunView() {
     }
   }
 
+  async function onRetry() {
+    setRetrying(true);
+    setEndNote(null);
+    try {
+      await retryRun(id, runId);
+      resolvedRef.current = false;
+      setFailed(null);
+      setEvents([]);
+      setConnectKey((k) => k + 1); // resubscribe: follow the resumed run
+    } catch (err) {
+      setEndNote(err instanceof Error ? err.message : "retry failed");
+    } finally {
+      setRetrying(false);
+    }
+  }
+
   return (
     <main className="flex flex-col gap-6" aria-label="Run view">
       <div>
@@ -139,6 +167,20 @@ export default function RunView() {
       {completed && (
         <Alert>
           <AlertTitle>Run completed.</AlertTitle>
+        </Alert>
+      )}
+      {failed && (
+        <Alert variant="destructive">
+          <AlertTitle>{failed}</AlertTitle>
+          <div className="mt-2">
+            <Button
+              className="min-h-[44px]"
+              disabled={retrying}
+              onClick={() => void onRetry()}
+            >
+              {retrying ? "Retrying…" : "Retry from last checkpoint"}
+            </Button>
+          </div>
         </Alert>
       )}
       {endNote && (
