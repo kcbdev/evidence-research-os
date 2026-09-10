@@ -79,7 +79,7 @@ stays `In Progress` until the batch review sorts it).
 | PBI-038 | Done | PBI-039 | Done* |
 | PBI-040 | Done* | PBI-041 | Done* |
 | PBI-042 | Done* | PBI-043 | Done* |
-| PBI-044 | Active | PBI-045 | Proposed |
+| PBI-044 | Done* | PBI-045 | Active |
 | PBI-046 | Proposed | PBI-047 | Proposed |
 | PBI-048 | Proposed | PBI-049 | Proposed |
 | PBI-050 | Proposed | PBI-051 | Proposed |

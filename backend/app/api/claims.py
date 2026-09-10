@@ -43,8 +43,8 @@ def rebuild_claims_index(lab_project_path: Path) -> Path:
     return db_path
 
 
-def _query(db_path: Path, status=None, min_confidence=0.0,
-           max_confidence=None, has_opposition=None):
+def _query(db_path: Path, statuses=None, min_confidence=0.0,
+           max_confidence=None, contradictions_only=False):
     db = sqlite3.connect(str(db_path))
     try:
         query = ("SELECT id, status, confidence, opposition, statement "
@@ -53,13 +53,11 @@ def _query(db_path: Path, status=None, min_confidence=0.0,
         if max_confidence is not None:
             query += " AND confidence <= ?"
             params.append(max_confidence)
-        if status is not None:
-            query += " AND status = ?"
-            params.append(status)
-        if has_opposition is True:
+        if statuses:
+            query += (" AND status IN (%s)" % ",".join("?" * len(statuses)))
+            params.extend(statuses)
+        if contradictions_only:
             query += " AND opposition > 0"
-        elif has_opposition is False:
-            query += " AND opposition = 0"
         query += " ORDER BY id"
         return [dict(zip(("id", "status", "confidence", "opposition",
                            "statement"), row))
@@ -72,14 +70,15 @@ def _query(db_path: Path, status=None, min_confidence=0.0,
 def list_claims(project_id: str, request: Request, status: str | None = None,
                 min_confidence: float = 0.0,
                 max_confidence: float | None = None,
-                has_opposition: bool | None = None):
-    """Filterable claims table source. The status+confidence-range+
-    opposition combination is the query grep cannot express — served by
-    the view."""
+                contradictions_only: bool = False):
+    """Filterable claims table source. status accepts a comma-separated
+    list (API Reference); contradictions_only maps to opposition > 0."""
     store = _store(_root(request), project_id)
     db_path = rebuild_claims_index(store.path)
-    return _query(db_path, status, min_confidence, max_confidence,
-                  has_opposition)
+    statuses = [s.strip() for s in status.split(",") if s.strip()] \
+        if status else None
+    return _query(db_path, statuses, min_confidence, max_confidence,
+                  contradictions_only)
 
 
 @router.get("/{project_id}/claims/{claim_id}")

@@ -6,7 +6,8 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app import config
-from app.api import audits, claims, ideas, lab_projects, runs, settings
+from app.api import (audits, claims, graph, ideas, lab_projects, runs,
+                   settings)
 
 
 def _allowed_origins() -> list[str]:
@@ -43,6 +44,8 @@ def create_app(lab_root=None) -> FastAPI:
     app.include_router(ideas.router, prefix="/api/v1/lab-projects")
     # PBI-040: audit read model beside the other project routers.
     app.include_router(audits.router, prefix="/api/v1/lab-projects")
+    # PBI-045: graph read model, same mount.
+    app.include_router(graph.router, prefix="/api/v1/lab-projects")
     # PBI-038: global fallbacks live at /api/v1 (not project-scoped).
     app.include_router(settings.router, prefix="/api/v1")
     return app

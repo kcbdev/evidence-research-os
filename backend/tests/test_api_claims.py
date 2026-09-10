@@ -59,11 +59,11 @@ def test_claims_filters(seeded):
         params={"min_confidence": 0.5}).json()] == ["C-high"]
     assert [r["id"] for r in client.get(
         "/api/v1/lab-projects/p/claims",
-        params={"has_opposition": True}).json()] == ["C-low"]
+        params={"contradictions_only": True}).json()] == ["C-low"]
     assert [r["id"] for r in client.get(
         "/api/v1/lab-projects/p/claims",
-        params={"status": "SUPPORTED", "min_confidence": 0.5,
-                "has_opposition": False}).json()] == ["C-high"]
+        params={"status": "SUPPORTED,DISPUTED",
+                "min_confidence": 0.5}).json()] == ["C-high"]
     # The card's own example: DISPUTED with confidence BELOW 0.5.
     assert [r["id"] for r in client.get(
         "/api/v1/lab-projects/p/claims",
@@ -73,7 +73,8 @@ def test_claims_filters(seeded):
                       params={"status": "NOPE"}).json() == []
     assert [r["id"] for r in client.get(
         "/api/v1/lab-projects/p/claims",
-        params={"has_opposition": False}).json()] == ["C-high"]
+        params={"status": "SUPPORTED,DISPUTED",
+                "contradictions_only": True}).json()] == ["C-low"]
 
 
 def test_unknown_project_creates_nothing(seeded):
