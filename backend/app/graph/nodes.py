@@ -410,6 +410,7 @@ def make_targeted_research(lab_project_path: Path):
 
     def targeted_research(state) -> dict:
         from app.tools.keyword_index import keyword_search
+        from app.tools.semantic_index import semantic_search
         store = LabProjectStore(lab_project_path, state["lab_project_id"])
         models = store.read_meta().council_models
         debates = Path(lab_project_path) / state["lab_project_id"] / "debates"
@@ -431,6 +432,14 @@ def make_targeted_research(lab_project_path: Path):
                                     for h in hits)
                 question = (f"{question}\n\nRelated prior findings "
                             f"(keyword index):\n{context}")
+            # PBI-042: Tier-3 alongside — paraphrase-tolerant hits from
+            # the vector index ride the same block. Same fail-loud rule.
+            sem = semantic_search(project_dir, question, limit=5)
+            if sem:
+                context = "\n".join(f"- {h['id']} (d={h['distance']:.3f}): "
+                                    f"{h['text'][:300]}" for h in sem)
+                question = (f"{question}\n\nRelated prior findings "
+                            f"(semantic index):\n{context}")
             model = models.get(agent, next(iter(models.values())))
             text, attempts = call_model_resilient(
                 model, load_prompt(agent), question)

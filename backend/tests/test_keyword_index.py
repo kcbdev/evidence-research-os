@@ -61,6 +61,9 @@ def test_targeted_research_carries_index_context(tmp_path, monkeypatch):
         seen["user"] = user
         return "done", 1
     monkeypatch.setattr("app.graph.nodes.call_model_resilient", _fake_call)
+    # No model download: the vector seam stays mocked (PBI-042).
+    monkeypatch.setattr("app.tools.semantic_index.embed",
+                        lambda text: [0.1, 0.2, 0.3])
     task = Task(id="T-1", question="microbe effect follow-up",
                 reason="r", assigned_agent="investigator")
     state = {"lab_project_id": "p", "mode": "research",
