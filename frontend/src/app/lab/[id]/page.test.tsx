@@ -85,10 +85,13 @@ describe("LabOverview", () => {
     );
   });
 
-  it("start button posts and navigates to the run view", async () => {
+  it("start dialog posts and navigates to the run view", async () => {
     render(<LabOverview />);
     fireEvent.click(await screen.findByRole("tab", { name: "Runs (2)" }));
     fireEvent.click(screen.getByRole("button", { name: "Start run" }));
+    // Dialog opens with the project question prefilled.
+    expect(await screen.findByRole("dialog")).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Start" }));
     await vi.waitFor(() => {
       expect(push).toHaveBeenCalledWith("/lab/p/runs/r9");
     });
@@ -105,6 +108,8 @@ describe("LabOverview", () => {
       "Judge model (must differ)",
     ) as HTMLInputElement;
     expect(judge.value).toBe("m-j");
+    // PBI-050: ideator is a fifth editable chair.
+    expect(screen.getByPlaceholderText(/Ideator model/)).toBeDefined();
 
     fireEvent.click(screen.getByRole("button", { name: "Save models" }));
     expect(await screen.findByText("Saved.")).toBeDefined();

@@ -36,12 +36,12 @@ import {
   getLabProject,
   getReport,
   listRuns,
-  startRun,
   updateModels,
   type Budget,
   type LabProjectDetail,
   type RunSummary,
 } from "@/lib/api";
+import RunStartDialog from "@/components/RunStartDialog";
 
 type Tab = "claims" | "runs" | "output" | "settings" | "ideas";
 
@@ -67,10 +67,10 @@ export default function LabOverview() {
   const [runsFailed, setRunsFailed] = useState(false);
   const [tab, setTab] = useState<Tab>("claims");
   const [error, setError] = useState<string | null>(null);
-  const [starting, setStarting] = useState(false);
   const [mScientist, setMScientist] = useState("");
   const [mInvestigator, setMInvestigator] = useState("");
   const [mSkeptic, setMSkeptic] = useState("");
+  const [mIdeator, setMIdeator] = useState("");
   const [mJudge, setMJudge] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -107,6 +107,7 @@ export default function LabOverview() {
       setMScientist(project.council_models.scientist ?? "");
       setMInvestigator(project.council_models.investigator ?? "");
       setMSkeptic(project.council_models.skeptic ?? "");
+      setMIdeator(project.council_models.ideator ?? "");
       setMJudge(project.judge_model ?? "");
     }
   }, [project]);
@@ -192,26 +193,16 @@ export default function LabOverview() {
 
         <TabsContent value="runs">
           <div className="flex flex-col gap-4">
-            <div>
-              <Button
-                disabled={starting}
-                className="min-h-[44px]"
-                onClick={() => {
-                  setStarting(true);
-                  setError(null);
-                  startRun(id).then(
-                    (run) => router.push(`/lab/${id}/runs/${run.run_id}`),
-                    (err: unknown) => {
-                      setError(
-                        err instanceof Error ? err.message : "start failed",
-                      );
-                      setStarting(false);
-                    },
-                  );
-                }}
-              >
-                {starting ? "Starting…" : "Start run"}
-              </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <RunStartDialog
+                projectId={id}
+                defaultQuestion={project.question}
+                defaultMode={project.mode}
+                onStarted={(runId) => router.push(`/lab/${id}/runs/${runId}`)}
+              />
+              <Link href={`/lab/${id}/runs`} className="underline text-sm">
+                Full history →
+              </Link>
             </div>
             {runsFailed ? (
               <Alert variant="destructive">
@@ -317,6 +308,7 @@ export default function LabOverview() {
                       scientist: mScientist.trim(),
                       investigator: mInvestigator.trim(),
                       skeptic: mSkeptic.trim(),
+                      ideator: mIdeator.trim(),
                     },
                     judge_model: mJudge.trim(),
                   }).then(
@@ -366,6 +358,17 @@ export default function LabOverview() {
                   className="min-h-[44px] font-mono"
                       value={mSkeptic}
                       onChange={(e) => setMSkeptic(e.target.value)}
+                    />
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="m-ideator">Ideator model</FieldLabel>
+                    <Input
+                      id="m-ideator"
+                      aria-label="Ideator model"
+                      placeholder="Ideator model (brainstorm runs)"
+                  className="min-h-[44px] font-mono"
+                      value={mIdeator}
+                      onChange={(e) => setMIdeator(e.target.value)}
                     />
                   </Field>
                   <Field>

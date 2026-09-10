@@ -43,10 +43,12 @@ def create_lab_project(payload: dict, request: Request):
     # Fail-closed model defaults: judge == council ("openrouter/auto"
     # everywhere) trips the PBI-008 exclusion check, so a project
     # REFUSES to run until real models are configured (creation payload
-    # or run payload overrides). No fake runnable defaults.
+    # or run payload overrides). No fake runnable defaults. PBI-050:
+    # ideator joins the defaults so brainstorm projects configure like
+    # the rest (still auto/auto → still refuses until set).
     council = payload.get("council_models", {
         "scientist": AUTO_MODEL, "investigator": AUTO_MODEL,
-        "skeptic": AUTO_MODEL})
+        "skeptic": AUTO_MODEL, "ideator": AUTO_MODEL})
     judge = payload.get("judge_model", AUTO_MODEL)
     project_id = _slug(payload["title"])
     store = LabProjectStore(_root(request), project_id)

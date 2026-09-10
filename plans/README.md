@@ -81,8 +81,8 @@ stays `In Progress` until the batch review sorts it).
 | PBI-042 | Done* | PBI-043 | Done* |
 | PBI-044 | Done* | PBI-045 | Done* |
 | PBI-046 | Done* | PBI-047 | Done* |
-| PBI-048 | Done* | PBI-049 | Active |
-| PBI-050 | Proposed | PBI-051 | Proposed |
+| PBI-048 | Done* | PBI-049 | Done* |
+| PBI-050 | Active | PBI-051 | Proposed |
 | PBI-052 | Proposed | PBI-053 | Proposed |
 | PBI-054 | Proposed | PBI-055 | Proposed |
 | PBI-056 | Proposed | PBI-057 | Proposed |

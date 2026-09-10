@@ -117,6 +117,9 @@ export interface RunSummary {
   needs_approval: boolean;
   events_count: number;
   error: string | null;
+  mode?: string;
+  started_at?: string | null;
+  duration_s?: number | null;
 }
 
 export function listRuns(projectId: string): Promise<RunSummary[]> {
@@ -134,7 +137,11 @@ export interface RunStatus {
 
 export async function startRun(
   projectId: string,
-  input: { question?: string; mode?: string } = {},
+  input: {
+    question?: string;
+    mode?: string;
+    budget?: { max_model_calls?: number; max_research_rounds?: number };
+  } = {},
 ): Promise<{ run_id: string; status: string }> {
   const res = await fetch(`${BASE}/api/v1/lab-projects/${projectId}/runs`, {
     method: "POST",
