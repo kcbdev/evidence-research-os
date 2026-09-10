@@ -350,9 +350,17 @@ async def stream_run(project_id: str, run_id: str):
 @router.post("/{project_id}/runs/{run_id}/approve")
 def approve_run(project_id: str, run_id: str, payload: dict,
                 request: Request):
-    """Resolve a checkpoint. Body: {decision: approve|reject, note?}.
-    Records D-approve-{run} in decisions/ via the store, then resumes
-    (approve) or parks (reject). 400 unless awaiting_approval."""
+    """Resolve a checkpoint. Body: {decision: approve|reject|edit,
+    note?, edited_content? (edit only)}. Records D-approve/D-reject/
+    D-edit-{run} in decisions/ via the store, then resumes (approve,
+    edit) or parks (reject). 400 unless awaiting_approval.
+
+    Edit-and-continue (PBI-052): the pending synthesis draft IS
+    output/report.md (synthesis already ran upstream of the
+    checkpoint), so the edit replaces that draft in place plus a full
+    copy in debates/ scratch; resume then ships the edited draft.
+    Re-running synthesis would regenerate from claims and discard the
+    edit — that path is deliberately NOT taken."""
     rec = _record(run_id)
     if rec["project_id"] != project_id:
         raise HTTPException(status_code=404, detail="run not found")
@@ -362,30 +370,56 @@ def approve_run(project_id: str, run_id: str, payload: dict,
         raise HTTPException(status_code=400,
                             detail=f"run is {status}, nothing to approve")
     decision = (payload or {}).get("decision", "approve")
-    if decision not in ("approve", "reject"):
+    if decision not in ("approve", "reject", "edit"):
         raise HTTPException(status_code=422,
-                            detail="decision must be approve or reject")
+                            detail="decision must be approve, reject, "
+                                   "or edit")
     store = _store(_root(request), project_id)
     # Lazy graph recompile BEFORE any decision is recorded: after a restart
     # the record exists (rehydrated) but the compiled graph doesn't.
     # A tampered config (e.g. judge overlap) 400s here like start_run,
     # leaving no phantom D-approve-* record.
-    if decision == "approve" and rec.get("graph") is None:
+    if decision in ("approve", "edit") and rec.get("graph") is None:
         try:
             _ensure_graph(request, store, rec, project_id)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
-    past = {"approve": "approved", "reject": "rejected"}[decision]
-    store.write_decision(Decision(
-        id=f"D-approve-{run_id}",
-        what=f"Human {past} run at checkpoint",
-        why=(payload or {}).get("note", ""),
-        timestamp=datetime.now(timezone.utc)))
     if decision == "reject":
+        store.write_decision(Decision(
+            id=f"D-approve-{run_id}",
+            what="Human rejected run at checkpoint",
+            why=(payload or {}).get("note", ""),
+            timestamp=datetime.now(timezone.utc)))
         with _lock:
             rec["status"] = "rejected"
         _save_run(_root(request), rec)
         return {"run_id": run_id, "status": "rejected"}
+    if decision == "edit":
+        edited = (payload or {}).get("edited_content", "")
+        if not edited.strip():
+            raise HTTPException(status_code=422,
+                                detail="edited_content is required "
+                                       "for edit")
+        draft = store.path / "output" / "report.md"
+        if not draft.is_file():
+            raise HTTPException(status_code=400,
+                                detail="no synthesis draft to edit yet")
+        draft.write_text(edited, encoding="utf-8")
+        debates = store.path / "debates"
+        debates.mkdir(parents=True, exist_ok=True)
+        (debates / f"approval-edit-{run_id}.md").write_text(
+            edited, encoding="utf-8")
+        store.write_decision(Decision(
+            id=f"D-edit-{run_id}",
+            what="Human edited synthesis draft at checkpoint",
+            why=(payload or {}).get("note", ""),
+            timestamp=datetime.now(timezone.utc)))
+    else:
+        store.write_decision(Decision(
+            id=f"D-approve-{run_id}",
+            what="Human approved run at checkpoint",
+            why=(payload or {}).get("note", ""),
+            timestamp=datetime.now(timezone.utc)))
     with _lock:
         rec["status"] = "running"
     _save_run(_root(request), rec)

@@ -443,3 +443,50 @@ def test_cors_allows_browser_origin(client):
             "Origin": "http://localhost:3000",
             "Access-Control-Request-Method": "POST"})
     assert preflight.status_code == 200
+
+
+# --- PBI-052: edit-and-continue ---
+
+def test_edit_replaces_draft_and_resumes(client, tmp_path):
+    pid = _create(client)
+    rid = client.post(f"/api/v1/lab-projects/{pid}/runs",
+                      json={}).json()["run_id"]
+    _wait_for(client, pid, rid, {"awaiting_approval"})
+    draft_before = client.get(
+        f"/api/v1/lab-projects/{pid}/output/report").json()["markdown"]
+    assert "# T" in draft_before  # synthesis draft exists pre-edit
+    edited = "# T\n\nHuman rewritten conclusions.\n"
+    resp = client.post(f"/api/v1/lab-projects/{pid}/runs/{rid}/approve",
+                       json={"decision": "edit",
+                             "edited_content": edited,
+                             "note": "tighten"})
+    assert resp.json() == {"run_id": rid, "status": "running"}
+    # The edited draft is what ships (observable downstream effect).
+    assert client.get(
+        f"/api/v1/lab-projects/{pid}/output/report").json()["markdown"] \
+        == edited
+    assert (tmp_path / pid / "debates" / f"approval-edit-{rid}.md"
+            ).read_text(encoding="utf-8") == edited
+    store = LabProjectStore(tmp_path, pid)
+    assert store.read_decision(f"D-edit-{rid}").what == \
+        "Human edited synthesis draft at checkpoint"
+    final = _wait_for(client, pid, rid, {"done"})
+    assert final["needs_approval"] is False
+
+
+def test_edit_validation(client):
+    pid = _create(client)
+    rid = client.post(f"/api/v1/lab-projects/{pid}/runs",
+                      json={}).json()["run_id"]
+    _wait_for(client, pid, rid, {"awaiting_approval"})
+    base = f"/api/v1/lab-projects/{pid}/runs/{rid}/approve"
+    assert client.post(base, json={"decision": "edit"}).status_code == 422
+    assert client.post(
+        base, json={"decision": "edit",
+                    "edited_content": "   "}).status_code == 422
+    assert client.post(
+        base, json={"decision": "maybe"}).status_code == 422
+    # run still paused and intact after rejected edits
+    assert client.get(
+        f"/api/v1/lab-projects/{pid}/runs/{rid}").json()["status"] == \
+        "awaiting_approval"
