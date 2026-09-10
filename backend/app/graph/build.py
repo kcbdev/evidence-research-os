@@ -20,12 +20,18 @@ from app.graph import nodes
 
 def build_graph(lab_project_path: Path,
                 council_models: dict[str, str],
-                judge_model: str):
+                judge_model: str,
+                mode: str = "research"):
     # Hard startup check FIRST: nothing (no dirs, no sqlite) is created
     # when the assignment is invalid. Params are REQUIRED (fail-closed):
     # every construction site — tests, shells, PBI-014 run start —
     # supplies the project.yaml model assignment explicitly.
     validate_model_assignment(council_models, judge_model)
+    if mode not in ("research", "brainstorm"):
+        raise ValueError(f"unknown mode: {mode!r}")
+    if mode == "brainstorm" and "ideator" not in council_models:
+        raise ValueError(
+            "brainstorm mode needs an 'ideator' model in council_models")
     lab_project_path = Path(lab_project_path)
     lab_project_path.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(
@@ -61,8 +67,16 @@ def build_graph(lab_project_path: Path,
     g.add_conditional_edges("trigger_classifier",
                             lambda s: "plan" if s["escalate"] else "final_output")
     g.add_edge("plan", "independent_first_pass")
-    g.add_edge("independent_first_pass", "evidence_extraction")
-    g.add_edge("evidence_extraction", "conflict_detection")
+    if mode == "brainstorm":
+        # PBI-034: divergence branch — novelty replaces conflict; the
+        # shared tail (review → adjudication → synthesis → audit →
+        # checkpoint → output) is empty-safe on zero claims.
+        g.add_node("novelty_check", nodes.make_novelty_check(lab_project_path))
+        g.add_edge("independent_first_pass", "novelty_check")
+        g.add_edge("novelty_check", "adversarial_review")
+    else:
+        g.add_edge("independent_first_pass", "evidence_extraction")
+        g.add_edge("evidence_extraction", "conflict_detection")
     # Topology delta vs guide §2.2 (accepted PBI-011, owns the PBI-007
     # mid-loop stop): an exhausted budget short-circuits to final_output
     # instead of looping or spending review calls it cannot afford.

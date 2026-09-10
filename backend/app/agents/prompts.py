@@ -10,6 +10,7 @@ _ROLE_FILES = {
     "investigator": "investigator.md",
     "skeptic": "skeptic.md",
     "judge": "judge.md",
+    "ideator": "ideator.md",  # PBI-034: brainstorm fourth chair
 }
 
 

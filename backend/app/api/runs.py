@@ -43,21 +43,24 @@ _graphs: dict[str, object] = {}
 
 
 def get_graph(root: Path, project_id: str,
-              council_models: dict, judge_model: str):
+              council_models: dict, judge_model: str,
+              mode: str = "research"):
     # Validated EVERY run (project.yaml may change between runs);
     # the compiled graph is structural and safely cached per project
     # (nodes re-read project.yaml live, so caching never bakes models
-    # in). One sqlite FD per project per process lifetime — acceptable
-    # MVP; clear_graph_cache() exists for tests/ops (a real closer,
+    # in). Cache key includes mode (PBI-034): a research-compiled graph
+    # must never serve a brainstorm run or vice versa. One sqlite FD
+    # per project per process lifetime — acceptable MVP;
+    # clear_graph_cache() exists for tests/ops (a real closer,
     # exercised in fixture teardown, not duck-typed hope).
     # NOTE: build_graph takes the lab ROOT (nodes append project_id
     # themselves) — passing store.path here doubles the id.
     validate_model_assignment(council_models, judge_model)
-    key = str(Path(root) / project_id)
+    key = str(Path(root) / project_id) + f":{mode}"
     with _lock:
         if key not in _graphs:
             _graphs[key] = build_graph(Path(root), council_models,
-                                       judge_model)
+                                       judge_model, mode)
         return _graphs[key]
 
 
@@ -196,8 +199,14 @@ def start_run(project_id: str, payload: dict, request: Request):
     meta = store.read_meta()
     council = payload.get("council_models", meta.council_models)
     judge = payload.get("judge_model", meta.judge_model)
+    mode = payload.get("mode", meta.mode)
+    # PBI-034: mode is validated here (422), not deep in the graph —
+    # fail-closed before any thread/record exists.
+    if mode not in ("research", "brainstorm"):
+        raise HTTPException(status_code=422,
+                            detail=f"unknown mode: {mode!r}")
     try:
-        graph = get_graph(root, project_id, council, judge)
+        graph = get_graph(root, project_id, council, judge, mode)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     budget = meta.budget.model_copy()
@@ -210,7 +219,7 @@ def start_run(project_id: str, payload: dict, request: Request):
     run_id = uuid.uuid4().hex[:12]
     initial = {
         "lab_project_id": project_id,
-        "mode": payload.get("mode", meta.mode),
+        "mode": mode,
         "active_question": payload.get("question", meta.question),
         "budget": budget, "pending_tasks": [], "open_contradictions": [],
         "escalate": False, "audit_passed": False,
@@ -313,8 +322,14 @@ def approve_run(project_id: str, run_id: str, payload: dict,
     if decision == "approve" and rec.get("graph") is None:
         try:
             meta = store.read_meta()
+            # PBI-034: the run's own mode survives in initial (rehydrate
+            # drops graph/initial, but live records keep them) — fall back
+            # to project mode only for pre-034 records without initial.
+            initial = rec.get("initial") or {}
+            mode = initial.get("mode", meta.mode)
             rec["graph"] = get_graph(_root(request), project_id,
-                                     meta.council_models, meta.judge_model)
+                                     meta.council_models, meta.judge_model,
+                                     mode)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
     past = {"approve": "approved", "reject": "rejected"}[decision]

@@ -31,7 +31,7 @@ from app.agents.client import call_model_resilient
 from app.agents.prompts import load_prompt
 from app.graph.budget import consume_calls, consume_round, is_exhausted
 from app.graph.state import LabProjectState
-from app.models.evidence import Claim, Decision, Evidence, Source, Task
+from app.models.evidence import Claim, Decision, Evidence, Idea, NoveltyCheck, ProposedExperiment, Source, Task
 from app.store.lab_project import LabProjectStore
 
 FINDING_FORMAT = """
@@ -170,6 +170,8 @@ def make_independent_first_pass(lab_project_path: Path):
                 in await asyncio.gather(*(_one(r) for r in ROLES))}
 
     def independent_first_pass(state) -> dict:
+        if state.get("mode") == "brainstorm":
+            return _brainstorm_pass(Path(lab_project_path), state)
         store = LabProjectStore(lab_project_path, state["lab_project_id"])
         models = store.read_meta().council_models
         # Sync-node only: LangGraph runs sync nodes in a worker thread with
@@ -186,6 +188,106 @@ def make_independent_first_pass(lab_project_path: Path):
         return {"first_pass": findings, "budget": tmp["budget"]}
 
     return independent_first_pass
+
+
+def _brainstorm_pass(lab_project_path: Path, state) -> dict:
+    """Sequential ideation loop (PBI-034): each proposal sees all prior
+    ideas, so calls are sequential, never gathered. New ideas per run are
+    capped by max_research_rounds (the loop bound); attempts are charged
+    whether the proposal parses or not — junk is never free."""
+    from app.agents.ideator import propose
+    store = LabProjectStore(lab_project_path, state["lab_project_id"])
+    meta = store.read_meta()
+    try:
+        model = meta.council_models["ideator"]
+    except KeyError:
+        raise ValueError(
+            "brainstorm mode needs an 'ideator' model in council_models")
+    cap = max(1, meta.budget.max_research_rounds)
+    prior = [i.statement for i in store.list_ideas()]
+    statements: list[str] = []
+    spent = 0
+    for _ in range(cap):
+        idea, attempts = propose(state["active_question"],
+                                 prior + statements, model)
+        spent += attempts
+        if idea is None:
+            continue  # unparsable proposal: charged, not written
+        n = len(store.list_ideas()) + 1
+        exp = None
+        if idea["hypothesis"] and idea["falsification_condition"]:
+            exp = ProposedExperiment(
+                hypothesis=idea["hypothesis"],
+                falsification_condition=idea["falsification_condition"],
+                feasibility=idea["feasibility"])
+        store.write_idea(Idea(id=f"I-{n:03d}", statement=idea["statement"],
+                              proposed_experiment=exp))
+        statements.append(idea["statement"])
+    tmp = {"budget": state["budget"].model_copy()}
+    consume_calls(tmp, spent)
+    return {"first_pass": {"ideator": "\n".join(statements)},
+            "budget": tmp["budget"]}
+
+
+NOVELTY_FORMAT = """
+Classify the candidate idea against the existing list. Reply with exactly:
+VERDICT: <NOVEL|ADJACENT|DUPLICATE>
+AGAINST: <comma-separated idea ids it overlaps, or "none">
+"""
+
+
+def _parse_novelty(text: str) -> tuple[str, list[str]]:
+    """Parse VERDICT/AGAINST lines. Unparseable verdicts default to novel
+    (least destructive — PBI-035's skeptic review re-examines everything);
+    unknown ids in AGAINST are dropped, never enshrined."""
+    verdict, against = "novel", []
+    for line in (text or "").splitlines():
+        line = line.strip()
+        if line.startswith("VERDICT:"):
+            v = line[len("VERDICT:"):].strip().upper()
+            if v in ("NOVEL", "ADJACENT", "DUPLICATE"):
+                verdict = v.lower()
+        elif line.startswith("AGAINST:"):
+            rest = line[len("AGAINST:"):].strip()
+            if rest.lower() != "none":
+                against = [p.strip() for p in rest.split(",") if p.strip()]
+    return verdict, against
+
+
+def make_novelty_check(lab_project_path: Path):
+    """PBI-034 (guide Task 23): Skeptic-model novelty judgment for fresh
+    `proposed` ideas lacking a novelty_check — replaces conflict_detection
+    on brainstorm runs. Sequential (each verdict joins the priors for the
+    next). NOTE: still on the research skeptic rubric; PBI-035 swaps in
+    the brainstorm rubric + idea lifecycle."""
+
+    def novelty_check(state) -> dict:
+        store = LabProjectStore(lab_project_path, state["lab_project_id"])
+        models = store.read_meta().council_models
+        ideas = store.list_ideas()
+        fresh = [i for i in ideas
+                 if i.status == "proposed" and i.novelty_check is None]
+        priors = [i for i in ideas if i not in fresh]
+        spent = 0
+        for idea in fresh:
+            listing = "\n".join(f"{p.id}: {p.statement}" for p in priors)
+            text, attempts = call_model_resilient(
+                models["skeptic"], load_prompt("skeptic"),
+                f"Candidate idea:\n{idea.id}: {idea.statement}\n\n"
+                f"Existing ideas:\n{listing or '(none yet)'}\n"
+                f"{NOVELTY_FORMAT}")
+            spent += attempts
+            verdict, against = _parse_novelty(text)
+            known = {p.id for p in priors} | {idea.id}
+            idea.novelty_check = NoveltyCheck(
+                status=verdict, against=[a for a in against if a in known])
+            store.write_idea(idea)
+            priors.append(idea)
+        tmp = {"budget": state["budget"].model_copy()}
+        consume_calls(tmp, spent)
+        return {"budget": tmp["budget"]}
+
+    return novelty_check
 
 
 def make_evidence_extraction(lab_project_path: Path):

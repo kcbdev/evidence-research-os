@@ -1,0 +1,186 @@
+"""PBI-034 gate: brainstorm mode executes end to end.
+
+LLM boundary mocked (call_model_resilient, role-aware); graph/store/threads
+are real. Polling loops carry deadlines. Research-path regression is owned
+by the existing suite — this file asserts brainstorm behavior plus the
+mode-branch topology split.
+"""
+import time
+import pytest
+from fastapi.testclient import TestClient
+from app.agents.ideator import parse_idea
+from app.api import runs as runs_mod
+from app.api.runs import clear_graph_cache
+from app.graph.build import build_graph
+from app.graph.nodes import _parse_novelty
+from app.main import create_app
+from app.models.evidence import BudgetState
+from app.store.lab_project import LabProjectStore
+
+COUNCIL = {"scientist": "m-sci", "investigator": "m-inv",
+           "skeptic": "m-ske", "ideator": "m-ide"}
+JUDGE = "m-judge"
+
+IDEA_TEXT = """IDEA: studied microbes explain the anomaly
+HYPOTHESIS: effect X comes from microbe Y
+FALSIFICATION: sterile replication shows no effect
+FEASIBILITY: high
+"""
+
+
+def _mock_llm(model_id, system, user, **k):
+    if "Ideator" in system:
+        return IDEA_TEXT, 1
+    if "Candidate idea:" in user:
+        return "VERDICT: NOVEL\nAGAINST: none", 1
+    return "", 1
+
+
+@pytest.fixture()
+def client(tmp_path, monkeypatch):
+    monkeypatch.setattr("app.graph.nodes.call_model_resilient", _mock_llm)
+    monkeypatch.setattr("app.agents.ideator.call_model_resilient", _mock_llm)
+    for var in ("GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL",
+                "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL"):
+        monkeypatch.setenv(var, "t" if "NAME" in var else "t@e.org")
+    runs_mod._runs.clear()
+    with TestClient(create_app(tmp_path)) as client:
+        yield client
+    clear_graph_cache()
+    runs_mod._runs.clear()
+
+
+def _create(client, **over):
+    payload = {"title": "T", "question": "q",
+               "council_models": dict(COUNCIL), "judge_model": JUDGE}
+    payload.update(over)
+    resp = client.post("/api/v1/lab-projects", json=payload)
+    assert resp.status_code == 200, resp.text
+    return resp.json()["id"]
+
+
+def _wait_for(client, pid, rid, want, deadline=30.0):
+    end = time.time() + deadline
+    while time.time() < end:
+        status = client.get(f"/api/v1/lab-projects/{pid}/runs/{rid}").json()
+        if status["status"] in want:
+            return status
+        time.sleep(0.2)
+    raise AssertionError(f"run {rid} never reached {want}")
+
+
+# --- unit: parsing ---
+
+def test_parse_idea_valid_and_degraded():
+    idea = parse_idea(IDEA_TEXT)
+    assert idea["statement"].startswith("studied microbes")
+    assert idea["falsification_condition"].startswith("sterile")
+    assert idea["feasibility"] == "high"
+    assert parse_idea("IDEA: ...\n") is None  # placeholder, not a finding
+    assert parse_idea("nothing structured here") is None
+    bad_tag = parse_idea(IDEA_TEXT.replace("high", "extreme"))
+    assert bad_tag["feasibility"] == "medium"  # bad tag voids tag only
+
+
+def test_parse_novelty_valid_and_garbage():
+    assert _parse_novelty("VERDICT: ADJACENT\nAGAINST: I-001, I-002") == \
+        ("adjacent", ["I-001", "I-002"])
+    assert _parse_novelty("VERDICT: none") == ("novel", [])
+    assert _parse_novelty("free prose, no verdict") == ("novel", [])
+
+
+# --- topology split (behavioral: streamed node order) ---
+
+def _streamed_nodes(tmp_path, mode, monkeypatch):
+    from app.models.evidence import ProjectMeta
+    monkeypatch.setattr("app.graph.nodes.call_model_resilient",
+                        lambda *a, **k: ("", 1))
+    monkeypatch.setattr("app.agents.ideator.call_model_resilient",
+                        lambda *a, **k: (IDEA_TEXT, 1))
+    for var in ("GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL",
+                "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL"):
+        monkeypatch.setenv(var, "t" if "NAME" in var else "t@e.org")
+    root = tmp_path / mode
+    store = LabProjectStore(root, "p")
+    store.write_meta(ProjectMeta(
+        id="p", title="t", question="q",
+        created_at="2026-09-05T10:00:00Z",
+        council_models=dict(COUNCIL), judge_model=JUDGE))
+    graph = build_graph(root, COUNCIL, JUDGE, mode)
+    state = {"lab_project_id": "p", "mode": mode,
+             "active_question": "does X improve Y?",
+             "budget": BudgetState(),
+             "pending_tasks": [], "open_contradictions": [],
+             "escalate": False, "audit_passed": False,
+             "needs_human_approval": False, "session_id": "s",
+             "first_pass": {}}
+    names = []
+    for chunk in graph.stream(
+            state, {"configurable": {"thread_id": "t"}},
+            stream_mode="updates"):
+        names.extend(chunk.keys())
+    return names
+
+
+def test_topology_splits_on_mode(tmp_path, monkeypatch):
+    brain = _streamed_nodes(tmp_path, "brainstorm", monkeypatch)
+    assert "novelty_check" in brain
+    assert "evidence_extraction" not in brain
+    assert "conflict_detection" not in brain  # wrong rubric for the job
+
+
+def test_research_topology_unchanged(tmp_path, monkeypatch):
+    research = _streamed_nodes(tmp_path, "research", monkeypatch)
+    assert "evidence_extraction" in research
+    assert "conflict_detection" in research
+    assert "novelty_check" not in research
+
+
+def test_build_graph_rejects_bad_mode_and_missing_ideator(tmp_path):
+    with pytest.raises(ValueError):
+        build_graph(tmp_path / "x", COUNCIL, JUDGE, "academic")
+    no_ide = {k: v for k, v in COUNCIL.items() if k != "ideator"}
+    with pytest.raises(ValueError):
+        build_graph(tmp_path / "y", no_ide, JUDGE, "brainstorm")
+
+
+# --- API: validation ---
+
+def test_start_run_rejects_unknown_mode(client):
+    pid = _create(client)
+    resp = client.post(f"/api/v1/lab-projects/{pid}/runs",
+                       json={"mode": "academic"})
+    assert resp.status_code == 422
+
+
+def test_brainstorm_without_ideator_model_400s(client):
+    no_ide = {k: v for k, v in COUNCIL.items() if k != "ideator"}
+    pid = _create(client, council_models=no_ide)
+    resp = client.post(f"/api/v1/lab-projects/{pid}/runs",
+                       json={"mode": "brainstorm"})
+    assert resp.status_code == 400
+
+
+# --- API: full brainstorm lifecycle ---
+
+def test_brainstorm_run_writes_ideas_only(client, tmp_path):
+    pid = _create(client)
+    rid = client.post(f"/api/v1/lab-projects/{pid}/runs",
+                      json={"mode": "brainstorm"}).json()["run_id"]
+    _wait_for(client, pid, rid, {"awaiting_approval"})
+    store = LabProjectStore(tmp_path, pid)
+    ideas = store.list_ideas()
+    assert len(ideas) >= 1
+    assert all(i.novelty_check is not None for i in ideas)
+    assert all(i.novelty_check.status == "novel" for i in ideas)
+    assert all(i.proposed_experiment is not None for i in ideas)
+    assert all(i.proposed_experiment.falsification_condition for i in ideas)
+    # Divergence only: the research artifact types stay empty.
+    assert store.list_claims() == []
+    assert store.list_evidence() == []
+    assert store.list_sources() == []
+    # ...and the paused run still approves through to done:
+    client.post(f"/api/v1/lab-projects/{pid}/runs/{rid}/approve",
+                json={"decision": "approve"})
+    final = _wait_for(client, pid, rid, {"done"})
+    assert final["needs_approval"] is False
