@@ -255,6 +255,35 @@ export function listTasks(
   );
 }
 
+export interface Idea {
+  id: string;
+  statement: string;
+  novelty_check: { status: string; against: string[] } | null;
+  proposed_experiment: { hypothesis: string; falsification_condition: string; feasibility: string } | null;
+  status: "proposed" | "under_skeptic_review" | "promoted_to_claim" | "rejected";
+}
+
+export function getIdeas(projectId: string, status?: string): Promise<Idea[]> {
+  const query = status ? `?status=${encodeURIComponent(status)}` : "";
+  return get<Idea[]>(`/api/v1/lab-projects/${projectId}/ideas${query}`);
+}
+
+export async function patchIdea(
+  projectId: string,
+  ideaId: string,
+  input: { status: "promoted_to_claim" | "rejected" },
+): Promise<{ created_claim_id?: string } & Idea> {
+  const res = await fetch(`${BASE}/api/v1/lab-projects/${projectId}/ideas/${ideaId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    throw new Error(`PATCH idea: ${res.status} — ${await res.text()}`);
+  }
+  return (await res.json()) as { created_claim_id?: string } & Idea;
+}
+
 const STREAM_TYPES = ["node", "human_checkpoint", "run_done"] as const;
 
 export function streamRun(
