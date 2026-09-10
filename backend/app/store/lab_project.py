@@ -12,6 +12,7 @@ from pathlib import Path
 from git import Repo
 from app.models.evidence import (
     Source, Claim, Evidence, Idea, Task, Decision, ProjectMeta,
+    AuditRun,
 )
 
 LAYOUT_SUBDIRS = [
@@ -150,3 +151,9 @@ class LabProjectStore:
 
     def list_decisions(self) -> list[Decision]:
         return self._list("decisions", Decision)
+
+    def write_audit_run(self, run: AuditRun):
+        self._write("audits", run.id, run, f"audit: {run.id}")
+
+    def list_audit_runs(self) -> list[AuditRun]:
+        return self._list("audits", AuditRun)

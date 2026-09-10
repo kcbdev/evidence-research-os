@@ -44,6 +44,11 @@ No milestone hierarchy — ordering only.
 
 ## Statuses (`Proposed` → `Active` → `In Review` → `Done` / `Blocked`)
 
+Chain protocol (2026-09-10, user-directed): PBIs execute back-to-back on
+deterministic gates only; adversarial reviews batch at the end.
+`Done*` = code-complete + gates green, end-batch review pending (Plane
+stays `In Progress` until the batch review sorts it).
+
 | PBI | Status | PBI | Status |
 |---|---|---|---|
 | PBI-001 | Done | PBI-011 | Done |
@@ -71,7 +76,7 @@ No milestone hierarchy — ordering only.
 | PBI-033 | Done | | |
 | PBI-034 | Done | PBI-035 | Done |
 | PBI-036 | Done | PBI-037 | In Review (manual: live witness) |
-| PBI-038 | In Review | PBI-039 | Proposed |
+| PBI-038 | Done | PBI-039 | Active |
 | PBI-040 | Proposed | PBI-041 | Proposed |
 | PBI-042 | Proposed | PBI-043 | Proposed |
 | PBI-044 | Proposed | PBI-045 | Proposed |

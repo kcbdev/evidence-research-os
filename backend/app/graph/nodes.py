@@ -31,7 +31,7 @@ from app.agents.client import call_model_resilient
 from app.agents.prompts import load_prompt, get_skeptic_rubric
 from app.graph.budget import consume_calls, consume_round, is_exhausted
 from app.graph.state import LabProjectState
-from app.models.evidence import Claim, Decision, Evidence, Idea, NoveltyCheck, ProposedExperiment, Source, Task
+from app.models.evidence import AuditCheck, Claim, Decision, Evidence, Idea, NoveltyCheck, ProposedExperiment, Source, Task
 from app.store.lab_project import LabProjectStore
 
 FINDING_FORMAT = """
@@ -638,20 +638,80 @@ def make_synthesis(lab_project_path: Path):
 
 
 def make_citation_audit(lab_project_path: Path):
-    """MVP existence check ONLY (pincite/support-match are Phase 3):
-    every source id cited by any claim must exist in sources/. Claims
-    themselves are never mutated here — FAIL routes to repair."""
+    """3-stage audit (PBI-039): claim-level citation sweep (MVP behavior
+    kept: every cited id must exist — FAIL routes to repair) PLUS per
+    (claim, evidence) existence → pincite → support_match with per-stage
+    rows persisted to audits/*.yaml for the UI. Unassessed stages are
+    WARNING with reason, never silent PASS. Auditor model calls are
+    charged to the budget (fetches are free); claims are never mutated
+    here."""
 
     def citation_audit(state) -> dict:
+        from datetime import datetime, timezone
+        from app.models.evidence import AuditRun, ClaimAudit
+        from app.tools.citation_verify import (
+            check_existence, check_pincite, check_support_match,
+            resolve_auditor)
         store = LabProjectStore(lab_project_path, state["lab_project_id"])
+        session = state["session_id"]
+        auditor = resolve_auditor(Path(lab_project_path))
+        results: list[ClaimAudit] = []
+        spent = 0
         known = {s.id for s in store.list_sources()}
-        passed = True
         for claim in store.list_claims():
             cited = list(claim.supporting_sources) + list(claim.opposing_sources)
-            if any(sid not in known for sid in cited):
-                passed = False
-                break
-        return {"audit_passed": passed}
+            missing = [sid for sid in cited if sid not in known]
+            if missing:
+                results.append(ClaimAudit(
+                    claim_id=claim.id, evidence_id=None,
+                    checks=[AuditCheck(
+                        stage="existence", status="FAIL",
+                        detail="cited source ids have no source object: "
+                               + ", ".join(sorted(set(missing))))]))
+            for ev in store.list_evidence():
+                if claim.id not in ev.supports:
+                    continue
+                try:
+                    source = store.read_source(ev.source_id)
+                except FileNotFoundError:
+                    results.append(ClaimAudit(
+                        claim_id=claim.id, evidence_id=ev.id,
+                        checks=[AuditCheck(
+                            stage="existence", status="FAIL",
+                            detail=f"source object {ev.source_id} missing"),
+                            AuditCheck(
+                                stage="pincite", status="WARNING",
+                                detail="no source text (existence failed)"),
+                            AuditCheck(
+                                stage="support_match", status="WARNING",
+                                detail="no source text (existence failed)")]))
+                    continue
+                text, existence = check_existence(
+                    source.url, Path(lab_project_path) / state["lab_project_id"],
+                    session)
+                pincite = check_pincite(ev.location, text)
+                if text is None:
+                    # No source text: judging support blind would spend a
+                    # call for noise — WARNING with reason, zero attempts.
+                    support, attempts = AuditCheck(
+                        stage="support_match", status="WARNING",
+                        detail="no source text (existence failed)"), 0
+                else:
+                    support, attempts = check_support_match(
+                        claim.statement, ev.text_reference, auditor)
+                spent += attempts
+                results.append(ClaimAudit(
+                    claim_id=claim.id, evidence_id=ev.id,
+                    checks=[existence, pincite, support]))
+        n = len(store.list_audit_runs()) + 1
+        store.write_audit_run(AuditRun(
+            id=f"A-{n:03d}", created_at=datetime.now(timezone.utc),
+            results=results))
+        passed = all(c.status != "FAIL"
+                     for row in results for c in row.checks)
+        tmp = {"budget": state["budget"].model_copy()}
+        consume_calls(tmp, spent)
+        return {"audit_passed": passed, "budget": tmp["budget"]}
 
     return citation_audit
 

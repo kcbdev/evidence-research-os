@@ -108,6 +108,25 @@ class Decision(BaseModel):
     timestamp: datetime
 
 
+class AuditCheck(BaseModel):
+    stage: Literal["existence", "pincite", "support_match"]
+    status: Literal["PASS", "WARNING", "FAIL"]
+    detail: str = ""
+
+
+class ClaimAudit(BaseModel):
+    claim_id: str
+    evidence_id: Optional[str] = None  # None = claim-level citation sweep
+    checks: list[AuditCheck] = []
+
+
+class AuditRun(BaseModel):
+    id: str
+    type: Literal["audit_run"] = "audit_run"
+    created_at: datetime
+    results: list[ClaimAudit] = []
+
+
 class BudgetState(BaseModel):
     max_model_calls: int = 50
     max_research_rounds: int = 5

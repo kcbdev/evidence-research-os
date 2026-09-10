@@ -55,7 +55,8 @@ def test_audit_passes_when_all_cited_exist(tmp_path, monkeypatch):
                             supporting_sources=["S-1"],
                             opposing_sources=[]))
     out = nodes.make_citation_audit(tmp_path)(_state())
-    assert out == {"audit_passed": True}
+    assert out["audit_passed"] is True
+    assert store.list_audit_runs()[-1].results == []
 
 
 def test_audit_fails_on_dangling_citation(tmp_path, monkeypatch):
@@ -64,7 +65,11 @@ def test_audit_fails_on_dangling_citation(tmp_path, monkeypatch):
     store.write_claim(Claim(id="C-1", statement="s",
                             supporting_sources=["S-404"]))
     out = nodes.make_citation_audit(tmp_path)(_state())
-    assert out == {"audit_passed": False}
+    assert out["audit_passed"] is False
+    row = store.list_audit_runs()[-1].results[0]
+    assert (row.claim_id, row.evidence_id) == ("C-1", None)
+    assert row.checks[0].stage == "existence"
+    assert row.checks[0].status == "FAIL"
 
 
 def test_repair_voids_dangling_links_keeps_status(tmp_path, monkeypatch):
@@ -79,7 +84,7 @@ def test_repair_voids_dangling_links_keeps_status(tmp_path, monkeypatch):
     assert (claim.supporting_sources, claim.opposing_sources) == (["S-1"], [])
     assert claim.status == "SUPPORTED"  # hygiene, not revision
     out = nodes.make_citation_audit(tmp_path)(_state())
-    assert out == {"audit_passed": True}
+    assert out["audit_passed"] is True
 
 
 def test_checkpoint_sets_approval_flag():
@@ -158,3 +163,82 @@ def test_pause_survives_graph_rebuild(tmp_path, monkeypatch):
     build_graph(tmp_path, COUNCIL, JUDGE).invoke(_state(), config)
     rebuilt = build_graph(tmp_path, COUNCIL, JUDGE)
     assert tuple(rebuilt.get_state(config).next) == ("human_checkpoint",)
+
+
+# --- PBI-039: 3-stage probes (real stage distinctions, never faked) ---
+
+def _seed_pair(store, section="methods"):
+    _source(store)
+    store.write_claim(Claim(id="C-1", statement="microbe Y causes effect X",
+                            supporting_sources=["S-1"], opposing_sources=[]))
+    store.write_evidence(Evidence(
+        id="E-1", source_id="S-1", location={"section": section},
+        text_reference="the paper mentions microbes in passing",
+        supports=["C-1"], evidence_type="empirical", strength="high"))
+
+
+def _mock_verify(monkeypatch, fetch_text="results and discussion",
+                 auditor_text="FAIL — merely topical, supports nothing.",
+                 auditor="m-aud"):
+    monkeypatch.setattr("app.tools.citation_verify.cached_fetch_url",
+                        lambda *a, **k: fetch_text)
+    monkeypatch.setattr("app.tools.citation_verify.call_model_resilient",
+                        lambda *a, **k: (auditor_text, 2))
+    monkeypatch.setattr("app.tools.citation_verify.resolve_auditor",
+                        lambda *a, **k: auditor)
+
+
+def test_support_match_fail_distinct_from_existence(tmp_path, monkeypatch):
+    """Done probe: real + reachable + off-claim source fails exactly at
+    support_match (PASS existence, WARNING pincite for the absent
+    section), not as a broken link."""
+    _mock(monkeypatch)
+    store = _seed(tmp_path)
+    _seed_pair(store)
+    _mock_verify(monkeypatch)
+    out = nodes.make_citation_audit(tmp_path)(_state())
+    assert out["audit_passed"] is False
+    assert out["budget"].calls_used == 2  # auditor attempts charged
+    row = store.list_audit_runs()[-1].results[-1]
+    assert (row.claim_id, row.evidence_id) == ("C-1", "E-1")
+    by_stage = {c.stage: c for c in row.checks}
+    assert by_stage["existence"].status == "PASS"
+    assert by_stage["pincite"].status == "WARNING"
+    assert by_stage["support_match"].status == "FAIL"
+    assert "topical" in by_stage["support_match"].detail
+
+
+def test_unreachable_source_fails_existence_only(tmp_path, monkeypatch):
+    _mock(monkeypatch)
+    store = _seed(tmp_path)
+    _seed_pair(store)
+
+    def _boom(*a, **k):
+        raise RuntimeError("connection refused")
+    monkeypatch.setattr("app.tools.citation_verify.cached_fetch_url", _boom)
+    monkeypatch.setattr("app.tools.citation_verify.resolve_auditor",
+                        lambda *a, **k: "m-aud")
+    out = nodes.make_citation_audit(tmp_path)(_state())
+    assert out["audit_passed"] is False
+    row = store.list_audit_runs()[-1].results[-1]
+    by_stage = {c.stage: c for c in row.checks}
+    assert by_stage["existence"].status == "FAIL"
+    assert "unreachable" in by_stage["existence"].detail
+    assert by_stage["pincite"].status == "WARNING"
+    assert by_stage["support_match"].status == "WARNING"
+    assert out["budget"].calls_used == 0  # no auditor call made
+
+
+def test_unset_auditor_degrades_to_warning(tmp_path, monkeypatch):
+    _mock(monkeypatch)
+    store = _seed(tmp_path)
+    _seed_pair(store, section="results and discussion")
+    _mock_verify(monkeypatch, auditor=None)
+    out = nodes.make_citation_audit(tmp_path)(_state())
+    row = store.list_audit_runs()[-1].results[-1]
+    by_stage = {c.stage: c for c in row.checks}
+    assert by_stage["existence"].status == "PASS"
+    assert by_stage["pincite"].status == "PASS"
+    assert by_stage["support_match"].status == "WARNING"
+    assert "no auditor model" in by_stage["support_match"].detail
+    assert out["audit_passed"] is True  # warnings don't fail the run
