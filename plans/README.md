@@ -69,8 +69,8 @@ No milestone hierarchy — ordering only.
 | PBI-031 | Done | | |
 | PBI-032 | Done | | |
 | PBI-033 | Done | | |
-| PBI-034 | Done | PBI-035 | Active |
-| PBI-036 | Proposed | PBI-037 | Proposed |
+| PBI-034 | Done | PBI-035 | Done |
+| PBI-036 | Active | PBI-037 | Proposed |
 | PBI-038 | Proposed | PBI-039 | Proposed |
 | PBI-040 | Proposed | PBI-041 | Proposed |
 | PBI-042 | Proposed | PBI-043 | Proposed |

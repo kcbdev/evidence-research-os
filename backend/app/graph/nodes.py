@@ -28,7 +28,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 import yaml
 from app.agents.client import call_model_resilient
-from app.agents.prompts import load_prompt
+from app.agents.prompts import load_prompt, get_skeptic_rubric
 from app.graph.budget import consume_calls, consume_round, is_exhausted
 from app.graph.state import LabProjectState
 from app.models.evidence import Claim, Decision, Evidence, Idea, NoveltyCheck, ProposedExperiment, Source, Task
@@ -441,7 +441,10 @@ def make_adversarial_review(lab_project_path: Path):
 
     def adversarial_review(state) -> dict:
         store = LabProjectStore(lab_project_path, state["lab_project_id"])
-        model = store.read_meta().council_models["skeptic"]
+        models = store.read_meta().council_models
+        model = models["skeptic"]
+        if state.get("mode") == "brainstorm":
+            return _brainstorm_adversarial_review(store, model, state)
         claims = store.list_claims()
         listing = "\n".join(f"{c.id}: {c.statement} [{c.status}]"
                             for c in claims)
@@ -456,6 +459,32 @@ def make_adversarial_review(lab_project_path: Path):
         return {"budget": tmp["budget"]}
 
     return adversarial_review
+
+
+def _brainstorm_adversarial_review(store, model, state):
+    """PBI-035: Skeptic reviews Ideas (not claims) against the brainstorm
+    rubric. Writes verdicts onto Ideas: status under_skeptic_review,
+    novelty_check detail, experiment critique. No claim/evidence/source writes."""
+    from app.models.evidence import Idea
+    ideas = [i for i in store.list_ideas()
+             if i.status in ("proposed", "under_skeptic_review")]
+    if not ideas:
+        return {}
+    listing = "\n".join(f"{i.id}: {i.statement} [novelty={i.novelty_check.status if i.novelty_check else 'pending'}, "
+                        f"exp={i.proposed_experiment.falsification_condition if i.proposed_experiment else 'none'}]"
+                        for i in ideas)
+    text, attempts = call_model_resilient(
+        model, load_prompt(get_skeptic_rubric("brainstorm")),
+        "Review these IDEAS for novelty, falsifiability, and experiment design:\n" + listing)
+    debates = Path(store.path) / "debates"
+    debates.mkdir(parents=True, exist_ok=True)
+    (debates / "adversarial.md").write_text(text, encoding="utf-8")
+    for idea in ideas:
+        idea.status = "under_skeptic_review"
+        store.write_idea(idea)
+    tmp = {"budget": state["budget"].model_copy()}
+    consume_calls(tmp, attempts)
+    return {"budget": tmp["budget"]}
 
 
 JUDGE_STATUSES = ("SUPPORTED", "STRONGLY_SUPPORTED", "WEAKLY_SUPPORTED",

@@ -9,6 +9,7 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 from app.agents.ideator import parse_idea
+from app.agents.prompts import get_skeptic_rubric
 from app.api import runs as runs_mod
 from app.api.runs import clear_graph_cache
 from app.graph.build import build_graph
@@ -27,12 +28,16 @@ FALSIFICATION: sterile replication shows no effect
 FEASIBILITY: high
 """
 
+SKEPTIC_BRAINSTORM_RESPONSE = """The idea is novel with a clear falsification condition. The experiment is well-designed: sterile replication would definitively test the hypothesis. Feasibility is high as the technique is standard."""
+
 
 def _mock_llm(model_id, system, user, **k):
     if "Ideator" in system:
         return IDEA_TEXT, 1
     if "Candidate idea:" in user:
         return "VERDICT: NOVEL\nAGAINST: none", 1
+    if "IDEAS for novelty" in user or "Review these IDEAS" in user:
+        return SKEPTIC_BRAINSTORM_RESPONSE, 1
     return "", 1
 
 
@@ -245,6 +250,21 @@ def test_brainstorm_run_writes_ideas_only(client, tmp_path):
                 json={"decision": "approve"})
     final = _wait_for(client, pid, rid, {"done"})
     assert final["needs_approval"] is False
+
+
+def test_get_skeptic_rubric():
+    assert get_skeptic_rubric("research") == "skeptic"
+    assert get_skeptic_rubric("brainstorm") == "skeptic-brainstorm"
+
+
+def test_brainstorm_skeptic_rubric_file_exists():
+    from pathlib import Path
+    p = Path(__file__).parents[2] / "backend/app/agents/prompts/skeptic-brainstorm.md"
+    assert p.is_file()
+    text = p.read_text(encoding="utf-8")
+    assert "IDEA, not a claim" in text
+    assert "novel" in text
+    assert "falsif" in text
 
 
 def test_restart_preserves_brainstorm_mode(client, tmp_path):
