@@ -83,7 +83,7 @@ stays `In Progress` until the batch review sorts it).
 | PBI-046 | Done* | PBI-047 | Done* |
 | PBI-048 | Done* | PBI-049 | Done* |
 | PBI-050 | Done* | PBI-051 | Blocked (needs Keystatic spec) |
-| PBI-052 | Active | PBI-053 | Proposed |
+| PBI-052 | Done* | PBI-053 | Active |
 | PBI-054 | Proposed | PBI-055 | Proposed |
 | PBI-056 | Proposed | PBI-057 | Proposed |
 | PBI-058 | Proposed | PBI-059 | Proposed |
