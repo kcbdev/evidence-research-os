@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { approveRun, getLabProject, listClaims } from "@/lib/api";
+import { approveRun, getLabProject, getReport, listClaims } from "@/lib/api";
 
 export default function ApprovalModal({
   projectId,
@@ -21,11 +21,14 @@ export default function ApprovalModal({
 }: {
   projectId: string;
   runId: string;
-  onResolved: (decision: "approve" | "reject") => void;
+  onResolved: (decision: "approve" | "reject" | "edit") => void;
 }) {
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<string | null>(null);
+  const [draftError, setDraftError] = useState<string | null>(null);
   const [dossier, setDossier] = useState<{
     rows: { status: string }[];
     evidence: number | null;
@@ -57,16 +60,32 @@ export default function ApprovalModal({
     };
   }, [projectId]);
 
-  async function decide(decision: "approve" | "reject") {
+  async function decide(decision: "approve" | "reject" | "edit") {
     if (busy) return; // re-entrancy: two clicks in one tick, one POST
+    if (decision === "edit" && (draft === null || !draft.trim())) {
+      setError("Edited draft is empty — nothing to continue with.");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
-      await approveRun(projectId, runId, decision, note);
+      await approveRun(projectId, runId, decision, note,
+        decision === "edit" ? (draft ?? "") : undefined);
       onResolved(decision);
     } catch (err) {
       setError(err instanceof Error ? err.message : "approval failed");
       setBusy(false);
+    }
+  }
+
+  async function openEditor() {
+    setDraftError(null);
+    try {
+      const res = await getReport(projectId);
+      setDraft(res.markdown);
+      setEditing(true);
+    } catch {
+      setDraftError("No synthesis draft to edit yet.");
     }
   }
 
@@ -149,24 +168,72 @@ export default function ApprovalModal({
             {error && <p className="text-sm text-destructive">{error}</p>}
           </FieldGroup>
         </form>
+        {editing && (
+          <div className="flex flex-col gap-1">
+            <label htmlFor="approval-draft" className="text-sm font-medium">
+              Synthesis draft (edits ship on continue)
+            </label>
+            <textarea
+              id="approval-draft"
+              aria-label="Synthesis draft"
+              className="min-h-48 rounded border bg-background px-2 py-1 font-mono text-sm"
+              value={draft ?? ""}
+              onChange={(e) => setDraft(e.target.value)}
+            />
+          </div>
+        )}
+        {draftError && <p className="text-sm text-destructive">{draftError}</p>}
         <DialogFooter>
-          <Button
-            disabled={busy}
-            type="button"
-            className="min-h-[44px]"
-            onClick={() => void decide("approve")}
-          >
-            Approve
-          </Button>
-          <Button
-            disabled={busy}
-            type="button"
-            variant="outline"
-            className="min-h-[44px]"
-            onClick={() => void decide("reject")}
-          >
-            Reject
-          </Button>
+          {!editing ? (
+            <>
+              <Button
+                disabled={busy}
+                type="button"
+                className="min-h-[44px]"
+                onClick={() => void decide("approve")}
+              >
+                Approve
+              </Button>
+              <Button
+                disabled={busy}
+                type="button"
+                variant="outline"
+                className="min-h-[44px]"
+                onClick={() => void openEditor()}
+              >
+                Edit draft…
+              </Button>
+              <Button
+                disabled={busy}
+                type="button"
+                variant="outline"
+                className="min-h-[44px]"
+                onClick={() => void decide("reject")}
+              >
+                Reject
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button
+                disabled={busy}
+                type="button"
+                className="min-h-[44px]"
+                onClick={() => void decide("edit")}
+              >
+                {busy ? "Continuing…" : "Save & continue"}
+              </Button>
+              <Button
+                disabled={busy}
+                type="button"
+                variant="outline"
+                className="min-h-[44px]"
+                onClick={() => setEditing(false)}
+              >
+                Back
+              </Button>
+            </>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

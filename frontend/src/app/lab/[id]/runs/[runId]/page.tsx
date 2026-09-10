@@ -120,8 +120,8 @@ export default function RunView() {
     };
   }, [id, runId, connectKey]);
 
-  const onResolved = useCallback((decision: "approve" | "reject") => {
-    if (decision === "approve") {
+  const onResolved = useCallback((decision: "approve" | "reject" | "edit") => {
+    if (decision === "approve" || decision === "edit") {
       resolvedRef.current = true;
       setNeedsApproval(false);
       setConnectKey((k) => k + 1); // resubscribe: follow to completion

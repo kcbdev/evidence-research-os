@@ -79,6 +79,48 @@ describe("ApprovalModal dossier", () => {
       note: "too hasty",
     });
   });
+
+  it("edit loads the draft and continues with edited content", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const path = String(url);
+        if (path.endsWith("/claims")) {
+          return { ok: true, json: async () => CLAIMS };
+        }
+        if (path.endsWith("/lab-projects/p")) {
+          return { ok: true, json: async () => PROJECT };
+        }
+        if (path.endsWith("/output/report")) {
+          return {
+            ok: true,
+            json: async () => ({ markdown: "# T\n\ndraft\n", generated_at: "t" }),
+          };
+        }
+        if (path.endsWith("/approve")) {
+          return { ok: true, json: async () => ({ run_id: "r", status: "running" }) };
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+    const onResolved = vi.fn();
+    render(<ApprovalModal projectId="p" runId="r" onResolved={onResolved} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Edit draft…" }));
+    const area = (await screen.findByLabelText("Synthesis draft")) as HTMLTextAreaElement;
+    expect(area.value).toContain("# T");
+    fireEvent.change(area, { target: { value: "# T\n\nrewritten\n" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save & continue" }));
+    await vi.waitFor(() => {
+      expect(onResolved).toHaveBeenCalledWith("edit");
+    });
+    const posts = (fetch as ReturnType<typeof vi.fn>).mock.calls.filter(
+      ([url]) => String(url).endsWith("/approve"),
+    );
+    expect(JSON.parse(posts[0][1].body as string)).toMatchObject({
+      decision: "edit",
+      edited_content: "# T\n\nrewritten\n",
+    });
+  });
 });
 
   it("dossier failure never blocks the buttons", async () => {

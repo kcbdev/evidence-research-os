@@ -179,15 +179,20 @@ export async function retryRun(
 export async function approveRun(
   projectId: string,
   runId: string,
-  decision: "approve" | "reject",
+  decision: "approve" | "reject" | "edit",
   note = "",
+  editedContent?: string,
 ): Promise<{ run_id: string; status: string }> {
   const res = await fetch(
     `${BASE}/api/v1/lab-projects/${projectId}/runs/${runId}/approve`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ decision, note }),
+      body: JSON.stringify({
+        decision,
+        note,
+        ...(editedContent !== undefined ? { edited_content: editedContent } : {}),
+      }),
     },
   );
   if (!res.ok) {
