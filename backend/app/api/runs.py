@@ -117,13 +117,16 @@ def rehydrate_runs(root: Path) -> int:
     root = Path(root)
     if not (root / "runs.db").exists():
         return 0
-    db = _runs_db(root)
     try:
-        rows = db.execute(
-            "SELECT run_id, project_id, status, events_json, error "
-            "FROM runs").fetchall()
-    finally:
-        db.close()
+        db = _runs_db(root)
+        try:
+            rows = db.execute(
+                "SELECT run_id, project_id, status, events_json, error "
+                "FROM runs").fetchall()
+        finally:
+            db.close()
+    except sqlite3.Error:
+        return 0  # file-level corruption: never crash startup
     revived = 0
     for run_id, project_id, status, events_json, error in rows:
         try:
@@ -300,6 +303,20 @@ def approve_run(project_id: str, run_id: str, payload: dict,
         raise HTTPException(status_code=422,
                             detail="decision must be approve or reject")
     store = _store(_root(request), project_id)
+    # Lazy graph recompile BEFORE any decision is recorded: after a restart
+    # the record exists (rehydrated) but the compiled graph doesn't — rebuild
+    # from current project.yaml. A tampered config (e.g. judge overlap)
+    # 400s here like start_run, leaving no phantom D-approve-* record.
+    # NOTE: no outer `with _lock` here — get_graph() takes _lock itself
+    # and threading.Lock is non-reentrant (self-deadlock caught by the
+    # restart test's faulthandler dump).
+    if decision == "approve" and rec.get("graph") is None:
+        try:
+            meta = store.read_meta()
+            rec["graph"] = get_graph(_root(request), project_id,
+                                     meta.council_models, meta.judge_model)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
     past = {"approve": "approved", "reject": "rejected"}[decision]
     store.write_decision(Decision(
         id=f"D-approve-{run_id}",
@@ -311,15 +328,6 @@ def approve_run(project_id: str, run_id: str, payload: dict,
             rec["status"] = "rejected"
         _save_run(_root(request), rec)
         return {"run_id": run_id, "status": "rejected"}
-    # Lazy graph recompile: after a restart the record exists (rehydrated)
-    # but the compiled graph doesn't — rebuild from current project.yaml.
-    # NOTE: no outer `with _lock` here — get_graph() takes _lock itself
-    # and threading.Lock is non-reentrant (self-deadlock caught by the
-    # restart test's faulthandler dump).
-    if rec.get("graph") is None:
-        meta = store.read_meta()
-        rec["graph"] = get_graph(_root(request), project_id,
-                                 meta.council_models, meta.judge_model)
     with _lock:
         rec["status"] = "running"
     _save_run(_root(request), rec)

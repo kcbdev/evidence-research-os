@@ -297,6 +297,32 @@ def test_live_run_rehydrates_as_interrupted(client, tmp_path):
     assert client.post(f"/api/v1/lab-projects/{pid}/runs/r-dead/approve",
                        json={}).status_code == 400
     assert client.get(f"/api/v1/lab-projects/{pid}/runs/r-junk").status_code == 404
+    # File-level corruption (garbage bytes, not rows) must never kill boot:
+    (tmp_path / "runs.db").write_bytes(b"\x00\x01garbage-not-sqlite")
+    assert rehydrate_runs(tmp_path) == 0
+    with TestClient(create_app(tmp_path)):  # lifespan rehydrates on boot
+        pass
+
+
+def test_approve_after_restart_with_tampered_config_400s(client, tmp_path):
+    pid = _create(client)
+    rid = client.post(f"/api/v1/lab-projects/{pid}/runs",
+                      json={}).json()["run_id"]
+    _wait_for(client, pid, rid, {"awaiting_approval"})
+    runs_mod._runs.clear()
+    clear_graph_cache()
+    assert rehydrate_runs(tmp_path) >= 1
+    # Tamper project.yaml: judge overlaps a council model (self-preference).
+    store = LabProjectStore(tmp_path, pid)
+    meta = store.read_meta()
+    meta.judge_model = meta.council_models["scientist"]
+    store.write_meta(meta)
+    resp = client.post(f"/api/v1/lab-projects/{pid}/runs/{rid}/approve",
+                       json={"decision": "approve"})
+    assert resp.status_code == 400, resp.text
+    # No phantom approval decision recorded for a run that never resumed:
+    ids = [d.id for d in LabProjectStore(tmp_path, pid).list_decisions()]
+    assert f"D-approve-{rid}" not in ids
 
 
 def test_patch_models_persists_and_validates(client, tmp_path):
