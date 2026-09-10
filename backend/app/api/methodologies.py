@@ -1,0 +1,128 @@
+"""Methodology registry API (PBI-055).
+
+CRUD over the YAML store (PBI-054): list, create, read, full update,
+set-default. Bodies validate against the Methodology schema — FastAPI
+returns 422 naming the field automatically. Path/body id mismatch
+422s; duplicate create 409s (never silently overwrite a pipeline);
+unknown ids 404.
+"""
+from fastapi import APIRouter, HTTPException
+from pydantic import ValidationError
+from app.graph.registry import CONDITION_REGISTRY, NODE_REGISTRY
+from app.models.methodology import Methodology
+from app.store.methodology import MethodologyStore
+
+router = APIRouter()
+# Module-global (the committed registry). Tests monkeypatch this attr
+# to a tmp dir — mutating the real YAMLs in tests is never acceptable.
+store = MethodologyStore()
+
+
+def _check_names(m: Methodology):
+    """Registry validation at save time (compile re-checks at use):
+    unknown names 422 naming methodology + stage + field. Judge overlap
+    enforced when a judge is set; empty judge means unconfigured (same
+    rule as the settings API)."""
+    ids = {s.id for s in m.workflow.stages}
+    for stage in m.workflow.stages:
+        if stage.node not in NODE_REGISTRY:
+            raise HTTPException(
+                status_code=422,
+                detail=f"methodology {m.id} stage {stage.id}: "
+                       f"unknown node '{stage.node}'")
+        if stage.loop_while is not None:
+            if stage.route is not None:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"methodology {m.id} stage {stage.id}: "
+                           "loop_while and route are mutually exclusive")
+            if stage.loop_while not in CONDITION_REGISTRY:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"methodology {m.id} stage {stage.id}: "
+                           f"unknown loop_while '{stage.loop_while}'")
+            if stage.loop_target not in ids:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"methodology {m.id} stage {stage.id}: "
+                           f"unknown loop_target '{stage.loop_target}'")
+        if stage.route is not None and \
+                stage.route not in CONDITION_REGISTRY:
+            raise HTTPException(
+                status_code=422,
+                detail=f"methodology {m.id} stage {stage.id}: "
+                       f"unknown route '{stage.route}'")
+    if m.models.get("judge"):
+        from app.agents.config import validate_model_assignment
+        try:
+            validate_model_assignment(
+                {k: v for k, v in m.models.items() if k != "judge"},
+                m.models["judge"])
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc))
+
+
+@router.get("/methodologies")
+def list_methodologies():
+    """Saved methodologies (the captured research/brainstorm/academic
+    pipelines ship as the first three)."""
+    return [m.model_dump(mode="json") for m in store.list()]
+
+
+@router.post("/methodologies", status_code=201)
+def create_methodology(payload: dict):
+    """Save a new methodology. Unknown node/condition names and 5b-keys
+    fail schema validation (422) — same gate as the compiler."""
+    try:
+        m = Methodology(**(payload or {}))
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    _check_names(m)
+    try:
+        store.get(m.id)
+        raise HTTPException(status_code=409,
+                            detail=f"methodology {m.id} already exists")
+    except KeyError:
+        pass
+    store.save(m)
+    return m.model_dump(mode="json")
+
+
+@router.get("/methodologies/{id}")
+def get_methodology(id: str):
+    try:
+        return store.get(id).model_dump(mode="json")
+    except KeyError:
+        raise HTTPException(status_code=404,
+                            detail=f"unknown methodology: {id}")
+
+
+@router.put("/methodologies/{id}")
+def update_methodology(id: str, payload: dict):
+    """Full update — same body/validation as POST."""
+    try:
+        m = Methodology(**(payload or {}))
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    if m.id != id:
+        raise HTTPException(status_code=422,
+                            detail="body id must match path id")
+    _check_names(m)
+    try:
+        store.get(id)
+    except KeyError:
+        raise HTTPException(status_code=404,
+                            detail=f"unknown methodology: {id}")
+    store.save(m)
+    return m.model_dump(mode="json")
+
+
+@router.post("/methodologies/{id}/set-default")
+def set_default(id: str):
+    """Mark default (unsets holders sharing any mode)."""
+    try:
+        store.set_default(id)
+    except KeyError:
+        raise HTTPException(status_code=404,
+                            detail=f"unknown methodology: {id}")
+    return {"default": id}

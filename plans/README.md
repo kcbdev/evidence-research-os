@@ -84,7 +84,7 @@ stays `In Progress` until the batch review sorts it).
 | PBI-048 | Done* | PBI-049 | Done* |
 | PBI-050 | Done* | PBI-051 | Blocked (needs Keystatic spec) |
 | PBI-052 | Done* | PBI-053 | Done* |
-| PBI-054 | Active | PBI-055 | Proposed |
+| PBI-054 | Done* | PBI-055 | Active |
 | PBI-056 | Proposed | PBI-057 | Proposed |
 | PBI-058 | Proposed | PBI-059 | Proposed |
 | PBI-060 | Proposed | PBI-061 | Proposed |

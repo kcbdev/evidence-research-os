@@ -6,8 +6,8 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app import config
-from app.api import (audits, claims, graph, ideas, lab_projects, product,
-                   runs, search, settings)
+from app.api import (audits, claims, graph, ideas, lab_projects,
+                   methodologies, product, runs, search, settings)
 
 
 def _allowed_origins() -> list[str]:
@@ -48,6 +48,8 @@ def create_app(lab_root=None) -> FastAPI:
     app.include_router(graph.router, prefix="/api/v1/lab-projects")
     # PBI-049: product-note handoff, same mount.
     app.include_router(product.router, prefix="/api/v1/lab-projects")
+    # PBI-055: methodology registry lives at /api/v1 (not scoped).
+    app.include_router(methodologies.router, prefix="/api/v1")
     # PBI-046: cross-project search lives at /api/v1 (not scoped).
     app.include_router(search.router, prefix="/api/v1")
     # PBI-038: global fallbacks live at /api/v1 (not project-scoped).
