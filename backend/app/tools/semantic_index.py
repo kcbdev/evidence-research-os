@@ -86,7 +86,7 @@ def _refresh(lab_root: Path, project_id: str, files: list[Path]):
     _check_project_id(project_id)
     lab_root = Path(lab_root)
     db = lancedb.connect(str(_shared_dir(lab_root)))
-    if TABLE not in db.list_tables():
+    if TABLE not in db.table_names():
         db.create_table(TABLE, data=[{
             "id": "__seed__", "vector": embed("seed"), "text": "",
             "project_id": "__seed__"}])
@@ -129,7 +129,7 @@ def semantic_search(project_dir: Path, query: str, limit: int = 10,
         _check_project_id(project_id)
         _ensure_fresh(project_dir, project_id)
     db = lancedb.connect(str(_shared_dir(root)))
-    if TABLE not in db.list_tables():
+    if TABLE not in db.table_names():
         return []
     table = db.open_table(TABLE)
     q = table.search(embed(query))
@@ -150,7 +150,7 @@ def cross_project_search(lab_root: Path, query: str,
     """Shared-table read (no refresh — freshness is per-project,
     maintained by investigator runs and backfill)."""
     db = lancedb.connect(str(_shared_dir(Path(lab_root))))
-    if TABLE not in db.list_tables():
+    if TABLE not in db.table_names():
         return []
     out = []
     for row in db.open_table(TABLE).search(embed(query)).limit(
