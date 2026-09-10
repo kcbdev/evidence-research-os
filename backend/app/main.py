@@ -1,6 +1,7 @@
 """App entrypoint. Routers land here (PBI-014/015); nothing else imports it."""
 
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,7 +18,14 @@ def _allowed_origins() -> list[str]:
 
 
 def create_app(lab_root=None) -> FastAPI:
-    app = FastAPI(title="Evidence Research OS")
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        # PBI-029: revive run records (pre-restart live runs surface as
+        # "interrupted"; paused runs stay approvable).
+        runs.rehydrate_runs(app.state.lab_root)
+        yield
+
+    app = FastAPI(title="Evidence Research OS", lifespan=lifespan)
     # PBI-019 witness catch: browsers block localhost:3000 → :8000
     # without this. Env-overridable for deploy; permissive methods/
     # headers are fine — auth does not exist in v1 (single operator).

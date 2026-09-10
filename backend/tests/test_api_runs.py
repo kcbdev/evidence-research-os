@@ -7,7 +7,8 @@ threads + RESTING statuses always terminate the waits).
 import time
 import pytest
 from fastapi.testclient import TestClient
-from app.api.runs import clear_graph_cache
+from app.api import runs as runs_mod
+from app.api.runs import clear_graph_cache, rehydrate_runs
 from app.main import create_app
 from app.store.lab_project import LabProjectStore
 
@@ -22,9 +23,11 @@ def client(tmp_path, monkeypatch):
     for var in ("GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL",
                 "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL"):
         monkeypatch.setenv(var, "t" if "NAME" in var else "t@e.org")
+    runs_mod._runs.clear()
     with TestClient(create_app(tmp_path)) as client:
         yield client
     clear_graph_cache()
+    runs_mod._runs.clear()
 
 
 def _create(client, **over):
@@ -232,6 +235,68 @@ def test_plan_artifact_adr_exists():
     adr = Path(__file__).resolve().parent.parent.parent / "DOCS" / "adrs" \
         / "0001-plan-artifacts-outside-store.md"
     assert adr.is_file()
+
+
+def test_run_record_persisted_to_sqlite(client, tmp_path):
+    import json
+    import sqlite3
+    pid = _create(client)
+    rid = client.post(f"/api/v1/lab-projects/{pid}/runs",
+                      json={}).json()["run_id"]
+    _wait_for(client, pid, rid, {"awaiting_approval"})
+    db = sqlite3.connect(str(tmp_path / "runs.db"))
+    try:
+        row = db.execute(
+            "SELECT status, events_json, error FROM runs WHERE run_id = ?",
+            (rid,)).fetchone()
+    finally:
+        db.close()
+    assert row is not None
+    status, events_json, error = row
+    assert status == "awaiting_approval" and error is None
+    assert isinstance(json.loads(events_json), list)
+
+
+def test_paused_run_survives_simulated_restart(client, tmp_path):
+    pid = _create(client)
+    rid = client.post(f"/api/v1/lab-projects/{pid}/runs",
+                      json={}).json()["run_id"]
+    _wait_for(client, pid, rid, {"awaiting_approval"})
+    # Simulate restart: drop ALL memory (records + compiled graphs),
+    # then rehydrate from runs.db like lifespan does on boot:
+    runs_mod._runs.clear()
+    clear_graph_cache()
+    assert rehydrate_runs(tmp_path) >= 1
+    paused = client.get(f"/api/v1/lab-projects/{pid}/runs/{rid}").json()
+    assert paused["status"] == "awaiting_approval"
+    assert paused["needs_approval"] is True
+    # ...and the paused run still approves through to done (lazy graph):
+    client.post(f"/api/v1/lab-projects/{pid}/runs/{rid}/approve",
+                json={"decision": "approve"})
+    final = _wait_for(client, pid, rid, {"done"})
+    assert final["needs_approval"] is False
+
+
+def test_live_run_rehydrates_as_interrupted(client, tmp_path):
+    import sqlite3
+    from app.api.runs import _runs_db
+    pid = _create(client)
+    _runs_db(tmp_path).close()  # schema only; rows below simulate a crash
+    db = sqlite3.connect(str(tmp_path / "runs.db"))
+    try:
+        db.execute("INSERT OR REPLACE INTO runs VALUES (?,?,?,?,?,?)",
+                   ("r-dead", pid, "running", "[]", None, "t"))
+        db.execute("INSERT OR REPLACE INTO runs VALUES (?,?,?,?,?,?)",
+                   ("r-junk", pid, "running", "not-json{{{", None, "t"))
+        db.commit()
+    finally:
+        db.close()
+    assert rehydrate_runs(tmp_path) == 1  # corrupt row skipped, not fatal
+    dead = client.get(f"/api/v1/lab-projects/{pid}/runs/r-dead").json()
+    assert dead["status"] == "interrupted"
+    assert client.post(f"/api/v1/lab-projects/{pid}/runs/r-dead/approve",
+                       json={}).status_code == 400
+    assert client.get(f"/api/v1/lab-projects/{pid}/runs/r-junk").status_code == 404
 
 
 def test_patch_models_persists_and_validates(client, tmp_path):

@@ -8,15 +8,18 @@ documented follow-up, not this PBI). Handlers never touch the
 filesystem except through LabProjectStore; the graph owns run state.
 
 SSE posture: the stream replays recorded events then follows live until
-a resting status (awaiting_approval/done/failed/rejected) or a 60s cap.
-Event names are "node" per graph step plus a synthetic
+a resting status (awaiting_approval/done/failed/rejected/interrupted)
+or a 60s cap. Event names are "node" per graph step plus a synthetic
 "human_checkpoint" event on pause (spec §9.3: no polling — the frontend
 keys its approval modal off that event). Clients reconnect after
-approving. Runs live in memory: a backend restart loses them (404
-afterwards) — acceptable single-operator MVP, documented not hidden.
+approving. Run RECORDS persist in <lab-root>/runs.db (PBI-029), so
+history survives restarts; runs live mid-restart resume as
+"interrupted" (threads don't survive processes — stated honestly,
+never silently resumed).
 """
 import asyncio
 import json
+import sqlite3
 import threading
 import uuid
 from datetime import datetime, timezone
@@ -31,7 +34,8 @@ from app.api.lab_projects import _root, _store
 
 router = APIRouter()
 
-RESTING = ("awaiting_approval", "done", "failed", "rejected")
+RESTING = ("awaiting_approval", "done", "failed", "rejected",
+           "interrupted")
 
 _lock = threading.Lock()
 _runs: dict[str, dict] = {}
@@ -79,6 +83,65 @@ def _record(run_id: str) -> dict:
         raise HTTPException(status_code=404, detail="run not found")
 
 
+def _runs_db(root: Path) -> sqlite3.Connection:
+    """Single runs.db beside the projects (runtime state, untracked —
+    same class as checkpoints: regeneratable only by re-running)."""
+    db = sqlite3.connect(str(Path(root) / "runs.db"))
+    db.execute("""CREATE TABLE IF NOT EXISTS runs
+        (run_id TEXT PRIMARY KEY, project_id TEXT, status TEXT,
+         events_json TEXT, error TEXT, updated_at TEXT)""")
+    db.commit()
+    return db
+
+
+def _save_run(root: Path, rec: dict):
+    with _lock:
+        snapshot = (rec["run_id"], rec["project_id"], rec["status"],
+                    json.dumps(rec["events"]), rec["error"],
+                    datetime.now(timezone.utc).isoformat())
+    db = _runs_db(root)
+    try:
+        db.execute("INSERT OR REPLACE INTO runs VALUES (?,?,?,?,?,?)",
+                   snapshot)
+        db.commit()
+    finally:
+        db.close()
+
+
+def rehydrate_runs(root: Path) -> int:
+    """Rebuild the registry from runs.db (called at startup). Runs
+    caught mid-flight become "interrupted" — their threads died with
+    the old process and resuming them silently would lie. Paused runs
+    keep awaiting_approval: their checkpoints persist, so approve still
+    works (graph recompiles on demand). Malformed rows are skipped."""
+    root = Path(root)
+    if not (root / "runs.db").exists():
+        return 0
+    db = _runs_db(root)
+    try:
+        rows = db.execute(
+            "SELECT run_id, project_id, status, events_json, error "
+            "FROM runs").fetchall()
+    finally:
+        db.close()
+    revived = 0
+    for run_id, project_id, status, events_json, error in rows:
+        try:
+            events = json.loads(events_json or "[]")
+            assert isinstance(events, list)
+        except Exception:
+            continue  # corrupt row: skip, never crash startup
+        if status == "running":
+            status = "interrupted"
+        with _lock:
+            _runs[run_id] = {"run_id": run_id, "project_id": project_id,
+                             "status": status, "events": events,
+                             "error": error, "graph": None,
+                             "initial": None, "root": str(root)}
+        revived += 1
+    return revived
+
+
 def _payload(rec: dict) -> dict:
     return {"run_id": rec["run_id"], "project_id": rec["project_id"],
             "status": rec["status"], "events": list(rec["events"]),
@@ -90,11 +153,13 @@ def _pump(run_id: str, initial=None):
     """Drive the graph to rest (pause or END), recording node events."""
     rec = _runs[run_id]
     graph = rec["graph"]
+    root = Path(rec["root"])
     config = {"configurable": {"thread_id": run_id}}
     try:
         for chunk in graph.stream(initial, config, stream_mode="updates"):
             with _lock:
                 rec["events"].extend({"node": node} for node in chunk)
+            _save_run(root, rec)
         nxt = tuple(graph.get_state(config).next)
         with _lock:
             if nxt:
@@ -109,10 +174,12 @@ def _pump(run_id: str, initial=None):
                 # silently and the UI could only poll for completion.
                 rec["events"].append({"node": "done",
                                       "etype": "run_done"})
+        _save_run(root, rec)
     except Exception as exc:  # never leave a run stuck in "running"
         with _lock:
             rec["status"] = "failed"
             rec["error"] = str(exc)
+        _save_run(root, rec)
 
 
 @router.post("/{project_id}/runs")
@@ -150,7 +217,9 @@ def start_run(project_id: str, payload: dict, request: Request):
     with _lock:
         _runs[run_id] = {"run_id": run_id, "project_id": project_id,
                          "status": "running", "events": [], "error": None,
-                         "graph": graph, "initial": initial}
+                         "graph": graph, "initial": initial,
+                         "root": str(root)}
+    _save_run(root, _runs[run_id])
     threading.Thread(target=_pump, args=(run_id,), kwargs={"initial": initial},
                      daemon=True).start()
     return {"run_id": run_id, "status": "running"}
@@ -159,10 +228,9 @@ def start_run(project_id: str, payload: dict, request: Request):
 @router.get("/{project_id}/runs")
 def list_runs(project_id: str, request: Request):
     """Run history for the overview tab: [{run_id, status,
-    needs_approval, events_count, error}], newest first.
-    MVP limitation: the registry is process memory — history vanishes
-    on backend restart (checkpoints persist, records don't). Persisting
-    runs is a later PBI, not this one."""
+    needs_approval, events_count, error}], newest first. Records
+    persist in runs.db, so history (and paused runs) survive backend
+    restarts; pre-restart live runs reappear as "interrupted"."""
     _store(_root(request), project_id)  # 404 for unknown projects
     with _lock:
         snapshot = [(r["run_id"], r["status"], len(r["events"]), r["error"])
@@ -241,8 +309,19 @@ def approve_run(project_id: str, run_id: str, payload: dict,
     if decision == "reject":
         with _lock:
             rec["status"] = "rejected"
+        _save_run(_root(request), rec)
         return {"run_id": run_id, "status": "rejected"}
+    # Lazy graph recompile: after a restart the record exists (rehydrated)
+    # but the compiled graph doesn't — rebuild from current project.yaml.
+    # NOTE: no outer `with _lock` here — get_graph() takes _lock itself
+    # and threading.Lock is non-reentrant (self-deadlock caught by the
+    # restart test's faulthandler dump).
+    if rec.get("graph") is None:
+        meta = store.read_meta()
+        rec["graph"] = get_graph(_root(request), project_id,
+                                 meta.council_models, meta.judge_model)
     with _lock:
         rec["status"] = "running"
+    _save_run(_root(request), rec)
     threading.Thread(target=_pump, args=(run_id,), daemon=True).start()
     return {"run_id": run_id, "status": "running"}
