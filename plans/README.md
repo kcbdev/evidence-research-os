@@ -71,7 +71,7 @@ No milestone hierarchy — ordering only.
 | PBI-033 | Done | | |
 | PBI-034 | Done | PBI-035 | Done |
 | PBI-036 | Done | PBI-037 | In Review (manual: live witness) |
-| PBI-038 | Active | PBI-039 | Proposed |
+| PBI-038 | In Review | PBI-039 | Proposed |
 | PBI-040 | Proposed | PBI-041 | Proposed |
 | PBI-042 | Proposed | PBI-043 | Proposed |
 | PBI-044 | Proposed | PBI-045 | Proposed |
