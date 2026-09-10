@@ -434,7 +434,9 @@ def make_targeted_research(lab_project_path: Path):
                             f"(keyword index):\n{context}")
             # PBI-042: Tier-3 alongside — paraphrase-tolerant hits from
             # the vector index ride the same block. Same fail-loud rule.
-            sem = semantic_search(project_dir, question, limit=5)
+            # PBI-046: shared table, filtered to this project.
+            sem = semantic_search(project_dir, question, limit=5,
+                                  project_id=state["lab_project_id"])
             if sem:
                 context = "\n".join(f"- {h['id']} (d={h['distance']:.3f}): "
                                     f"{h['text'][:300]}" for h in sem)

@@ -9,7 +9,8 @@ from app.graph import nodes
 from app.models.evidence import (BudgetState, Claim, ProjectMeta, Task)
 from app.store.lab_project import LabProjectStore
 from app.tools import semantic_index
-from app.tools.semantic_index import index_evidence_unit, semantic_search
+from app.tools.semantic_index import (backfill_shared_index,
+                                      cross_project_search, semantic_search)
 
 TS = "2026-09-05T10:00:00Z"
 COUNCIL = {"scientist": "m-sci", "investigator": "m-inv", "skeptic": "m-ske"}
@@ -51,7 +52,8 @@ def test_paraphrase_hit(tmp_path, no_download):
     _seed(tmp_path)
     # "germ" shares no tokens with "microbe" — BM25 would miss; the
     # fake embedding puts microbe-text near microbe-queries.
-    hits = semantic_search(tmp_path / "p", "microbe germ effects")
+    hits = semantic_search(tmp_path / "p", "microbe germ effects",
+                           project_id="p")
     assert hits[0]["id"] == "C-1"
     assert hits[0]["project_id"] == "p"
     assert all("distance" in h for h in hits)
@@ -62,23 +64,40 @@ def test_empty_project_no_build(tmp_path, no_download):
     with store.repo.config_writer() as cfg:
         cfg.set_value("user", "name", "test")
         cfg.set_value("user", "email", "test@example.org")
-    assert semantic_search(tmp_path / "p", "anything") == []
-    assert not (tmp_path / "p" / ".index" / "lancedb").exists()
+    assert semantic_search(tmp_path / "p", "anything",
+                           project_id="p") == []
+    assert not (tmp_path / ".shared-index").exists()
 
 
-def test_upsert_and_stale_refresh(tmp_path, no_download):
-    store = _seed(tmp_path)
-    index_evidence_unit(tmp_path / "p", "X-9", "microbe notes", "p")
-    assert semantic_search(tmp_path / "p", "microbe")[0]["id"] in (
-        "C-1", "X-9")
-    # Upsert replaces, never duplicates.
-    index_evidence_unit(tmp_path / "p", "X-9", "quantum notes", "p")
-    hits = semantic_search(tmp_path / "p", "quantum")
-    assert [h["id"] for h in hits].count("X-9") == 1
-    # New YAML invalidates → regenerate picks it up.
+def test_stale_refresh_and_backfill(tmp_path, no_download):
+    _seed(tmp_path)
+    assert backfill_shared_index(tmp_path) == ["p"]  # idempotent op
+    assert backfill_shared_index(tmp_path) == ["p"]
+    hits = cross_project_search(tmp_path, "microbe")
+    assert hits[0]["id"] == "C-1"  # nearest first; all rows returned
+    # New YAML invalidates → next scoped search regenerates.
+    store = LabProjectStore(tmp_path, "p")
     store.write_claim(Claim(id="C-3", statement="barnacle census"))
-    hits = semantic_search(tmp_path / "p", "barnacle census data")
+    hits = semantic_search(tmp_path / "p", "barnacle census data",
+                           project_id="p")
     assert "C-3" in [h["id"] for h in hits]
+
+
+def test_cross_project_probe(tmp_path, no_download):
+    _seed(tmp_path)
+    store = LabProjectStore(tmp_path, "q")
+    with store.repo.config_writer() as cfg:
+        cfg.set_value("user", "name", "test")
+        cfg.set_value("user", "email", "test@example.org")
+    from app.models.evidence import ProjectMeta as PM
+    store.write_meta(PM(id="q", title="Q", question="q",
+                        created_at="2026-09-05T10:00:00Z",
+                        council_models=COUNCIL, judge_model=JUDGE))
+    store.write_claim(Claim(id="C-9", statement="microbe census"))
+    assert sorted(backfill_shared_index(tmp_path)) == ["p", "q"]
+    hits = cross_project_search(tmp_path, "microbe census")
+    by_project = {h["project_id"] for h in hits}
+    assert {"p", "q"} <= by_project  # hit across project boundary
 
 
 def test_targeted_research_carries_semantic_context(tmp_path, monkeypatch,
