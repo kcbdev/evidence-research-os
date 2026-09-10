@@ -63,12 +63,11 @@ ordering only.
 | PBI-026 | Done | | |
 | PBI-027 | Done | | |
 | PBI-028 | Done | | |
-| PBI-029 | Proposed | | |
+| PBI-029 | Done (2026-09-10) | | |
 | PBI-030 | Done | | |
 | PBI-031 | Done | | |
 | PBI-032 | Done | | |
 | PBI-033 | Done | | |
-| PBI-029 | Proposed | | |
 
 ## Dependency graph
 
