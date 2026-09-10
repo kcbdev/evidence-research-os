@@ -5,7 +5,7 @@ Skeleton honesty: stubs implement no branch logic, so the test seeds
 decision). Everything else — edges taken, file written, interrupt hit,
 resume to END — is executed, not assumed.
 """
-from app.graph.build import build_graph
+from tests.helpers import default_graph
 from app.models.evidence import BudgetState
 
 import pytest
@@ -59,7 +59,7 @@ def make_state(**over):
 def test_checkpoint_file_created(tmp_path):
     import sqlite3
     proj = tmp_path / "proj"
-    build_graph(proj, COUNCIL, JUDGE)
+    default_graph(proj, "research", COUNCIL, JUDGE)
     assert (proj / "checkpoint.sqlite").is_file()
     # setup() wiring proof: file alone proves nothing (connect() is eager).
     tables = {r[0] for r in sqlite3.connect(str(proj / "checkpoint.sqlite"))
@@ -68,13 +68,13 @@ def test_checkpoint_file_created(tmp_path):
 
 
 def test_all_thirteen_nodes_registered(tmp_path):
-    graph = build_graph(tmp_path / "proj", COUNCIL, JUDGE)
+    graph = default_graph(tmp_path / "proj", "research", COUNCIL, JUDGE)
     assert set(NODES) <= set(graph.get_graph().nodes)
 
 
 def test_escalation_path_pauses_before_checkpoint(tmp_path):
     proj = tmp_path / "proj"
-    graph = build_graph(proj, COUNCIL, JUDGE)
+    graph = default_graph(proj, "research", COUNCIL, JUDGE)
     config = {"configurable": {"thread_id": "t1"}}
     graph.invoke(make_state(), config)
     # plan node executed on the escalation branch:
@@ -85,7 +85,7 @@ def test_escalation_path_pauses_before_checkpoint(tmp_path):
 
 def test_resume_after_approval_reaches_end(tmp_path):
     proj = tmp_path / "proj"
-    graph = build_graph(proj, COUNCIL, JUDGE)
+    graph = default_graph(proj, "research", COUNCIL, JUDGE)
     config = {"configurable": {"thread_id": "t1"}}
     graph.invoke(make_state(), config)
     graph.invoke(None, config)  # approve + resume

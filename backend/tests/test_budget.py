@@ -5,7 +5,7 @@ must reach END with no council work (no plan file); a fresh budget
 keeps the escalation path.
 """
 from app.graph.budget import consume_calls, consume_round, is_exhausted
-from app.graph.build import build_graph
+from tests.helpers import default_graph
 from app.models.evidence import BudgetState
 from app.graph.state import LabProjectState
 
@@ -58,7 +58,7 @@ def test_helpers_consume_and_detect():
 
 def test_exhausted_rounds_end_run_cleanly(tmp_path):
     proj = tmp_path / "proj"
-    graph = build_graph(proj, COUNCIL, JUDGE)
+    graph = default_graph(proj, "research", COUNCIL, JUDGE)
     config = {"configurable": {"thread_id": "t1"}}
     budget = BudgetState(max_model_calls=50, max_research_rounds=5,
                          rounds_used=5)
@@ -70,7 +70,7 @@ def test_exhausted_rounds_end_run_cleanly(tmp_path):
 
 def test_exhausted_calls_end_run_cleanly(tmp_path):
     proj = tmp_path / "proj"
-    graph = build_graph(proj, COUNCIL, JUDGE)
+    graph = default_graph(proj, "research", COUNCIL, JUDGE)
     config = {"configurable": {"thread_id": "t1"}}
     budget = BudgetState(max_model_calls=50, max_research_rounds=5,
                          calls_used=50)
@@ -82,7 +82,7 @@ def test_exhausted_calls_end_run_cleanly(tmp_path):
 
 def test_fresh_budget_still_escalates(tmp_path):
     proj = tmp_path / "proj"
-    graph = build_graph(proj, COUNCIL, JUDGE)
+    graph = default_graph(proj, "research", COUNCIL, JUDGE)
     config = {"configurable": {"thread_id": "t1"}}
     graph.invoke(make_state(BudgetState()), config)
     assert (proj / "plan" / "research-plan.yaml").is_file()

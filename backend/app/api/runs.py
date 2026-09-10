@@ -18,6 +18,7 @@ history survives restarts; runs live mid-restart resume as
 never silently resumed).
 """
 import asyncio
+import hashlib
 import json
 import sqlite3
 import threading
@@ -27,9 +28,11 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request
 from sse_starlette.sse import EventSourceResponse
 from app.agents.config import validate_model_assignment
-from app.graph.build import build_graph
+from app.graph.compile import build_graph_from_methodology
 from app.models.evidence import Decision
+from app.models.methodology import Methodology
 from app.store.lab_project import LabProjectStore
+from app.store.methodology import MethodologyStore
 from app.api.lab_projects import _root, _store
 
 router = APIRouter()
@@ -42,25 +45,44 @@ _runs: dict[str, dict] = {}
 _graphs: dict[str, object] = {}
 
 
-def get_graph(root: Path, project_id: str,
-              council_models: dict, judge_model: str,
-              mode: str = "research"):
-    # Validated EVERY run (project.yaml may change between runs);
-    # the compiled graph is structural and safely cached per project
-    # (nodes re-read project.yaml live, so caching never bakes models
-    # in). Cache key includes mode (PBI-034): a research-compiled graph
-    # must never serve a brainstorm run or vice versa. One sqlite FD
-    # per project per process lifetime — acceptable MVP;
-    # clear_graph_cache() exists for tests/ops (a real closer,
-    # exercised in fixture teardown, not duck-typed hope).
-    # NOTE: build_graph takes the lab ROOT (nodes append project_id
+def _methodology_hash(methodology: Methodology) -> str:
+    return hashlib.sha256(json.dumps(
+        methodology.model_dump(mode="json"),
+        sort_keys=True).encode()).hexdigest()[:12]
+
+
+def get_graph(root: Path, project_id: str, mode: str,
+              methodology: Methodology,
+              council_models: dict | None = None,
+              judge_model: str | None = None):
+    # PBI-054 cutover: the methodology file IS the pipeline — resolution
+    # (which file) happens in start_run/_ensure_graph; this compiles and
+    # caches. Effective assignment = methodology models under project
+    # overrides (spec precedence, documented at the call sites), validated
+    # EVERY call; a YAML edit changes the content hash, so stale pipelines
+    # can never be served from cache. One sqlite FD per cache entry per
+    # process lifetime — acceptable MVP; clear_graph_cache() for tests/ops.
+    # NOTE: the compiler takes the lab ROOT (nodes append project_id
     # themselves) — passing store.path here doubles the id.
-    validate_model_assignment(council_models, judge_model)
-    key = str(Path(root) / project_id) + f":{mode}"
+    base = {k: v for k, v in methodology.models.items() if k != "judge"}
+    council = {**base, **(council_models or {})}
+    judge = judge_model or methodology.models.get("judge", "")
+    if mode not in methodology.compatible_modes:
+        raise ValueError(
+            f"methodology {methodology.id} is not compatible "
+            f"with mode {mode!r}")
+    if mode == "brainstorm" and "ideator" not in council:
+        raise ValueError(
+            "brainstorm mode needs an 'ideator' model in council_models")
+    validate_model_assignment(council, judge)
+    effective = methodology.model_copy(
+        update={"models": {**council, "judge": judge}})
+    key = (str(Path(root) / project_id) + f":{methodology.id}:"
+           + _methodology_hash(effective))
     with _lock:
         if key not in _graphs:
-            _graphs[key] = build_graph(Path(root), council_models,
-                                       judge_model, mode)
+            _graphs[key] = build_graph_from_methodology(
+                effective, Path(root))
         return _graphs[key]
 
 
@@ -89,9 +111,10 @@ def _record(run_id: str) -> dict:
 def _ensure_graph(request: Request, store: LabProjectStore,
                   rec: dict, project_id: str):
     """Lazy recompile for records whose compiled graph is gone (post-
-    restart rehydrates). Rebuilds from current project.yaml in the RUN's
-    own persisted mode (PBI-034) — a tampered config ValueErrors, which
-    callers map to 400 leaving no phantom records.
+    restart rehydrates). Resolves the default methodology for the RUN's
+    own persisted mode (PBI-034) under current project.yaml overrides —
+    a tampered config ValueErrors, which callers map to 400 leaving no
+    phantom records.
     NOTE: no outer `with _lock` here — get_graph() takes _lock itself
     and threading.Lock is non-reentrant (self-deadlock caught by the
     restart test's faulthandler dump)."""
@@ -100,8 +123,10 @@ def _ensure_graph(request: Request, store: LabProjectStore,
     meta = store.read_meta()
     initial = rec.get("initial") or {}
     mode = (rec.get("mode") or initial.get("mode") or meta.mode)
-    rec["graph"] = get_graph(_root(request), project_id,
-                             meta.council_models, meta.judge_model, mode)
+    methodology = MethodologyStore().get_default_for_mode(mode)
+    rec["graph"] = get_graph(_root(request), project_id, mode,
+                             methodology, meta.council_models,
+                             meta.judge_model)
 
 
 def _runs_db(root: Path) -> sqlite3.Connection:
@@ -252,8 +277,13 @@ def start_run(project_id: str, payload: dict, request: Request):
     if mode not in ("research", "brainstorm", "academic"):
         raise HTTPException(status_code=422,
                             detail=f"unknown mode: {mode!r}")
+    # PBI-054: methodology resolution (explicit selection is PBI-056;
+    # until then the mode's default). Project/payload models override
+    # the methodology's — precedence documented here, not tribal.
     try:
-        graph = get_graph(root, project_id, council, judge, mode)
+        methodology = MethodologyStore().get_default_for_mode(mode)
+        graph = get_graph(root, project_id, mode, methodology,
+                          council, judge)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     budget = meta.budget.model_copy()

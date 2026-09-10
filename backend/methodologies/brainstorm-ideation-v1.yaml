@@ -1,0 +1,73 @@
+id: brainstorm-ideation-v1
+name: Brainstorm Ideation
+description: "Ideator + novelty check + skeptic review \u2014 divergent exploration,\
+  \ no claims"
+is_default: true
+compatible_modes:
+- brainstorm
+workflow:
+  stages:
+  - id: trigger_classifier
+    node: trigger_classifier
+    route: route_classifier
+  - id: plan
+    node: plan
+  - id: independent_first_pass
+    node: independent_first_pass
+    roles:
+    - scientist
+    - investigator
+    - skeptic
+  - id: novelty_check
+    node: novelty_check
+  - id: adversarial_review
+    node: adversarial_review
+  - id: evidence_adjudication
+    node: evidence_adjudication
+  - id: synthesis
+    node: synthesis
+  - id: citation_audit
+    node: citation_audit
+    route: route_audit
+  - id: targeted_repair
+    node: targeted_repair
+  - id: human_checkpoint
+    node: human_checkpoint
+    interrupt: true
+  - id: final_output
+    node: final_output
+tools:
+  enabled:
+  - search_web
+  - fetch_url
+  - fetch_pdf
+  - grep_project
+  - keyword_search
+  - semantic_search
+  - citation_verify
+  - store_source
+  - retrieve_evidence
+prompts:
+  set: role-prompts/v1
+  overrides: {}
+skills:
+  scientist:
+  - hypothesis-decomposition
+  investigator:
+  - source-retrieval
+  - contradiction-search
+  skeptic:
+  - adversarial-review-brainstorm
+  judge:
+  - evidence-adjudication
+  ideator:
+  - divergent-ideation
+models:
+  investigator: qwen/qwen3.5-flash-02-23
+  scientist: deepseek/deepseek-v4-flash-0731
+  skeptic: deepseek/deepseek-v4-flash-0731
+  ideator: deepseek/deepseek-v4-flash-0731
+  judge: meta-llama/llama-3.3-70b-instruct
+budget_defaults:
+  max_model_calls: 50
+  max_research_rounds: 5

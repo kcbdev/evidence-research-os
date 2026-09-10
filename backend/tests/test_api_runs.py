@@ -229,15 +229,28 @@ def _slow_mock(*a, **k):
 
 
 def test_graph_cache_revalidates_per_run(tmp_path, monkeypatch):
-    from app.api.runs import get_graph
+    from app.api.runs import clear_graph_cache, get_graph
+    from app.store.methodology import MethodologyStore
     for var in ("GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL",
                 "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL"):
         monkeypatch.setenv(var, "t" if "NAME" in var else "t@e.org")
     pid = _create_client_project(tmp_path)
-    g1 = get_graph(tmp_path, pid, COUNCIL, JUDGE)
-    assert get_graph(tmp_path, pid, COUNCIL, JUDGE) is g1  # cached
-    with pytest.raises(ValueError, match="self-preference"):
-        get_graph(tmp_path, pid, COUNCIL, "m-sci")  # tampered: still refuses
+    methodology = MethodologyStore().get_default_for_mode("research")
+    try:
+        g1 = get_graph(tmp_path, pid, "research", methodology,
+                       COUNCIL, JUDGE)
+        assert get_graph(tmp_path, pid, "research", methodology,
+                         COUNCIL, JUDGE) is g1  # cached
+        with pytest.raises(ValueError, match="self-preference"):
+            get_graph(tmp_path, pid, "research", methodology,
+                      COUNCIL, "m-sci")  # tampered: still refuses
+        # Edited methodology text recompiles (content-hash cache key).
+        tweaked = methodology.model_copy(deep=True)
+        tweaked.description = "edited"
+        g2 = get_graph(tmp_path, pid, "research", tweaked, COUNCIL, JUDGE)
+        assert g2 is not g1
+    finally:
+        clear_graph_cache()
 
 
 def _create_client_project(tmp_path):

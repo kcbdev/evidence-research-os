@@ -8,7 +8,7 @@ assertion below is executed against the real wiring.
 import pytest
 from app.agents.prompts import load_prompt
 from app.graph import nodes
-from app.graph.build import build_graph
+from tests.helpers import default_graph
 from app.graph.nodes import parse_findings
 from app.models.evidence import BudgetState, ProjectMeta
 from app.store.lab_project import LabProjectStore
@@ -256,7 +256,7 @@ def test_exhausted_mid_loop_ends_at_final_output(tmp_path, monkeypatch):
     _mock_llm(monkeypatch)
     _seed_project(tmp_path)
     proj = tmp_path  # graph root == lab-projects root for these nodes
-    graph = build_graph(proj, COUNCIL, JUDGE)
+    graph = default_graph(proj, "research", COUNCIL, JUDGE)
     config = {"configurable": {"thread_id": "t1"}}
     budget = BudgetState(max_model_calls=50, max_research_rounds=5,
                          calls_used=48)  # +3 in first pass exhausts calls
@@ -270,7 +270,7 @@ def test_exhausted_mid_loop_ends_at_final_output(tmp_path, monkeypatch):
 def test_contradiction_loop_terminates_on_rounds(tmp_path, monkeypatch):
     _mock_llm(monkeypatch)
     _seed_project(tmp_path)
-    graph = build_graph(tmp_path, COUNCIL, JUDGE)
+    graph = default_graph(tmp_path, "research", COUNCIL, JUDGE)
     config = {"configurable": {"thread_id": "t1"}}
     state = _state(budget=BudgetState(max_model_calls=500,
                                       max_research_rounds=1))

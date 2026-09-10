@@ -105,8 +105,8 @@ def test_hook_failure_recorded_not_fatal(tmp_path, monkeypatch):
 
 def test_no_event_log_stage_added(tmp_path, monkeypatch):
     """Dedup is a hook, not a stage: the compiled node set never names it."""
-    from app.graph.build import build_graph
+    from tests.helpers import default_graph
     _seed(tmp_path, monkeypatch)
-    graph = build_graph(tmp_path, COUNCIL, JUDGE)
+    graph = default_graph(tmp_path, "research", COUNCIL, JUDGE)
     assert "dedup" not in set(graph.get_graph().nodes)
     assert not any("cluster" in n for n in graph.get_graph().nodes)

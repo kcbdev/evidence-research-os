@@ -2,7 +2,7 @@
 
 Load-bearing rule: the judge must never adjudicate council output it
 could have produced itself (self-preference bias). Enforced as a hard
-startup check in `build_graph` — not a convention.
+startup check at graph compile — not a convention.
 """
 
 

@@ -6,10 +6,11 @@ here to stay hermetic.
 """
 import pytest
 from app.graph import nodes
-from app.graph.build import build_graph
+from tests.helpers import default_graph
 from app.models.evidence import (BudgetState, Claim, Confidence, Evidence,
                                  ProjectMeta, Source)
 from app.store.lab_project import LabProjectStore
+from app.store.methodology import MethodologyStore
 
 TS = "2026-09-05T10:00:00Z"
 COUNCIL = {"scientist": "m-sci", "investigator": "m-inv", "skeptic": "m-ske"}
@@ -69,7 +70,7 @@ def _state(**over):
 
 def test_academic_segment_order(tmp_path, monkeypatch):
     _seed(tmp_path, monkeypatch)
-    graph = build_graph(tmp_path, COUNCIL, JUDGE, "academic")
+    graph = default_graph(tmp_path, "academic", COUNCIL, JUDGE)
     names = []
     for chunk in graph.stream(
             _state(), {"configurable": {"thread_id": "t"}},
@@ -86,9 +87,9 @@ def test_academic_segment_order(tmp_path, monkeypatch):
 def test_academic_costs_more_than_research(tmp_path, monkeypatch):
     _seed(tmp_path, monkeypatch)
     _seed_evidenced(LabProjectStore(tmp_path, "p"))
-    academic = build_graph(tmp_path, COUNCIL, JUDGE, "academic")
+    academic = default_graph(tmp_path, "academic", COUNCIL, JUDGE)
     out_a = academic.invoke(_state(), {"configurable": {"thread_id": "ta"}})
-    research = build_graph(tmp_path, COUNCIL, JUDGE, "research")
+    research = default_graph(tmp_path, "research", COUNCIL, JUDGE)
     out_r = research.invoke(_state(mode="research"),
                             {"configurable": {"thread_id": "tr"}})
     assert out_a["budget"].calls_used > out_r["budget"].calls_used
@@ -130,7 +131,8 @@ def test_reproducibility_transcript(tmp_path, monkeypatch):
     assert "- E-2: FAIL" in text
 
 
-def test_academic_rejects_without_mode_plumbing(tmp_path):
-    import pytest as _p
-    with _p.raises(ValueError):
-        build_graph(tmp_path / "x", COUNCIL, JUDGE, "postdoc")
+def test_unknown_mode_has_no_default_methodology(tmp_path):
+    # Mode validation moved with the cutover: unknown modes resolve to
+    # no methodology (runs.py maps this to 422 before any thread).
+    with pytest.raises(ValueError, match="no default methodology"):
+        MethodologyStore().get_default_for_mode("postdoc")

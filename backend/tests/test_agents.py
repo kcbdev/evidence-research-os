@@ -6,7 +6,6 @@ import openai
 import pytest
 from app.agents import client as client_mod
 from app.agents.config import validate_model_assignment
-from app.graph.build import build_graph
 
 COUNCIL = {"scientist": "m-sci", "investigator": "m-inv", "skeptic": "m-ske"}
 
@@ -85,15 +84,25 @@ def test_resilient_passes_through_non_api_errors(monkeypatch):
 
 
 def test_build_graph_overlap_creates_nothing(tmp_path):
+    from app.graph.compile import build_graph_from_methodology
+    from app.models.methodology import Methodology
     proj = tmp_path / "proj"
+    overlap = dict(COUNCIL)
+    m = Methodology(
+        id="m", name="m", description="d", compatible_modes=["research"],
+        workflow={"stages": [{"id": "a", "node": "plan"}]},
+        tools={"enabled": []}, prompts={"set": "x"}, skills={},
+        models={**overlap, "judge": "m-sci"},
+        budget_defaults={})
     with pytest.raises(ValueError, match="self-preference"):
-        build_graph(proj, COUNCIL, "m-sci")
+        build_graph_from_methodology(m, proj)
     assert not proj.exists()  # refused before any node, dir, or sqlite
 
 
 def test_build_graph_requires_model_assignment(tmp_path):
+    from app.graph.compile import build_graph_from_methodology
     with pytest.raises(TypeError):
-        build_graph(tmp_path / "proj")  # type: ignore[call-arg]
+        build_graph_from_methodology()  # type: ignore[call-arg]
     # Fail-closed: no bare construction site may skip the judge check.
 
 

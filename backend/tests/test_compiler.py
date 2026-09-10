@@ -6,7 +6,6 @@ mocked; stores/graphs real.
 """
 import pytest
 from pathlib import Path
-from app.graph.build import build_graph
 from app.graph.compile import build_graph_from_methodology
 from app.models.evidence import BudgetState, ProjectMeta
 from app.models.methodology import Methodology
@@ -14,7 +13,6 @@ from app.store.lab_project import LabProjectStore
 
 COUNCIL = {"scientist": "m-sci", "investigator": "m-inv", "skeptic": "m-ske"}
 JUDGE = "m-judge"
-FULL_COUNCIL = dict(COUNCIL, ideator="m-ide")
 MODELS = {**COUNCIL, "judge": JUDGE}
 
 
@@ -102,7 +100,7 @@ def _seed_into(root, mode="research"):
     store.write_meta(ProjectMeta(
         id="p", title="t", question="q",
         created_at="2026-09-05T10:00:00Z", mode=mode,
-        council_models=dict(FULL_COUNCIL),
+        council_models=dict(COUNCIL, ideator="m-ide"),
         judge_model=JUDGE))
     return store
 
@@ -134,17 +132,29 @@ def _stream_names(graph, state, thread):
     ("brainstorm", BRAINSTORM_STAGES),
     ("academic", ACADEMIC_STAGES),
 ])
-def test_compiler_matches_hardcoded_topology(tmp_path, monkeypatch,
-                                             mode, stages):
-    """Differential parity: identical streamed node sequences."""
+def test_captured_yaml_matches_inline_topology(tmp_path, monkeypatch,
+                                               mode, stages):
+    """Capture parity (PBI-054): the committed YAML files carry EXACTLY
+    the stage sequences the hardcoded builder had (inline here as the
+    witness transcript) — same ids, nodes, routes, interrupts, order.
+    Any capture drift fails here, not in production."""
+    from app.store.methodology import MethodologyStore
     _mock(monkeypatch)
-    _seed_into(tmp_path / "old", mode)
+    captured = MethodologyStore().get_default_for_mode(mode)
+    assert [s.id for s in captured.workflow.stages] == \
+        [s["id"] for s in stages]
+    assert [(s.id, s.node, s.route, s.loop_while, s.loop_target,
+             s.interrupt) for s in captured.workflow.stages] == \
+        [(s["id"], s["node"], s.get("route"), s.get("loop_while"),
+          s.get("loop_target"), s.get("interrupt", False))
+         for s in stages]
+    # ...and the captured file still streams the full pipeline to pause.
     _seed_into(tmp_path / "new", mode)
-    old = build_graph(tmp_path / "old", FULL_COUNCIL, JUDGE, mode)
-    new = build_graph_from_methodology(
-        _methodology(f"m-{mode}", [mode], stages), tmp_path / "new")
-    assert _stream_names(new, _state(mode), "t-new") == \
-        _stream_names(old, _state(mode), "t-old")
+    graph = build_graph_from_methodology(captured, tmp_path / "new")
+    config = {"configurable": {"thread_id": "t-new"}}
+    names = _stream_names(graph, _state(mode), "t-new")
+    assert "final_output" not in names  # interrupt stops the stream
+    assert tuple(graph.get_state(config).next) == ("human_checkpoint",)
 
 
 def test_loop_form_compiles_and_loops(tmp_path, monkeypatch):

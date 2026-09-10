@@ -11,12 +11,13 @@ from fastapi.testclient import TestClient
 from app.agents.ideator import parse_idea
 from app.agents.prompts import get_skeptic_rubric
 from app.api import runs as runs_mod
-from app.api.runs import clear_graph_cache
-from app.graph.build import build_graph
+from app.api.runs import clear_graph_cache, get_graph
 from app.graph.nodes import _parse_novelty
 from app.main import create_app
 from app.models.evidence import BudgetState
 from app.store.lab_project import LabProjectStore
+from app.store.methodology import MethodologyStore
+from tests.helpers import default_graph
 
 COUNCIL = {"scientist": "m-sci", "investigator": "m-inv",
            "skeptic": "m-ske", "ideator": "m-ide"}
@@ -111,7 +112,7 @@ def _streamed_nodes(tmp_path, mode, monkeypatch):
         id="p", title="t", question="q",
         created_at="2026-09-05T10:00:00Z",
         council_models=dict(COUNCIL), judge_model=JUDGE))
-    graph = build_graph(root, COUNCIL, JUDGE, mode)
+    graph = default_graph(root, mode, COUNCIL, JUDGE)
     state = {"lab_project_id": "p", "mode": mode,
              "active_question": "does X improve Y?",
              "budget": BudgetState(),
@@ -141,21 +142,41 @@ def test_research_topology_unchanged(tmp_path, monkeypatch):
     assert "novelty_check" not in research
 
 
-def test_build_graph_rejects_bad_mode_and_missing_ideator(tmp_path):
-    with pytest.raises(ValueError):
-        build_graph(tmp_path / "x", COUNCIL, JUDGE, "poetry")
+def test_resolution_rejects_bad_mode_and_missing_ideator(tmp_path):
+    # Fail-closed checks moved with the cutover: unknown modes have no
+    # default methodology; a methodology missing ideator EVERYWHERE
+    # (file + overrides) still refuses brainstorm. But a project that
+    # merely omits ideator now inherits the methodology's (precedence).
+    from app.store.methodology import MethodologyStore as MS
+    with pytest.raises(ValueError, match="no default methodology"):
+        MS().get_default_for_mode("poetry")
+    brain = MS().get_default_for_mode("brainstorm")
     no_ide = {k: v for k, v in COUNCIL.items() if k != "ideator"}
-    with pytest.raises(ValueError):
-        build_graph(tmp_path / "y", no_ide, JUDGE, "brainstorm")
+    try:
+        graph = get_graph(tmp_path, "p", "brainstorm", brain, no_ide,
+                          JUDGE)  # fallback supplies ideator
+        assert graph is not None
+        stripped = brain.model_copy(deep=True)
+        stripped.models = {k: v for k, v in stripped.models.items()
+                           if k != "ideator"}
+        with pytest.raises(ValueError, match="ideator"):
+            get_graph(tmp_path, "p", "brainstorm", stripped, no_ide,
+                      JUDGE)
+    finally:
+        clear_graph_cache()
 
 
 def test_judge_overlapping_ideator_refused(tmp_path):
     # The ideator is a fourth council chair: judge == ideator value is
     # self-preference bias, refused by the same fail-closed check.
     overlap = dict(COUNCIL)
-    with pytest.raises(ValueError):
-        build_graph(tmp_path / "z", overlap, overlap["ideator"],
-                     "brainstorm")
+    brain = MethodologyStore().get_default_for_mode("brainstorm")
+    try:
+        with pytest.raises(ValueError, match="overlap"):
+            get_graph(tmp_path, "p", "brainstorm", brain, overlap,
+                      overlap["ideator"])
+    finally:
+        clear_graph_cache()
 
 
 def test_novelty_node_writes_verdicts(tmp_path, monkeypatch):
@@ -219,12 +240,15 @@ def test_start_run_rejects_unknown_mode(client):
     assert resp.status_code == 422
 
 
-def test_brainstorm_without_ideator_model_400s(client):
+def test_brainstorm_without_ideator_model_uses_fallback(client):
+    # Cutover precedence: a project omitting ideator inherits the
+    # methodology's — the run starts instead of 400ing (PBI-034's 400
+    # applied pre-methodology, when no fallback existed).
     no_ide = {k: v for k, v in COUNCIL.items() if k != "ideator"}
     pid = _create(client, council_models=no_ide)
     resp = client.post(f"/api/v1/lab-projects/{pid}/runs",
                        json={"mode": "brainstorm"})
-    assert resp.status_code == 400
+    assert resp.status_code == 200
 
 
 # --- API: full brainstorm lifecycle ---

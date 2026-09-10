@@ -4,7 +4,7 @@ flag, terminal outputs, mid-repair exhaustion, rebuild durability.
 LLM boundary mocked; project meta + git identity seeded per project.
 """
 from app.graph import nodes
-from app.graph.build import build_graph
+from tests.helpers import default_graph
 from app.models.evidence import (BudgetState, Claim, Evidence, ProjectMeta,
                                  Source)
 from app.store.lab_project import LabProjectStore
@@ -123,7 +123,7 @@ def test_repair_loop_runs_once_then_pauses(tmp_path, monkeypatch):
     store = LabProjectStore(tmp_path, "p")
     store.write_claim(Claim(id="C-1", statement="s",
                             supporting_sources=["S-404"]))
-    graph = build_graph(tmp_path, COUNCIL, JUDGE)
+    graph = default_graph(tmp_path, "research", COUNCIL, JUDGE)
     config = {"configurable": {"thread_id": "t1"}}
     graph.invoke(_state(), config)
     # Repair voided the dangling id, second audit passed, run paused:
@@ -148,7 +148,7 @@ def test_exhausted_audit_skips_repair_ends_run(tmp_path, monkeypatch):
                                   location={"section": "s"},
                                   text_reference="t", supports=["C-1"],
                                   evidence_type="empirical", strength="high"))
-    graph = build_graph(tmp_path, COUNCIL, JUDGE)
+    graph = default_graph(tmp_path, "research", COUNCIL, JUDGE)
     config = {"configurable": {"thread_id": "t1"}}
     # Calls exhaust DURING review+adjudication (3+1+1=5/5): the audit
     # would FAIL (S-404) but the exhausted edge ends the run instead of
@@ -164,8 +164,8 @@ def test_pause_survives_graph_rebuild(tmp_path, monkeypatch):
     _mock(monkeypatch)
     _seed(tmp_path)
     config = {"configurable": {"thread_id": "t1"}}
-    build_graph(tmp_path, COUNCIL, JUDGE).invoke(_state(), config)
-    rebuilt = build_graph(tmp_path, COUNCIL, JUDGE)
+    default_graph(tmp_path, "research", COUNCIL, JUDGE).invoke(_state(), config)
+    rebuilt = default_graph(tmp_path, "research", COUNCIL, JUDGE)
     assert tuple(rebuilt.get_state(config).next) == ("human_checkpoint",)
 
 
