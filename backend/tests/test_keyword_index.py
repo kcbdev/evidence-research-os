@@ -82,3 +82,15 @@ def test_rebuild_is_idempotent(tmp_path):
     rebuild_index(tmp_path / "p")
     hits = keyword_search(tmp_path / "p", "microbe")
     assert [h["id"] for h in hits] == ["C-1"]
+
+
+def test_query_syntax_chars_sanitized(tmp_path):
+    # Contradiction-task questions carry `on:`, quotes, parens — raw
+    # they parse as field queries and throw (caught live by
+    # test_contradiction_loop_terminates_on_rounds).
+    _seed(tmp_path)
+    hits = keyword_search(
+        tmp_path / "p",
+        'Adjudicate conflicting evidence on: "microbe (effect)" X?')
+    assert [h["id"] for h in hits] == ["C-1"]
+    assert keyword_search(tmp_path / "p", ":::") == []

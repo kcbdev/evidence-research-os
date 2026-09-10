@@ -69,7 +69,13 @@ def keyword_search(project_dir: Path, query: str,
                           path=str(_index_dir(project_dir)))
     index.reload()
     searcher = index.searcher()
-    parsed = index.parse_query(query, ["body"])
+    # Task questions are natural language ("Adjudicate ... on: <stmt>",
+    # quotes, parens) — sanitize query syntax chars first, or `on:`
+    # parses as a field query and the search throws. Plain terms only.
+    safe = "".join(c if c.isalnum() or c.isspace() else " " for c in query)
+    if not safe.strip():
+        return []
+    parsed = index.parse_query(safe, ["body"])
     hits = []
     for _score, addr in searcher.search(parsed, limit).hits:
         doc = searcher.doc(addr)
