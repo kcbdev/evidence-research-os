@@ -1,9 +1,10 @@
-# Plan: Phase 0 scaffold + Phase 1 MVP (Deep Research)
+# Plan: Phase 0 scaffold + Phase 1 MVP (Deep Research) + Phases 2–5b
 
 PBIs live in `tasks/PBI-{NNN}.md`; specs in `specs/`; progress in `PROGRESS.md`.
-Scope: plan tasks 1–20 (guide: Phase 0 + Phase 1 MVP). Phases 2–4 get their
-own specs/PBIs after MVP validates on a real topic. No milestone hierarchy —
-ordering only.
+PBI-001–033 (Phase 0/1 + UX overhaul) are done except PBI-005's human deploy
+remainder. What follows plans the remaining DOCS (API Reference, Frontend UX
+gaps, Implementation Guide Phase 2–4, Phase 5, Phase 5b) as PBI-034–061.
+No milestone hierarchy — ordering only.
 
 ## Execution order
 
@@ -87,6 +88,76 @@ Parallel-safe pairs (disjoint files): {002,005}, {004,005}, {016,015},
 {017,018}. Same-file chains run sequenced, never parallel: nodes.py
 (006→011→012→013), main.py (014→015), store (003→004).
 
+## Execution order — Phases 2–5b (PBI-034–061, planned 2026-09-10)
+
+Specs: `specs/phase-2-brainstorm/`, `specs/phase-3-audit-retrieval/`,
+`specs/phase-4-academic-search-handoff/`,
+`specs/phase-5-methodology-registry/`,
+`specs/phase-5b-user-authorable-logic/`.
+
+34. PBI-034 — Ideator + novelty_check + mode wiring
+35. PBI-035 — Brainstorm skeptic rubric + idea lifecycle (needs 034)
+36. PBI-036 — Ideas API (order after 034; disjoint files, parallel-safe)
+37. PBI-037 — Ideas board UI + Phase-2 witness, human-confirmed (needs 036)
+38. PBI-038 — Settings fallback API (no deps; parallel-safe)
+39. PBI-039 — citation_verify + 3-stage audit + results store (needs 038)
+40. PBI-040 — Audits API + audit UI (needs 039)
+41. PBI-041 — Tantivy keyword index + wiring (no deps; parallel-safe)
+42. PBI-042 — LanceDB/fastembed semantic index (no deps; parallel-safe)
+43. PBI-043 — Dedup clustering post-run hook (needs 042)
+44. PBI-044 — Retry from checkpoint + runs.db evolution (needs PBI-029 done)
+45. PBI-045 — Graph endpoint + explorer + claims-filter alignment (no deps)
+46. PBI-046 — Shared cross-project index + GET /search (needs 042)
+47. PBI-047 — Search page + nav gating (needs 046)
+48. PBI-048 — Academic mode segment (needs 034)
+49. PBI-049 — Product notes API + Output + Decisions pages (no deps)
+50. PBI-050 — New-lab flow + run-start dialog + runs history (no deps, frontend-only)
+51. PBI-051 — labs.kcb.ma handoff mapping, human-pushed (needs 049)
+52. PBI-052 — Approval edit-and-continue (order after 044; same-file chain runs.py)
+53. PBI-053 — Registries + Methodology schema + compiler (needs 048)
+54. PBI-054 — Capture 3 methodologies + delete hardcoded builder (needs 053)
+55. PBI-055 — Methodology store + API (needs 053; parallel-safe with 054)
+56. PBI-056 — methodology_id run-start/create + picker + history (needs 054, 055, 050)
+57. PBI-057 — Methodologies settings UI (needs 055)
+58. PBI-058 — Tier A custom roles (needs 053; parallel-safe with 059/060)
+59. PBI-059 — Tier B expression conditions (needs 053; parallel-safe)
+60. PBI-060 — Tier C custom_nodes discovery (needs 053; parallel-safe)
+61. PBI-061 — Phase-5b witness, human-gated (needs 058, 059, 060)
+
+## Dependency graph — Phases 2–5b
+
+```text
+034 -> 035 -> 036 -> 037 (Phase-2 witness, human gate)
+038 -> 039 -> 040
+041 (tantivy) || 042 (lancedb) || 038-chain || 045
+042 -> 043 | 042 -> 046 -> 047
+029(done) -> 044 -> 052
+034 -> 048 -> 053 -> 054 -+-> 056 (also needs 055, 050)
+                 |-> 055 -+      +-> 057 (needs 055)
+                 |-> 058 -+-> 061 (human gate)
+                 |-> 059 -+
+                 |-> 060 -+
+049 -> 051 (human push) | 050 (frontend-only, free) | 049 (free)
+```
+
+Same-file chains (sequenced, never parallel): nodes.py (034→035→048→043-hook),
+build.py (034→048→054-deletion), runs.py (034-mode→044→052→054-cutover→056),
+claims.py (045-filters→049-envelope, internal order), methodology.py
+(053→058→059), compile.py (053→058→059→060), main.py mounts (any order, one
+PBI per mount — trivially mergeable at execution).
+Parallel-safe openers: {034, 038, 041, 042, 045, 049, 050} (disjoint files).
+
+## Gate plan — Phases 2–5b (extends the above, unchanged commands)
+
+- Human gates: PBI-037 (Phase-2 witness), PBI-051 (external push),
+  PBI-061 (5b witness). Methodology set-default confirm is UI-level.
+- Review gates: adversarial vs the phase spec + `ARCHITECTURE.md`;
+  PBI-054 gets a parity-diff review (no fork); PBI-060 gets an
+  honesty review (no sandboxing theater).
+- Watch items: tantivy/lancedb Windows wheels; fastembed first-run model
+  download (tests must seam-mock, never download); Keystatic schema drift
+  (PBI-051 stops, never guesses).
+
 ## Gate plan
 
 - Deterministic gates: `python -m pytest tests/ -q` (repo),
@@ -107,6 +178,12 @@ Parallel-safe pairs (disjoint files): {002,005}, {004,005}, {016,015},
   (installed global, opencode). Declined for now: nextjs-app-router-patterns,
   fastapi (official) — reinstall on request if execution needs them.
 - Tools: `uv` (PBI-001 installs), `pytest` 9.1.1 (installed).
+- Capability discovery (2026-09-10, Phases 2–5b): no `skills` CLI exists in
+  this environment (offline), so no skills.sh lookup was possible — and none
+  is needed. New capabilities are plain pip deps installed by their consumer
+  PBIs on approval: `tantivy` (PBI-041), `lancedb` + `fastembed` + `numpy`
+  (PBI-042), `simpleeval` (PBI-059). No third-party agent skills adopted;
+  methodology stays ASDLC-only.
 
 ## Plane sync
 
@@ -117,6 +194,20 @@ Parallel-safe pairs (disjoint files): {002,005}, {004,005}, {016,015},
   This plan's PBIs come from slicing `DOCS/` Phase 0+1. Push-create of
   per-PBI `Todo` issues (step 6b) NOT requested — ask before syncing.
 - **Push-create (2026-09-06, on user flag):** all 21 PBIs now have
+  Plane issues, created with true statuses — 17 × Done (PBI-001–004,
+  006–018), 2 × In Progress (PBI-005 infra = EVRSH-2, PBI-019 release
+  = EVRSH-21), 2 × Backlog (PBI-020 = EVRSH-18, PBI-021 = EVRSH-20).
+  Full PBI↔issue map: PBI-001→1, 002→3, 003→5,
+  004→4, 005→2, 006→6, 007→7, 008→8, 009→14, 010→13, 011→11, 012→10,
+  013→9, 014→12, 015→15, 016→16, 017→17, 018→19, 019→21, 020→18,
+  021→20. Each card's Context carries its `Plane: kcb/EVRSH-N` link.
+- **Push-create (2026-09-10, Phases 2–5b plan):** 28 × Todo, one per
+  PBI-034–061. Parallel creation interleaved sequence_ids — map by PBI
+  number, not creation order: 034→34, 035→36, 036→35, 037→37, 038→40,
+  039→39, 040→38, 041→41, 042→43, 043→47, 044→45, 045→44, 046→42,
+  047→46, 048→48, 049→49, 050→51, 051→50, 052→52, 053→53, 054→54,
+  055→55, 056→58, 057→60, 058→59, 059→57, 060→56, 061→61
+  (identifier `kcb/EVRSH-N`). Each card's Context carries its link.
   Plane issues, created with true statuses — 17 × Done (PBI-001–004,
   006–018), 2 × In Progress (PBI-005 infra = EVRSH-2, PBI-019 release
   = EVRSH-21), 2 × Backlog (PBI-020 = EVRSH-18, PBI-021 = EVRSH-20).
