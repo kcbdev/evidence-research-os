@@ -108,6 +108,15 @@ class Decision(BaseModel):
     timestamp: datetime
 
 
+class ProductNote(BaseModel):
+    id: str
+    type: Literal["product_note"] = "product_note"
+    lab_project_id: str
+    note: str
+    linked_area: Optional[str] = None  # e.g. "runfusion" (/areas/ slug)
+    created_at: datetime
+
+
 class AuditCheck(BaseModel):
     stage: Literal["existence", "pincite", "support_match"]
     status: Literal["PASS", "WARNING", "FAIL"]

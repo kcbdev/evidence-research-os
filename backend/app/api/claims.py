@@ -125,12 +125,19 @@ def get_budget(project_id: str, request: Request):
 
 @router.get("/{project_id}/output/report")
 def get_report(project_id: str, request: Request):
-    """Rendered final report markdown (404 until synthesis runs)."""
+    """Rendered final report markdown (404 until synthesis runs).
+    PBI-049 envelope: {markdown, generated_at} per the API Reference
+    (mtime-derived; the old {report} key had no depended-on client —
+    the one safe alignment)."""
+    from datetime import datetime, timezone
     store = _store(_root(request), project_id)
     report = store.path / "output" / "report.md"
     if not report.is_file():
         raise HTTPException(status_code=404, detail="no report yet")
-    return {"report": report.read_text(encoding="utf-8")}
+    generated_at = datetime.fromtimestamp(
+        report.stat().st_mtime, tz=timezone.utc).isoformat()
+    return {"markdown": report.read_text(encoding="utf-8"),
+            "generated_at": generated_at}
 
 
 def task_matches_claim(task, claim_id: str, claim_statement: str) -> bool:

@@ -121,8 +121,9 @@ def test_decisions_budget_report(seeded):
     assert client.get("/api/v1/lab-projects/p/output/report").status_code == 404
     (store.path / "output").mkdir(exist_ok=True)
     (store.path / "output" / "report.md").write_text("# R\n")
-    assert client.get(
-        "/api/v1/lab-projects/p/output/report").json() == {"report": "# R\n"}
+    body = client.get("/api/v1/lab-projects/p/output/report").json()
+    assert body["markdown"] == "# R\n"  # PBI-049 envelope
+    assert body["generated_at"]  # mtime-derived
 
 
 def test_tasks_filter_by_claim(seeded):
