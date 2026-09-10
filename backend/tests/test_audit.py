@@ -17,6 +17,10 @@ JUDGE = "m-judge"
 def _mock(monkeypatch):
     monkeypatch.setattr("app.graph.nodes.call_model_resilient",
                         lambda *a, **k: ("", 1))
+    # PBI-043: final_output embeds sources post-run — constant vectors,
+    # no download, deterministic clustering in graph-level tests.
+    monkeypatch.setattr("app.tools.semantic_index.embed",
+                        lambda text: [1.0, 0.0])
 
 
 def _seed(tmp_path, meta=None):

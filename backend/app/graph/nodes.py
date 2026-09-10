@@ -746,6 +746,39 @@ def make_final_output(lab_project_path: Path):
                  f"{state['budget'].rounds_used}/"
                  f"{state['budget'].max_research_rounds}"),
             timestamp=datetime.now(timezone.utc)))
+        # PBI-043: post-run dedup hook — source-independence clustering
+        # stays out of the hot path. Non-fatal by design: a clustering
+        # failure is recorded as a decision (visible, auditable), never
+        # allowed to flip a completed run to failed after the fact.
+        try:
+            _cluster_sources(store)
+        except Exception as exc:
+            store.write_decision(Decision(
+                id=f"D-dedup-{session}",
+                what="Dedup clustering skipped",
+                why=str(exc)[:300],
+                timestamp=datetime.now(timezone.utc)))
         return {}
 
     return final_output
+
+
+def _cluster_sources(store: LabProjectStore):
+    """Embed each source (title + linked excerpts) and write back
+    independence_cluster ids. Only changed values are written."""
+    from app.tools.dedup import cluster_sources
+    by_source: dict[str, list[str]] = {}
+    for ev in store.list_evidence():
+        by_source.setdefault(ev.source_id, []).append(ev.text_reference)
+    pairs = []
+    for src in store.list_sources():
+        text = " ".join([src.title, src.url] + by_source.get(src.id, []))
+        pairs.append((src.id, text))
+    if len(pairs) < 2:
+        return  # nothing to cluster against
+    mapping = cluster_sources(pairs)
+    for src in store.list_sources():
+        canonical = mapping.get(src.id)
+        if canonical is not None and src.independence_cluster != canonical:
+            src.independence_cluster = canonical
+            store.write_source(src)
