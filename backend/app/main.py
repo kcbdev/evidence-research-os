@@ -6,7 +6,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app import config
-from app.api import claims, ideas, lab_projects, runs
+from app.api import claims, ideas, lab_projects, runs, settings
 
 
 def _allowed_origins() -> list[str]:
@@ -41,6 +41,8 @@ def create_app(lab_root=None) -> FastAPI:
     # PBI-015 sequences after PBI-014: same file, never parallel.
     app.include_router(claims.router, prefix="/api/v1/lab-projects")
     app.include_router(ideas.router, prefix="/api/v1/lab-projects")
+    # PBI-038: global fallbacks live at /api/v1 (not project-scoped).
+    app.include_router(settings.router, prefix="/api/v1")
     return app
 
 
