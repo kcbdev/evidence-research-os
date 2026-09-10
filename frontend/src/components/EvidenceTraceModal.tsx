@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
   Dialog,
@@ -9,8 +10,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { getClaimDetail, listTasks, type ClaimDetail, type DelegatedTask } from "@/lib/api";
+import { getAuditLatest, getClaimDetail, listTasks, type AuditRow, type ClaimDetail, type DelegatedTask } from "@/lib/api";
 import ClaimConfidenceBar from "./ClaimConfidenceBar";
 
 export default function EvidenceTraceModal({
@@ -25,12 +27,14 @@ export default function EvidenceTraceModal({
   const [detail, setDetail] = useState<ClaimDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tasks, setTasks] = useState<DelegatedTask[] | null>(null);
+  const [audit, setAudit] = useState<AuditRow[] | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     setDetail(null);
     setError(null);
     setTasks(null);
+    setAudit(null);
     getClaimDetail(projectId, claimId).then(
       (d) => {
         if (!cancelled) setDetail(d);
@@ -47,6 +51,15 @@ export default function EvidenceTraceModal({
       },
       () => {
         if (!cancelled) setTasks([]); // tasks advisory; trace stands alone
+      },
+    );
+    // Audit badges advisory too: no audit run yet → no badges, no error.
+    getAuditLatest(projectId, { claim_id: claimId }).then(
+      (a) => {
+        if (!cancelled) setAudit(a.results);
+      },
+      () => {
+        if (!cancelled) setAudit([]);
       },
     );
     return () => {
@@ -103,6 +116,16 @@ export default function EvidenceTraceModal({
                   const src = detail.sources.find(
                     (s) => s.id === ev.source_id,
                   );
+                  const checks = (audit ?? []).filter(
+                    (r) => r.evidence_id === ev.id,
+                  );
+                  const worst = checks.some((r) => r.status === "FAIL")
+                    ? "FAIL"
+                    : checks.some((r) => r.status === "WARNING")
+                      ? "WARNING"
+                      : checks.length > 0
+                        ? "PASS"
+                        : null;
                   return (
                     <li
                       key={ev.id}
@@ -113,6 +136,25 @@ export default function EvidenceTraceModal({
                         <span className="ml-2 font-normal text-muted-foreground">
                           {ev.evidence_type}/{ev.strength}
                         </span>
+                        {worst && (
+                          <Link
+                            href={`/lab/${projectId}/audit?claim=${claimId}`}
+                            className="ml-2"
+                            aria-label={`Audit result ${worst} for ${ev.id} — open audit`}
+                          >
+                            <Badge
+                              variant={
+                                worst === "FAIL"
+                                  ? "destructive"
+                                  : worst === "WARNING"
+                                    ? "outline"
+                                    : "default"
+                              }
+                            >
+                              audit: {worst}
+                            </Badge>
+                          </Link>
+                        )}
                       </p>
                       <blockquote className="mt-1 border-l-2 border-zinc-300 pl-2 dark:border-zinc-600">
                         {ev.text_reference}

@@ -284,6 +284,42 @@ export async function patchIdea(
   return (await res.json()) as { created_claim_id?: string } & Idea;
 }
 
+export interface AuditRow {
+  claim_id: string;
+  evidence_id: string | null;
+  stage: string;
+  status: "PASS" | "WARNING" | "FAIL";
+  detail: string;
+}
+
+export function getAuditLatest(
+  projectId: string,
+  filters: { status?: string; claim_id?: string } = {},
+): Promise<{ audit_run_id: string | null; results: AuditRow[] }> {
+  const params = new URLSearchParams();
+  if (filters.status) params.set("status", filters.status);
+  if (filters.claim_id) params.set("claim_id", filters.claim_id);
+  const query = params.toString();
+  return get<{ audit_run_id: string | null; results: AuditRow[] }>(
+    `/api/v1/lab-projects/${projectId}/audits/latest${query ? `?${query}` : ""}`,
+  );
+}
+
+export async function rerunAudit(
+  projectId: string,
+  claimId?: string,
+): Promise<{ audit_run_id: string; rows: number; failed: boolean }> {
+  const res = await fetch(`${BASE}/api/v1/lab-projects/${projectId}/audits/rerun`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(claimId ? { claim_id: claimId } : {}),
+  });
+  if (!res.ok) {
+    throw new Error(`POST audits/rerun: ${res.status} — ${await res.text()}`);
+  }
+  return (await res.json()) as { audit_run_id: string; rows: number; failed: boolean };
+}
+
 const STREAM_TYPES = ["node", "human_checkpoint", "run_done"] as const;
 
 export function streamRun(
