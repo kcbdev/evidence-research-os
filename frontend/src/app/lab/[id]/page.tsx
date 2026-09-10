@@ -44,11 +44,16 @@ import {
 } from "@/lib/api";
 import Markdown from "@/components/Markdown";
 
-type Tab = "claims" | "runs" | "output" | "settings";
+type Tab = "claims" | "runs" | "output" | "settings" | "ideas";
 
-const TABS: { key: Tab; label: (counts: { claims: number; runs: number }) => string }[] = [
+const TABS: { key: Tab; label: (counts: { claims: number; runs: number; ideas: number }) => string; show?: (p: { mode: string; ideas: number }) => boolean }[] = [
   { key: "claims", label: (c) => `Claims (${c.claims})` },
   { key: "runs", label: (c) => `Runs (${c.runs})` },
+  // PBI-037: Ideas tab renders only for brainstorm-relevant projects.
+  // No mode-history API exists, so the proxy is: current mode is
+  // brainstorm OR the project already holds ideas (a past brainstorm
+  // run). Documented here, not tribal knowledge.
+  { key: "ideas", label: (c) => `Ideas (${c.ideas})`, show: (p) => p.mode === "brainstorm" || p.ideas > 0 },
   { key: "output", label: () => "Output" },
   { key: "settings", label: () => "Settings" },
 ];
@@ -122,7 +127,8 @@ export default function LabOverview() {
       </div>
     );
 
-  const counts = { claims: project.counts.claims, runs: runs.length };
+  const counts = { claims: project.counts.claims, runs: runs.length, ideas: project.counts.ideas };
+  const visibleTabs = TABS.filter((t) => !t.show || t.show({ mode: project.mode, ideas: project.counts.ideas }));
 
   return (
     <main className="flex flex-col gap-6" aria-label="Lab overview">
@@ -155,7 +161,7 @@ export default function LabOverview() {
       <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)}>
         <div className="overflow-x-auto">
           <TabsList aria-label="Lab sections">
-            {TABS.map(({ key, label }) => (
+            {visibleTabs.map(({ key, label }) => (
               <TabsTrigger key={key} value={key} className="min-h-[44px]">
                 {label(counts)}
               </TabsTrigger>
@@ -172,6 +178,18 @@ export default function LabOverview() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {(project.mode === "brainstorm" || project.counts.ideas > 0) && (
+          <TabsContent value="ideas">
+            <Card>
+              <CardContent>
+                <Link href={`/lab/${id}/ideas`} className="underline">
+                  Open ideas board →
+                </Link>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
 
         <TabsContent value="runs">
           <div className="flex flex-col gap-4">
