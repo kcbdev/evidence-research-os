@@ -409,16 +409,28 @@ def make_targeted_research(lab_project_path: Path):
     like plan/). Tasks are consumed; the loop-back recomputes conflicts."""
 
     def targeted_research(state) -> dict:
+        from app.tools.keyword_index import keyword_search
         store = LabProjectStore(lab_project_path, state["lab_project_id"])
         models = store.read_meta().council_models
         debates = Path(lab_project_path) / state["lab_project_id"] / "debates"
         debates.mkdir(parents=True, exist_ok=True)
         pending = state.get("pending_tasks", []) or []
+        project_dir = Path(lab_project_path) / state["lab_project_id"]
         spent = 0
         for task in pending:
             agent = task.assigned_agent if isinstance(task, Task) else task["assigned_agent"]
             tid = task.id if isinstance(task, Task) else task["id"]
             question = task.question if isinstance(task, Task) else task["question"]
+            # PBI-041: Tier-2 retrieval — prior-art hits ride along as
+            # context so targeted work builds on the index, not just the
+            # task text. Fail-loud: a broken index must surface, never
+            # silently degrade (empty project → [] by contract).
+            hits = keyword_search(project_dir, question, limit=5)
+            if hits:
+                context = "\n".join(f"- {h['id']}: {h['snippet']}"
+                                    for h in hits)
+                question = (f"{question}\n\nRelated prior findings "
+                            f"(keyword index):\n{context}")
             model = models.get(agent, next(iter(models.values())))
             text, attempts = call_model_resilient(
                 model, load_prompt(agent), question)
