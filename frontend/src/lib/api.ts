@@ -55,8 +55,42 @@ export function getBudget(id: string): Promise<Budget> {
   return get<Budget>(`/api/v1/lab-projects/${id}/budget`);
 }
 
-export function getReport(id: string): Promise<{ report: string }> {
-  return get<{ report: string }>(`/api/v1/lab-projects/${id}/output/report`);
+export function getReport(id: string): Promise<{ markdown: string; generated_at: string }> {
+  return get<{ markdown: string; generated_at: string }>(`/api/v1/lab-projects/${id}/output/report`);
+}
+
+export interface DecisionEntry {
+  id: string;
+  what: string;
+  why: string;
+  timestamp: string;
+}
+
+export function listDecisions(projectId: string): Promise<DecisionEntry[]> {
+  return get<DecisionEntry[]>(`/api/v1/lab-projects/${projectId}/decisions`);
+}
+
+export interface ProductNote {
+  id: string;
+  lab_project_id: string;
+  note: string;
+  linked_area: string | null;
+  created_at: string;
+}
+
+export async function addProductNote(
+  projectId: string,
+  input: { note: string; linked_area?: string },
+): Promise<ProductNote> {
+  const res = await fetch(`${BASE}/api/v1/lab-projects/${projectId}/product-notes`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    throw new Error(`POST product-notes: ${res.status} — ${await res.text()}`);
+  }
+  return (await res.json()) as ProductNote;
 }
 
 export async function createLabProject(input: {

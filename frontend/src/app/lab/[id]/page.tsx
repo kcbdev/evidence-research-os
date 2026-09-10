@@ -42,7 +42,6 @@ import {
   type LabProjectDetail,
   type RunSummary,
 } from "@/lib/api";
-import Markdown from "@/components/Markdown";
 
 type Tab = "claims" | "runs" | "output" | "settings" | "ideas";
 
@@ -90,7 +89,7 @@ export default function LabOverview() {
         setRunsFailed(true); // history unavailable — not "no runs yet"
       }
       try {
-        setReport((await getReport(id)).report);
+        setReport((await getReport(id)).markdown);
       } catch {
         setReport(null); // 404 until synthesis runs — normal, not an error
       }
@@ -289,7 +288,9 @@ export default function LabOverview() {
           ) : (
             <Card>
               <CardContent>
-                <Markdown text={report} />
+                <Link href={`/lab/${id}/output`} className="underline">
+                  Open full report →
+                </Link>
               </CardContent>
             </Card>
           )}
