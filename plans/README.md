@@ -76,18 +76,24 @@ stays `In Progress` until the batch review sorts it).
 | PBI-033 | Done | | |
 | PBI-034 | Done | PBI-035 | Done |
 | PBI-036 | Done | PBI-037 | In Review (manual: live witness) |
-| PBI-038 | Done | PBI-039 | Done* |
-| PBI-040 | Done* | PBI-041 | Done* |
-| PBI-042 | Done* | PBI-043 | Done* |
-| PBI-044 | Done* | PBI-045 | Done* |
-| PBI-046 | Done* | PBI-047 | Done* |
-| PBI-048 | Done* | PBI-049 | Done* |
-| PBI-050 | Done* | PBI-051 | Blocked (needs Keystatic spec) |
-| PBI-052 | Done* | PBI-053 | Done* |
-| PBI-054 | Done* | PBI-055 | Done* |
-| PBI-056 | Done* | PBI-057 | Done* |
-| PBI-058 | Done* | PBI-059 | Done* |
-| PBI-060 | Done* | PBI-061 | In Review (manual: live witness) |
+| PBI-038 | Done | PBI-039 | Done |
+| PBI-040 | Done | PBI-041 | Done |
+| PBI-042 | Done | PBI-043 | Done |
+| PBI-044 | Done | PBI-045 | Done |
+| PBI-046 | Done | PBI-047 | Done |
+| PBI-048 | Done | PBI-049 | Done |
+| PBI-050 | Done | PBI-051 | Blocked (needs Keystatic spec) |
+| PBI-052 | Done | PBI-053 | Done |
+| PBI-054 | Done | PBI-055 | Done |
+| PBI-056 | Done | PBI-057 | Done |
+| PBI-058 | Done | PBI-059 | Done |
+| PBI-060 | Done | PBI-061 | In Review (manual: live witness) |
+
+Chain protocol (2026-09-10/11, user-directed, complete): PBIs executed
+back-to-back on deterministic gates; adversarial reviews batched at the
+end per phase group; all must-fixes applied + regressed before close.
+`Done*` (code-complete, review pending) is now fully resolved — no
+asterisks remain except the two manual witnesses and two blocked items.
 
 ## Dependency graph
 
