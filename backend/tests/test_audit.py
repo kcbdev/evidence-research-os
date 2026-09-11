@@ -189,7 +189,7 @@ def _mock_verify(monkeypatch, fetch_text="results and discussion",
     monkeypatch.setattr("app.tools.citation_verify.call_model_resilient",
                         lambda *a, **k: (auditor_text, 2))
     monkeypatch.setattr("app.tools.citation_verify.resolve_auditor",
-                        lambda *a, **k: auditor)
+                        lambda *a, **k: (auditor, None))
 
 
 def test_support_match_fail_distinct_from_existence(tmp_path, monkeypatch):
@@ -221,7 +221,7 @@ def test_unreachable_source_fails_existence_only(tmp_path, monkeypatch):
         raise RuntimeError("connection refused")
     monkeypatch.setattr("app.tools.citation_verify.cached_fetch_url", _boom)
     monkeypatch.setattr("app.tools.citation_verify.resolve_auditor",
-                        lambda *a, **k: "m-aud")
+                        lambda *a, **k: ("m-aud", None))
     out = nodes.make_citation_audit(tmp_path)(_state())
     assert out["audit_passed"] is False
     row = store.list_audit_runs()[-1].results[-1]
@@ -246,3 +246,59 @@ def test_unset_auditor_degrades_to_warning(tmp_path, monkeypatch):
     assert by_stage["support_match"].status == "WARNING"
     assert "no auditor model" in by_stage["support_match"].detail
     assert out["audit_passed"] is True  # warnings don't fail the run
+
+
+def test_rotation_overlapping_auditor_refused(tmp_path, monkeypatch):
+    """Batch review: env auditor inside the rotation degrades LOUDLY
+    (named reason), never silently judges."""
+    _mock(monkeypatch)
+    store = _seed(tmp_path)
+    _seed_pair(store)
+    _mock_verify(monkeypatch)
+    monkeypatch.setattr("app.tools.citation_verify.resolve_auditor",
+                        lambda *a, **k: (None, "auditor model m-ske "
+                                              "overlaps the council/judge "
+                                              "rotation — ignored"))
+    out = nodes.make_citation_audit(tmp_path)(_state())
+    row = store.list_audit_runs()[-1].results[-1]
+    by_stage = {c.stage: c for c in row.checks}
+    assert by_stage["support_match"].status == "WARNING"
+    assert "overlaps" in by_stage["support_match"].detail
+
+
+def test_resolve_auditor_rotation_guard_unit(tmp_path, monkeypatch):
+    from app.tools.citation_verify import resolve_auditor
+    monkeypatch.setenv("AUDITOR_MODEL", "m-ske")
+    model, note = resolve_auditor(
+        tmp_path, {"scientist": "m-sci", "skeptic": "m-ske"}, "m-judge")
+    assert model is None and "overlaps" in note
+    model, note = resolve_auditor(
+        tmp_path, {"scientist": "m-sci"}, "m-judge")
+    assert model == "m-ske" and note is None
+
+
+def test_empty_body_warns_not_passes(tmp_path, monkeypatch):
+    _mock(monkeypatch)
+    store = _seed(tmp_path)
+    _seed_pair(store)
+    _mock_verify(monkeypatch)
+    monkeypatch.setattr("app.tools.citation_verify.cached_fetch_url",
+                        lambda *a, **k: "   ")
+    out = nodes.make_citation_audit(tmp_path)(_state())
+    row = store.list_audit_runs()[-1].results[-1]
+    by_stage = {c.stage: c for c in row.checks}
+    assert by_stage["existence"].status == "WARNING"
+    assert "empty" in by_stage["existence"].detail
+    assert out["audit_passed"] is True
+
+
+def test_audit_ids_not_reused(tmp_path, monkeypatch):
+    from app.tools.citation_verify import next_audit_id
+    _mock(monkeypatch)
+    store = _seed(tmp_path)
+    _seed_pair(store)
+    _mock_verify(monkeypatch)
+    nodes.make_citation_audit(tmp_path)(_state())
+    nodes.make_citation_audit(tmp_path)(_state())
+    assert [r.id for r in store.list_audit_runs()] == ["A-001", "A-002"]
+    assert next_audit_id(store) == "A-003"

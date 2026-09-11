@@ -823,14 +823,14 @@ def make_citation_audit(lab_project_path: Path):
     def citation_audit(state) -> dict:
         from datetime import datetime, timezone
         from app.models.evidence import AuditRun
-        from app.tools.citation_verify import run_audit
+        from app.tools.citation_verify import next_audit_id, run_audit
         store = LabProjectStore(lab_project_path, state["lab_project_id"])
         results, spent = run_audit(Path(lab_project_path),
                                    state["lab_project_id"],
                                    state["session_id"])
-        n = len(store.list_audit_runs()) + 1
         store.write_audit_run(AuditRun(
-            id=f"A-{n:03d}", created_at=datetime.now(timezone.utc),
+            id=next_audit_id(store),
+            created_at=datetime.now(timezone.utc),
             results=results))
         passed = all(c.status != "FAIL"
                      for row in results for c in row.checks)

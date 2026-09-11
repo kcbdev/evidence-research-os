@@ -170,9 +170,9 @@ function AuditBody() {
                 <TableRow key={`${key}|${i}`}>
                   <TableCell className="font-mono">
                     <Link
-                      href={`/lab/${id}/claims`}
+                      href={`/lab/${id}/claims?claim=${row.claim_id}`}
                       className="underline"
-                      aria-label={`Open claims table for ${row.claim_id}`}
+                      aria-label={`Open trace for ${row.claim_id}`}
                     >
                       {row.claim_id}
                     </Link>

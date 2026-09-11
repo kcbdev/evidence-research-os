@@ -35,9 +35,12 @@ def build_graph_from_methodology(methodology: Methodology,
     if "judge" not in models:
         raise ValueError(
             f"methodology {mid}: models must name a judge")
-    validate_model_assignment(
-        {k: v for k, v in models.items() if k != "judge"},
-        models["judge"])
+    # Batch-review nit: auditor excluded EXPLICITLY (it is not council —
+    # and must additionally stay outside the rotation, enforced at
+    # audit time by resolve_auditor).
+    council_models = {k: v for k, v in models.items()
+                      if k not in ("judge", "auditor")}
+    validate_model_assignment(council_models, models["judge"])
     stages = methodology.workflow.stages
     if not stages:
         raise ValueError(f"methodology {mid}: no stages")

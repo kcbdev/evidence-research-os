@@ -59,7 +59,7 @@ def _mock_verify(monkeypatch, auditor_text="FAIL — merely topical."):
     monkeypatch.setattr("app.tools.citation_verify.call_model_resilient",
                         lambda *a, **k: (auditor_text, 1))
     monkeypatch.setattr("app.tools.citation_verify.resolve_auditor",
-                        lambda *a, **k: "m-aud")
+                        lambda *a, **k: ("m-aud", None))
 
 
 def test_latest_empty_before_any_run(client):
@@ -75,6 +75,7 @@ def test_rerun_then_latest_with_filters(client, tmp_path, monkeypatch):
     rerun = client.post(f"/api/v1/lab-projects/{pid}/audits/rerun",
                         json={}).json()
     assert rerun["rows"] == 1 and rerun["failed"] is True
+    assert rerun["auditor_calls"] == 1  # spend surfaced, unbudgeted
     latest = client.get(
         f"/api/v1/lab-projects/{pid}/audits/latest").json()
     assert latest["audit_run_id"] == rerun["audit_run_id"]
@@ -109,3 +110,13 @@ def test_rerun_scoped_to_claim(client, tmp_path, monkeypatch):
     missing = client.post(f"/api/v1/lab-projects/{pid}/audits/rerun",
                           json={"claim_id": "C-nope"})
     assert missing.status_code == 404
+
+
+def test_rerun_without_body(client, tmp_path, monkeypatch):
+    pid = _create(client)
+    _seed_pair(tmp_path, pid)
+    _mock_verify(monkeypatch)
+    # No JSON body at all: reruns global (was 422 on missing body).
+    resp = client.post(f"/api/v1/lab-projects/{pid}/audits/rerun")
+    assert resp.status_code == 200
+    assert resp.json()["rows"] == 1

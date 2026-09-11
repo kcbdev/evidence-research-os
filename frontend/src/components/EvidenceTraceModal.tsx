@@ -28,6 +28,8 @@ export default function EvidenceTraceModal({
   const [error, setError] = useState<string | null>(null);
   const [tasks, setTasks] = useState<DelegatedTask[] | null>(null);
   const [audit, setAudit] = useState<AuditRow[] | null>(null);
+  // Claim-level sweep rows (evidence_id null: dangling citations) get
+  // a header badge — per-evidence badges below can't show them.
 
   useEffect(() => {
     let cancelled = false;
@@ -81,6 +83,24 @@ export default function EvidenceTraceModal({
             Claim → evidence → source trace. One click per row.
           </DialogDescription>
         </DialogHeader>
+        {(audit ?? [])
+          .filter((r) => r.evidence_id === null && r.status !== "PASS")
+          .map((r) => (
+            <Alert key={`${r.stage}`} variant="destructive">
+              <AlertTitle>
+                Citation problem: {r.stage} {r.status}
+              </AlertTitle>
+              <AlertDescription>
+                {r.detail}{" "}
+                <Link
+                  href={`/lab/${projectId}/audit?claim=${claimId}`}
+                  className="underline"
+                >
+                  Open audit →
+                </Link>
+              </AlertDescription>
+            </Alert>
+          ))}
         {error && (
           <Alert variant="destructive">
             <AlertTitle>Something went wrong</AlertTitle>
