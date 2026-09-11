@@ -369,6 +369,59 @@ export function listMethodologies(): Promise<MethodologySummary[]> {
   return get<MethodologySummary[]>("/api/v1/methodologies");
 }
 
+export interface MethodologyDetail extends MethodologySummary {
+  workflow: { stages: { id: string; node: string; roles?: string[]; loop_while?: string | null; loop_condition?: string | null; loop_target?: string | null; route?: string | null; interrupt?: boolean }[] };
+  tools: { enabled: string[] };
+  prompts: { set: string; overrides: Record<string, string> };
+  skills: Record<string, string[]>;
+  models: Record<string, string>;
+  budget_defaults: { max_model_calls: number; max_research_rounds: number };
+}
+
+export function getMethodology(id: string): Promise<MethodologyDetail> {
+  return get<MethodologyDetail>(`/api/v1/methodologies/${id}`);
+}
+
+export async function saveMethodology(
+  id: string | null,
+  yamlText: string,
+): Promise<MethodologyDetail> {
+  // The API speaks JSON; the editor speaks YAML. Parsed in-page;
+  // full validation lives server-side (422 with field errors).
+  const { default: yaml } = await import("yaml");
+  let doc: unknown;
+  try {
+    doc = yaml.parse(yamlText);
+  } catch (err) {
+    throw new Error(`Invalid YAML: ${err instanceof Error ? err.message : err}`);
+  }
+  const isNew = id === null;
+  const res = await fetch(
+    isNew ? `${BASE}/api/v1/methodologies` : `${BASE}/api/v1/methodologies/${id}`,
+    {
+      method: isNew ? "POST" : "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(doc),
+    },
+  );
+  if (!res.ok) {
+    throw new Error(`Save methodology: ${res.status} — ${await res.text()}`);
+  }
+  return (await res.json()) as MethodologyDetail;
+}
+
+export async function setDefaultMethodology(
+  id: string,
+): Promise<{ default: string }> {
+  const res = await fetch(`${BASE}/api/v1/methodologies/${id}/set-default`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    throw new Error(`POST set-default: ${res.status} — ${await res.text()}`);
+  }
+  return (await res.json()) as { default: string };
+}
+
 export interface Idea {
   id: string;
   statement: string;

@@ -29,6 +29,13 @@ export default function AppShell({
           >
             Search
           </Link>
+          {/* PBI-057: methodology registry UI. */}
+          <Link
+            href="/settings/methodologies"
+            className="min-h-[44px] inline-flex items-center text-sm underline"
+          >
+            Methodologies
+          </Link>
           {trail && trail.length > 0 && (
             <nav aria-label="Breadcrumb" className="text-sm text-muted-foreground">
               {trail.map((crumb, i) => (
