@@ -273,7 +273,8 @@ def test_runs_list_newest_first_and_404(client, tmp_path):
     assert [r["run_id"] for r in rows] == [r2, r1]
     assert set(rows[0]) == {"run_id", "status", "needs_approval",
                             "events_count", "error", "mode",
-                            "started_at", "duration_s"}  # PBI-044 shape
+                            "started_at", "duration_s",
+                            "methodology_id"}  # PBI-056 shape
     assert rows[0]["mode"] == "research"
     assert rows[0]["started_at"] is not None
     assert client.get("/api/v1/lab-projects/ghost/runs").status_code == 404

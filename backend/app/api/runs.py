@@ -28,12 +28,12 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request
 from sse_starlette.sse import EventSourceResponse
 from app.agents.config import validate_model_assignment
+from app.api.lab_projects import AUTO_MODEL, _root, _store
 from app.graph.compile import build_graph_from_methodology
 from app.models.evidence import Decision
 from app.models.methodology import Methodology
 from app.store.lab_project import LabProjectStore
 from app.store.methodology import MethodologyStore
-from app.api.lab_projects import _root, _store
 
 router = APIRouter()
 
@@ -51,6 +51,50 @@ def _methodology_hash(methodology: Methodology) -> str:
         sort_keys=True).encode()).hexdigest()[:12]
 
 
+def _is_unset(value) -> bool:
+    """AUTO_MODEL/blank means 'not configured' — the methodology
+    fallback applies (PBI-056). This is what makes fresh projects
+    runnable under a real default methodology while keeping
+    fail-closed behavior when NOTHING real is configured anywhere."""
+    return not str(value or "").strip() or value == AUTO_MODEL
+
+
+def resolve_methodology(mode: str, methodology_id: str | None = None,
+                        project_methodology_id: str | None = None
+                        ) -> Methodology:
+    """Explicit run id > project pin > mode default. Unknown ids 404
+    (fail-closed reference — a run must never start on a guessed
+    pipeline)."""
+    wanted = methodology_id or project_methodology_id
+    if wanted is not None:
+        try:
+            return MethodologyStore().get(wanted)
+        except KeyError:
+            raise HTTPException(status_code=404,
+                                detail=f"unknown methodology: {wanted}")
+    try:
+        return MethodologyStore().get_default_for_mode(mode)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+def _effective_assignment(methodology: Methodology,
+                          council_models: dict | None,
+                          judge_model: str | None) -> tuple[dict, str]:
+    """Single merge point (PBI-056): methodology base under
+    project/payload overrides, AUTO/blank meaning inherit. Shared by
+    get_graph (compile-time validation) and start_run (state freeze)
+    so the two can never diverge."""
+    base = {k: v for k, v in methodology.models.items() if k != "judge"}
+    explicit = {k: v for k, v in (council_models or {}).items()
+                if not _is_unset(v)}
+    council = {**base, **explicit}
+    judge = methodology.models.get("judge", "")
+    if judge_model is not None and not _is_unset(judge_model):
+        judge = judge_model
+    return council, judge
+
+
 def get_graph(root: Path, project_id: str, mode: str,
               methodology: Methodology,
               council_models: dict | None = None,
@@ -65,8 +109,12 @@ def get_graph(root: Path, project_id: str, mode: str,
     # NOTE: the compiler takes the lab ROOT (nodes append project_id
     # themselves) — passing store.path here doubles the id.
     base = {k: v for k, v in methodology.models.items() if k != "judge"}
-    council = {**base, **(council_models or {})}
-    judge = judge_model or methodology.models.get("judge", "")
+    # Project/payload overrides apply only when actually configured —
+    # AUTO_MODEL/blank means "inherit the methodology" (PBI-056).
+    # Merge itself lives in _effective_assignment (shared with the
+    # state freeze below — the two can never diverge).
+    council, judge = _effective_assignment(methodology, council_models,
+                                           judge_model)
     if mode not in methodology.compatible_modes:
         raise ValueError(
             f"methodology {methodology.id} is not compatible "
@@ -108,13 +156,35 @@ def _record(run_id: str) -> dict:
         raise HTTPException(status_code=404, detail="run not found")
 
 
+def _resolve_budget(meta, methodology: Methodology,
+                    payload_budget: dict | None):
+    """Budget precedence (PBI-056): run payload > project.yaml >
+    methodology defaults. project.yaml counts as explicit (it always
+    carries concrete numbers) EXCEPT untouched 50/5 defaults, which
+    defer to the methodology — documented quirk: explicitly setting
+    50/5 also defers. Live counters always come from the project."""
+    from app.models.evidence import BudgetState
+    fresh = BudgetState()
+    budget = meta.budget.model_copy()
+    if (budget.max_model_calls == fresh.max_model_calls
+            and budget.max_research_rounds == fresh.max_research_rounds):
+        budget.max_model_calls = \
+            methodology.budget_defaults.max_model_calls
+        budget.max_research_rounds = \
+            methodology.budget_defaults.max_research_rounds
+    for key in ("max_model_calls", "max_research_rounds"):
+        if key in (payload_budget or {}):
+            setattr(budget, key, payload_budget[key])
+    return budget
+
+
 def _ensure_graph(request: Request, store: LabProjectStore,
                   rec: dict, project_id: str):
     """Lazy recompile for records whose compiled graph is gone (post-
-    restart rehydrates). Resolves the default methodology for the RUN's
-    own persisted mode (PBI-034) under current project.yaml overrides —
-    a tampered config ValueErrors, which callers map to 400 leaving no
-    phantom records.
+    restart rehydrates). Resolves the RUN's methodology (pinned id >
+    project pin > mode default, PBI-056) under current project.yaml
+    overrides — a tampered config ValueErrors, which callers map to 400
+    leaving no phantom records.
     NOTE: no outer `with _lock` here — get_graph() takes _lock itself
     and threading.Lock is non-reentrant (self-deadlock caught by the
     restart test's faulthandler dump)."""
@@ -123,7 +193,8 @@ def _ensure_graph(request: Request, store: LabProjectStore,
     meta = store.read_meta()
     initial = rec.get("initial") or {}
     mode = (rec.get("mode") or initial.get("mode") or meta.mode)
-    methodology = MethodologyStore().get_default_for_mode(mode)
+    methodology = resolve_methodology(
+        mode, rec.get("methodology_id"), meta.methodology_id)
     rec["graph"] = get_graph(_root(request), project_id, mode,
                              methodology, meta.council_models,
                              meta.judge_model)
@@ -141,7 +212,8 @@ def _runs_db(root: Path) -> sqlite3.Connection:
     # alone cannot migrate existing DBs; ALTER-if-missing can.
     cols = {r[1] for r in db.execute("PRAGMA table_info(runs)")}
     for col, ctype in (("mode", "TEXT"), ("started_at", "TEXT"),
-                       ("duration_s", "REAL")):
+                       ("duration_s", "REAL"),
+                       ("methodology_id", "TEXT")):  # PBI-056
         if col not in cols:
             db.execute(f"ALTER TABLE runs ADD COLUMN {col} {ctype}")
     db.commit()
@@ -165,13 +237,15 @@ def _save_run(root: Path, rec: dict):
                 duration = None
         snapshot = (rec["run_id"], rec["project_id"], rec["status"],
                     json.dumps(rec["events"]), rec["error"],
-                    now.isoformat(), mode, started, duration)
+                    now.isoformat(), mode, started, duration,
+                    rec.get("methodology_id"))
     db = _runs_db(root)
     try:
         db.execute("INSERT OR REPLACE INTO runs "
                    "(run_id, project_id, status, events_json, error, "
-                   "updated_at, mode, started_at, duration_s) "
-                   "VALUES (?,?,?,?,?,?,?,?,?)", snapshot)
+                   "updated_at, mode, started_at, duration_s, "
+                   "methodology_id) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                   snapshot)
         db.commit()
     finally:
         db.close()
@@ -191,13 +265,15 @@ def rehydrate_runs(root: Path) -> int:
         try:
             rows = db.execute(
                 "SELECT run_id, project_id, status, events_json, error, "
-                "mode, started_at, duration_s FROM runs").fetchall()
+                "mode, started_at, duration_s, methodology_id "
+                "FROM runs").fetchall()
         finally:
             db.close()
     except sqlite3.Error:
         return 0  # file-level corruption: never crash startup
     revived = 0
-    for run_id, project_id, status, events_json, error, mode, started_at, duration_s in rows:
+    for run_id, project_id, status, events_json, error, mode, \
+            started_at, duration_s, methodology_id in rows:
         try:
             events = json.loads(events_json or "[]")
             assert isinstance(events, list)
@@ -212,7 +288,8 @@ def rehydrate_runs(root: Path) -> int:
                              "initial": None, "root": str(root),
                              "mode": mode or "research",
                              "started_at": started_at,
-                             "duration_s": duration_s}
+                             "duration_s": duration_s,
+                             "methodology_id": methodology_id}
         revived += 1
     return revived
 
@@ -224,7 +301,8 @@ def _payload(rec: dict) -> dict:
             "error": rec["error"],
             "mode": rec.get("mode", "research"),
             "started_at": rec.get("started_at"),
-            "duration_s": rec.get("duration_s")}
+            "duration_s": rec.get("duration_s"),
+            "methodology_id": rec.get("methodology_id")}
 
 
 def _pump(run_id: str, initial=None):
@@ -263,9 +341,14 @@ def _pump(run_id: str, initial=None):
 @router.post("/{project_id}/runs")
 def start_run(project_id: str, payload: dict, request: Request):
     """Start a run. Body: {mode?, question?, budget?{max_model_calls,
-    max_research_rounds}, council_models?, judge_model?}. Validates
-    models (400 on judge overlap), seeds budget from project.yaml,
-    returns {run_id, status}. session_id == run_id == thread_id."""
+    max_research_rounds}, council_models?, judge_model?,
+    methodology_id?}. Precedence (PBI-056, explicit and documented):
+    methodology selected by explicit run id > project pin > mode
+    default; models = methodology base under project/payload overrides
+    (AUTO/blank means inherit); budget = payload > project >
+    methodology defaults. Validates models (400 on judge overlap),
+    returns {run_id, status, methodology_id}.
+    session_id == run_id == thread_id."""
     root = _root(request)
     store = _store(root, project_id)
     meta = store.read_meta()
@@ -277,27 +360,26 @@ def start_run(project_id: str, payload: dict, request: Request):
     if mode not in ("research", "brainstorm", "academic"):
         raise HTTPException(status_code=422,
                             detail=f"unknown mode: {mode!r}")
-    # PBI-054: methodology resolution (explicit selection is PBI-056;
-    # until then the mode's default). Project/payload models override
-    # the methodology's — precedence documented here, not tribal.
+    methodology = resolve_methodology(
+        mode, (payload or {}).get("methodology_id"),
+        meta.methodology_id)
     try:
-        methodology = MethodologyStore().get_default_for_mode(mode)
         graph = get_graph(root, project_id, mode, methodology,
                           council, judge)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    budget = meta.budget.model_copy()
-    # MVP override surface: call/round limits only. max_sources and
-    # max_sources_per_claim (ProjectMeta fields) stay project-level —
-    # nodes read them live; per-run override is a later refinement.
-    for key in ("max_model_calls", "max_research_rounds"):
-        if key in (payload.get("budget") or {}):
-            setattr(budget, key, payload["budget"][key])
+    budget = _resolve_budget(meta, methodology, payload.get("budget"))
     run_id = uuid.uuid4().hex[:12]
     started_at = datetime.now(timezone.utc).isoformat()
+    # Freeze the effective models into state (PBI-056 firewall): nodes
+    # use these, never project.yaml mid-run. Re-resolved fresh on every
+    # start; checkpointed state carries them across pause/resume.
+    eff_council, eff_judge = _effective_assignment(
+        methodology, council, judge)
     initial = {
         "lab_project_id": project_id,
         "mode": mode,
+        "models": {"council": eff_council, "judge": eff_judge},
         "active_question": payload.get("question", meta.question),
         "budget": budget, "pending_tasks": [], "open_contradictions": [],
         "escalate": False, "audit_passed": False,
@@ -309,11 +391,13 @@ def start_run(project_id: str, payload: dict, request: Request):
                          "status": "running", "events": [], "error": None,
                          "graph": graph, "initial": initial,
                          "root": str(root), "mode": mode,
+                         "methodology_id": methodology.id,
                          "started_at": started_at, "duration_s": None}
     _save_run(root, _runs[run_id])
     threading.Thread(target=_pump, args=(run_id,), kwargs={"initial": initial},
                      daemon=True).start()
-    return {"run_id": run_id, "status": "running"}
+    return {"run_id": run_id, "status": "running",
+            "methodology_id": methodology.id}
 
 
 @router.get("/{project_id}/runs")
@@ -326,16 +410,16 @@ def list_runs(project_id: str, request: Request):
     with _lock:
         snapshot = [(r["run_id"], r["status"], len(r["events"]), r["error"],
                      r.get("mode", "research"), r.get("started_at"),
-                     r.get("duration_s"))
+                     r.get("duration_s"), r.get("methodology_id"))
                     for r in _runs.values()
                     if r["project_id"] == project_id]
     return [{"run_id": rid, "status": status,
              "needs_approval": status == "awaiting_approval",
              "events_count": count, "error": error,
              "mode": mode, "started_at": started_at,
-             "duration_s": duration_s}
-            for rid, status, count, error, mode, started_at, duration_s
-            in reversed(snapshot)]
+             "duration_s": duration_s, "methodology_id": methodology_id}
+            for rid, status, count, error, mode, started_at, duration_s,
+            methodology_id in reversed(snapshot)]
 
 
 @router.get("/{project_id}/runs/{run_id}")

@@ -35,8 +35,10 @@ def _slug(title: str) -> str:
 @router.post("")
 def create_lab_project(payload: dict, request: Request):
     """Create a project. Body: {title, question, mode?,
-    council_models?, judge_model?}. Returns the stored ProjectMeta.
-    Default models are fail-closed (judge==council refuses runs)."""
+    council_models?, judge_model?, methodology_id?, budget_overrides?
+    {max_model_calls, max_research_rounds}}. Returns the stored
+    ProjectMeta. Default models are fail-closed (judge==council refuses
+    runs). Unknown methodology_id 404s (fail-closed reference)."""
     if not payload.get("title") or not payload.get("question"):
         raise HTTPException(status_code=422,
                             detail="title and question are required")
@@ -52,11 +54,31 @@ def create_lab_project(payload: dict, request: Request):
     judge = payload.get("judge_model", AUTO_MODEL)
     project_id = _slug(payload["title"])
     store = LabProjectStore(_root(request), project_id)
+    from app.models.evidence import BudgetState
+    budget = BudgetState()
+    for key in ("max_model_calls", "max_research_rounds"):
+        if key in (payload.get("budget_overrides") or {}):
+            value = payload["budget_overrides"][key]
+            if not isinstance(value, int) or value <= 0:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"budget_overrides.{key} must be a positive int")
+            setattr(budget, key, value)
+    methodology_id = payload.get("methodology_id")
+    if methodology_id is not None:
+        from app.store.methodology import MethodologyStore
+        try:
+            MethodologyStore().get(methodology_id)
+        except KeyError:
+            raise HTTPException(
+                status_code=404,
+                detail=f"unknown methodology: {methodology_id}")
     meta = ProjectMeta(
         id=project_id, title=payload["title"],
         mode=payload.get("mode", "research"), question=payload["question"],
         created_at=datetime.now(timezone.utc),
-        council_models=council, judge_model=judge)
+        council_models=council, judge_model=judge, budget=budget,
+        methodology_id=methodology_id)
     store.write_meta(meta)
     return meta.model_dump(mode="json")
 

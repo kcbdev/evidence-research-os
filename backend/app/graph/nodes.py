@@ -34,6 +34,18 @@ from app.graph.state import LabProjectState
 from app.models.evidence import Claim, Decision, Evidence, Idea, NoveltyCheck, ProposedExperiment, Source, Task
 from app.store.lab_project import LabProjectStore
 
+
+def _models(state, store: LabProjectStore) -> tuple[dict, str]:
+    """Effective model assignment (PBI-056 firewall): runs freeze the
+    methodology-merged (council, judge) into state at start; nodes use
+    it instead of project.yaml. project.yaml remains the fallback for
+    ad-hoc/local invocations (unit-called nodes, shells)."""
+    frozen = state.get("models") or {}
+    meta = store.read_meta()
+    council = frozen.get("council") or meta.council_models
+    judge = frozen.get("judge") or meta.judge_model
+    return council, judge
+
 FINDING_FORMAT = """
 Append structured findings using these exact line prefixes (one per line):
 CLAIM: <a falsifiable statement>
@@ -173,7 +185,7 @@ def make_independent_first_pass(lab_project_path: Path):
         if state.get("mode") == "brainstorm":
             return _brainstorm_pass(Path(lab_project_path), state)
         store = LabProjectStore(lab_project_path, state["lab_project_id"])
-        models = store.read_meta().council_models
+        models, _judge = _models(state, store)
         # Sync-node only: LangGraph runs sync nodes in a worker thread with
         # no running loop, so asyncio.run is safe. Never await this node
         # directly from async code (would raise "asyncio.run() cannot be
@@ -198,8 +210,9 @@ def _brainstorm_pass(lab_project_path: Path, state) -> dict:
     from app.agents.ideator import propose
     store = LabProjectStore(lab_project_path, state["lab_project_id"])
     meta = store.read_meta()
+    models, _judge = _models(state, store)
     try:
-        model = meta.council_models["ideator"]
+        model = models["ideator"]
     except KeyError:
         raise ValueError(
             "brainstorm mode needs an 'ideator' model in council_models")
@@ -264,7 +277,7 @@ def make_novelty_check(lab_project_path: Path):
 
     def novelty_check(state) -> dict:
         store = LabProjectStore(lab_project_path, state["lab_project_id"])
-        models = store.read_meta().council_models
+        models, _judge = _models(state, store)
         ideas = store.list_ideas()
         fresh = [i for i in ideas
                  if i.status == "proposed" and i.novelty_check is None]
@@ -412,7 +425,7 @@ def make_targeted_research(lab_project_path: Path):
         from app.tools.keyword_index import keyword_search
         from app.tools.semantic_index import semantic_search
         store = LabProjectStore(lab_project_path, state["lab_project_id"])
-        models = store.read_meta().council_models
+        models, _judge = _models(state, store)
         debates = Path(lab_project_path) / state["lab_project_id"] / "debates"
         debates.mkdir(parents=True, exist_ok=True)
         pending = state.get("pending_tasks", []) or []
@@ -464,7 +477,7 @@ def make_adversarial_review(lab_project_path: Path):
 
     def adversarial_review(state) -> dict:
         store = LabProjectStore(lab_project_path, state["lab_project_id"])
-        models = store.read_meta().council_models
+        models, _judge = _models(state, store)
         model = models["skeptic"]
         if state.get("mode") == "brainstorm":
             return _brainstorm_adversarial_review(store, model, state)
@@ -559,14 +572,15 @@ def make_evidence_adjudication(lab_project_path: Path):
     cannot override physics. (2) Judge LLM for evidenced claims, with
     the skeptic transcript as context; unparseable output leaves the
     claim untouched (fail-safe, never fabricate a verdict).
-    validate_model_assignment is re-asserted here: project.yaml may have
-    changed between build time and run time."""
+    validate_model_assignment is re-asserted here on the EFFECTIVE
+    assignment (frozen in state at start, PBI-056): project.yaml may
+    have changed between build time and run time."""
 
     def evidence_adjudication(state) -> dict:
         from app.agents.config import validate_model_assignment
         store = LabProjectStore(lab_project_path, state["lab_project_id"])
-        meta = store.read_meta()
-        validate_model_assignment(meta.council_models, meta.judge_model)
+        council, judge = _models(state, store)
+        validate_model_assignment(council, judge)
         by_claim: dict[str, list] = {}
         for ev in store.list_evidence():
             for cid in ev.supports:
@@ -579,7 +593,7 @@ def make_evidence_adjudication(lab_project_path: Path):
                 claim.adjudicated_by = "rule:no-evidence"
                 store.write_claim(claim)
                 continue
-            verdicts, attempts = _consult_judge(meta.judge_model, store,
+            verdicts, attempts = _consult_judge(judge, store,
                                                 claim, supporting)
             judged += attempts  # calls made, whatever came back
             if claim.id in verdicts:
@@ -587,7 +601,7 @@ def make_evidence_adjudication(lab_project_path: Path):
                 claim.status = status
                 if confidence is not None:
                     claim.confidence = confidence
-                claim.adjudicated_by = meta.judge_model
+                claim.adjudicated_by = judge
                 store.write_claim(claim)
         tmp = {"budget": state["budget"].model_copy()}
         consume_calls(tmp, judged)
@@ -659,7 +673,7 @@ def make_methodology_analysis(lab_project_path: Path):
 
     def methodology_analysis(state) -> dict:
         store = LabProjectStore(lab_project_path, state["lab_project_id"])
-        meta = store.read_meta()
+        _council, judge = _models(state, store)
         by_claim: dict[str, list] = {}
         for ev in store.list_evidence():
             for cid in ev.supports:
@@ -676,7 +690,7 @@ def make_methodology_analysis(lab_project_path: Path):
         spent = 0
         if lines:
             text, spent = call_model_resilient(
-                meta.judge_model, load_prompt("judge"),
+                judge, load_prompt("judge"),
                 METHODOLOGY_FORMAT + "\nCLAIMS:\n" + "\n".join(lines))
             debates = Path(lab_project_path) / state["lab_project_id"] / "debates"
             debates.mkdir(parents=True, exist_ok=True)

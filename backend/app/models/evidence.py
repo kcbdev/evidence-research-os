@@ -162,3 +162,6 @@ class ProjectMeta(BaseModel):
     # PBI-020: reversible archive flag (spec §8 DELETE semantics).
     # Archived projects vanish from listings but keep full history.
     archived: bool = False
+    # PBI-056: pinned methodology (None = mode default at run time).
+    # Old project.yaml files without the key read back as None.
+    methodology_id: Optional[str] = None
