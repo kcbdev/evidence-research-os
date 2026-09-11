@@ -18,13 +18,16 @@ class StageSpec(BaseModel):
     roles: list[str] = []
     loop_while: Optional[str] = None    # CONDITION_REGISTRY name
     loop_target: Optional[str] = None   # another stage id
+    # Tier B ad hoc (PBI-059): inline simpleeval expression; same
+    # semantics as loop_while (loop back when true, else next).
     # PBI-053 addition beyond the guide sketch: the real topology has
     # FORWARD branches the loop form cannot express (classifier
     # escalate, exhaustion short-circuits). `route` names a router in
     # CONDITION_REGISTRY returning the next stage id (or "END").
-    # A stage carries at most one of loop_while / route (both set 422s
-    # at compile).
+    # A stage carries at most one of loop_while / loop_condition /
+    # route (two set 422s at compile).
     route: Optional[str] = None
+    loop_condition: Optional[str] = None
     interrupt: bool = False
 
 

@@ -18,6 +18,7 @@ from pathlib import Path
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.sqlite import SqliteSaver
 from app.agents.config import validate_model_assignment
+from app.graph.expr_condition import make_expr_condition
 from app.graph.generic_node import make_prompt_agent_node
 from app.graph.state import LabProjectState
 from app.graph.registry import NODE_REGISTRY, CONDITION_REGISTRY
@@ -53,15 +54,27 @@ def build_graph_from_methodology(methodology: Methodology,
         if stage.node not in NODE_REGISTRY and \
                 stage.node not in {r.id for r in methodology.custom_roles}:
             _fail(stage.id, "node", stage.node)
+        branch_forms = [f for f in (stage.loop_while,
+                                    stage.loop_condition,
+                                    stage.route)
+                        if f is not None]
+        if len(branch_forms) > 1:
+            raise ValueError(
+                f"methodology {mid} stage {stage.id}: loop_while, "
+                "loop_condition and route are mutually exclusive")
         if stage.loop_while is not None:
-            if stage.route is not None:
-                raise ValueError(
-                    f"methodology {mid} stage {stage.id}: loop_while and "
-                    "route are mutually exclusive")
             if stage.loop_while not in CONDITION_REGISTRY:
                 _fail(stage.id, "loop_while", stage.loop_while)
             if stage.loop_target not in by_id:
                 _fail(stage.id, "loop_target", stage.loop_target)
+        if stage.loop_condition is not None:
+            if stage.loop_target not in by_id:
+                _fail(stage.id, "loop_target", stage.loop_target)
+            try:
+                make_expr_condition(stage.loop_condition)
+            except ValueError as exc:
+                raise ValueError(
+                    f"methodology {mid} stage {stage.id}: {exc}")
         if stage.route is not None and \
                 stage.route not in CONDITION_REGISTRY:
             _fail(stage.id, "route", stage.route)
@@ -120,6 +133,13 @@ def build_graph_from_methodology(methodology: Methodology,
             def _loop(s, cond=cond, target=target, nxt=linear):
                 return target if cond(s) else nxt
             g.add_conditional_edges(stage.id, _loop)
+        elif stage.loop_condition is not None:
+            cond = make_expr_condition(stage.loop_condition)
+            target = stage.loop_target
+
+            def _expr_loop(s, cond=cond, target=target, nxt=linear):
+                return target if cond(s) else nxt
+            g.add_conditional_edges(stage.id, _expr_loop)
         else:
             g.add_edge(stage.id, linear)
 

@@ -19,6 +19,7 @@ dependencies = [
   "lancedb>=0.38.0",
   "fastembed>=0.8.0",
   "numpy>=2.5.3",
+  "simpleeval>=1.0.7",
 ]
 
 [dependency-groups]
