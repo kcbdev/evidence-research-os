@@ -25,13 +25,15 @@ beforeEach(() => {
 describe("DecisionsPage", () => {
   it("renders the episodic log newest-first", async () => {
     stubFetch(() => [
-      { id: "D-2", what: "Run ended: completed", why: "calls 3/50", timestamp: "t2" },
       { id: "D-1", what: "Human approved run", why: "", timestamp: "t1" },
+      { id: "D-2", what: "Run ended: completed", why: "calls 3/50", timestamp: "t2" },
     ]);
     render(<DecisionsPage />);
-    expect(await screen.findByText("Run ended: completed")).toBeDefined();
-    expect(screen.getByText("Human approved run")).toBeDefined();
-    expect(screen.getByText("D-2", { exact: false })).toBeDefined();
+    await screen.findByText("Run ended: completed");
+    const items = screen.getAllByRole("listitem");
+    // Stored oldest-first, rendered newest-first.
+    expect(items[0].textContent).toContain("D-2");
+    expect(items[1].textContent).toContain("D-1");
   });
 
   it("shows the empty state with no decisions", async () => {

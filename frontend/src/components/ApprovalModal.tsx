@@ -111,6 +111,8 @@ export default function ApprovalModal({
           <DialogDescription>
             <strong>Approve</strong> publishes <code>report.md</code> built
             from exactly the adjudicated claims below.{" "}
+            <strong>Edit draft</strong> replaces the pending draft in place
+            (re-running synthesis would discard edits).{" "}
             <strong>Reject</strong> stops the run — nothing is published.
           </DialogDescription>
         </DialogHeader>

@@ -719,6 +719,12 @@ def make_methodology_analysis(lab_project_path: Path):
             debates.mkdir(parents=True, exist_ok=True)
             (debates / "methodology.md").write_text(text, encoding="utf-8")
             for cid, score in _parse_methodology_scores(text).items():
+                # Only claims actually sent for assessment (cid in
+                # by_claim): a SCORE line for an unsent claim is dropped,
+                # never applied — the node must not refine what it never
+                # showed the judge.
+                if cid not in by_claim:
+                    continue
                 try:
                     claim = store.read_claim(cid)
                 except FileNotFoundError:

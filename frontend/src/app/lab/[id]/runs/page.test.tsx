@@ -25,13 +25,15 @@ beforeEach(() => {
 describe("RunsPage", () => {
   it("lists runs newest-first with detail links", async () => {
     stubFetch(() => [
-      { run_id: "r2", status: "done", needs_approval: false, events_count: 5, error: null, mode: "research", methodology_id: "deep-research-council-v1" },
-      { run_id: "r1", status: "awaiting_approval", needs_approval: true, events_count: 3, error: null, mode: "brainstorm", methodology_id: "brainstorm-ideation-v1" },
+      { run_id: "r2", status: "done", needs_approval: false, events_count: 5, error: null, mode: "research", methodology_id: "deep-research-council-v1", started_at: "2026-09-10T10:00:00Z", duration_s: 61.4 },
+      { run_id: "r1", status: "awaiting_approval", needs_approval: true, events_count: 3, error: null, mode: "brainstorm", methodology_id: "brainstorm-ideation-v1", started_at: null, duration_s: null },
     ]);
     render(<RunsPage />);
     expect(await screen.findByText("r2")).toBeDefined();
     expect(screen.getByText("needs approval", { exact: false })).toBeDefined();
     expect(screen.getByText("deep-research-council-v1")).toBeDefined();
+    expect(screen.getByText("2026-09-10 10:00")).toBeDefined();
+    expect(screen.getByText("61s")).toBeDefined();
     expect(screen.getByRole("link", { name: "Open run r1" }).getAttribute("href")).toBe("/lab/p/runs/r1");
   });
 

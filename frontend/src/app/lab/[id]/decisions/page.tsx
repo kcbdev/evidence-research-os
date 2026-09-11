@@ -21,7 +21,9 @@ export default function DecisionsPage() {
   const refresh = useCallback(async () => {
     setError(null);
     try {
-      setDecisions(await listDecisions(id));
+      const list = await listDecisions(id);
+      // Reverse-chron: the store lists oldest-first (filename order).
+      setDecisions([...list].reverse());
     } catch (err) {
       setError(err instanceof Error ? err.message : "failed to load");
     }

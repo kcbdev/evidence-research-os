@@ -473,8 +473,30 @@ def test_patch_models_persists_and_validates(client, tmp_path):
                          json={"judge_model": "  "})
     assert blank.status_code == 400 and "Blank model IDs" in blank.text
     assert client.patch("/api/v1/lab-projects/ghost",
-                        json=body).status_code == 404
+                       json=body).status_code == 404
     assert not (tmp_path / "ghost").exists()  # no mkdir side effect
+
+
+def test_patch_grandfathers_missing_ideator(client, tmp_path):
+    # Batch review: pre-PBI-050 3-key projects save fine without
+    # inventing an ideator (blank ideator + none stored = absent).
+    from app.store.lab_project import LabProjectStore
+    from app.models.evidence import ProjectMeta
+    store = LabProjectStore(tmp_path, "old")
+    store.write_meta(ProjectMeta(
+        id="old", title="t", question="q",
+        created_at="2026-09-05T10:00:00Z",
+        council_models={"scientist": "a", "investigator": "b",
+                        "skeptic": "c"},
+        judge_model="j"))
+    resp = client.patch("/api/v1/lab-projects/old",
+                        json={"council_models": {
+                            "scientist": "a2", "investigator": "b",
+                            "skeptic": "c", "ideator": ""},
+                            "judge_model": "j"})
+    assert resp.status_code == 200
+    assert "ideator" not in resp.json()["council_models"]
+    assert resp.json()["council_models"]["scientist"] == "a2"
 
 
 def test_cors_allows_browser_origin(client):
@@ -519,6 +541,11 @@ def test_edit_replaces_draft_and_resumes(client, tmp_path):
         "Human edited synthesis draft at checkpoint"
     final = _wait_for(client, pid, rid, {"done"})
     assert final["needs_approval"] is False
+    # The shipped draft survives completion (final_output must never
+    # regenerate it) — lock the invariant post-done, not just mid-run.
+    assert client.get(
+        f"/api/v1/lab-projects/{pid}/output/report").json()["markdown"] \
+        == edited
 
 
 def test_edit_validation(client):
@@ -531,9 +558,41 @@ def test_edit_validation(client):
     assert client.post(
         base, json={"decision": "edit",
                     "edited_content": "   "}).status_code == 422
+    for junk in (None, 42, {"text": "x"}, ["x"]):
+        assert client.post(
+            base, json={"decision": "edit",
+                        "edited_content": junk}).status_code == 422
     assert client.post(
         base, json={"decision": "maybe"}).status_code == 422
     # run still paused and intact after rejected edits
     assert client.get(
         f"/api/v1/lab-projects/{pid}/runs/{rid}").json()["status"] == \
         "awaiting_approval"
+
+
+def test_edit_with_tampered_config_400s_without_phantom(client, tmp_path):
+    # Tampered-edit ordering: judge overlap 400s BEFORE any D-edit
+    # record or draft write (mirrors the approve tamper test).
+    pid = _create(client)
+    rid = client.post(f"/api/v1/lab-projects/{pid}/runs",
+                      json={}).json()["run_id"]
+    _wait_for(client, pid, rid, {"awaiting_approval"})
+    draft_before = client.get(
+        f"/api/v1/lab-projects/{pid}/output/report").json()["markdown"]
+    store = LabProjectStore(tmp_path, pid)
+    meta = store.read_meta()
+    meta.judge_model = meta.council_models["scientist"]
+    store.write_meta(meta)
+    # Simulated restart: the lazy recompile path must hit the tamper.
+    runs_mod._runs.clear()
+    clear_graph_cache()
+    assert rehydrate_runs(tmp_path) >= 1
+    resp = client.post(f"/api/v1/lab-projects/{pid}/runs/{rid}/approve",
+                       json={"decision": "edit",
+                             "edited_content": "# tampered\n"})
+    assert resp.status_code == 400
+    store = LabProjectStore(tmp_path, pid)
+    assert f"D-edit-{rid}" not in [d.id for d in store.list_decisions()]
+    assert client.get(
+        f"/api/v1/lab-projects/{pid}/output/report").json()["markdown"] \
+        == draft_before

@@ -465,9 +465,10 @@ async def stream_run(project_id: str, run_id: str):
 def approve_run(project_id: str, run_id: str, payload: dict,
                 request: Request):
     """Resolve a checkpoint. Body: {decision: approve|reject|edit,
-    note?, edited_content? (edit only)}. Records D-approve/D-reject/
-    D-edit-{run} in decisions/ via the store, then resumes (approve,
-    edit) or parks (reject). 400 unless awaiting_approval.
+    note?, edited_content? (edit only)}. Records D-approve-{run} (for
+    both approve and reject) or D-edit-{run} in decisions/ via the
+    store, then resumes (approve, edit) or parks (reject). 400 unless
+    awaiting_approval.
 
     Edit-and-continue (PBI-052): the pending synthesis draft IS
     output/report.md (synthesis already ran upstream of the
@@ -510,7 +511,7 @@ def approve_run(project_id: str, run_id: str, payload: dict,
         return {"run_id": run_id, "status": "rejected"}
     if decision == "edit":
         edited = (payload or {}).get("edited_content", "")
-        if not edited.strip():
+        if not isinstance(edited, str) or not edited.strip():
             raise HTTPException(status_code=422,
                                 detail="edited_content is required "
                                        "for edit")
@@ -518,11 +519,14 @@ def approve_run(project_id: str, run_id: str, payload: dict,
         if not draft.is_file():
             raise HTTPException(status_code=400,
                                 detail="no synthesis draft to edit yet")
-        draft.write_text(edited, encoding="utf-8")
+        # Copy-first ordering: the debates backup lands BEFORE the
+        # destructive draft overwrite, so a mid-write crash can never
+        # leave a mutated draft with no record.
         debates = store.path / "debates"
         debates.mkdir(parents=True, exist_ok=True)
         (debates / f"approval-edit-{run_id}.md").write_text(
             edited, encoding="utf-8")
+        draft.write_text(edited, encoding="utf-8")
         store.write_decision(Decision(
             id=f"D-edit-{run_id}",
             what="Human edited synthesis draft at checkpoint",

@@ -118,6 +118,22 @@ def test_methodology_skips_confidenceless_claims(tmp_path, monkeypatch):
     assert store.read_claim("C-1").confidence is None
 
 
+def test_methodology_ignores_scores_for_unsent_claims(tmp_path, monkeypatch):
+    # Batch review: a SCORE line for a confident claim the node never
+    # sent (no evidence) must not be applied.
+    store = _seed(
+        tmp_path, monkeypatch, judge_text="SCORE C-2: 0.99 — sung")
+    _seed_evidenced(store)
+    from app.models.evidence import Confidence as Conf
+    store.write_claim(Claim(
+        id="C-2", statement="unsent but confident",
+        confidence=Conf(source_quality=0.5, methodological_strength=0.5,
+                        independent_confirmation=0.5,
+                        contradiction_level=0.5, overall=0.5)))
+    nodes.make_methodology_analysis(tmp_path)(_state())
+    assert store.read_claim("C-2").confidence.methodological_strength == 0.5
+
+
 def test_reproducibility_transcript(tmp_path, monkeypatch):
     store = _seed(tmp_path, monkeypatch)
     _seed_evidenced(store)

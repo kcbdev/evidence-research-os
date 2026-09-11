@@ -121,6 +121,40 @@ describe("ApprovalModal dossier", () => {
       edited_content: "# T\n\nrewritten\n",
     });
   });
+
+  it("edit with an emptied draft posts nothing and errors", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const path = String(url);
+        if (path.endsWith("/output/report")) {
+          return {
+            ok: true,
+            json: async () => ({ markdown: "# T\n", generated_at: "t" }),
+          };
+        }
+        if (path.endsWith("/claims")) {
+          return { ok: true, json: async () => [] };
+        }
+        if (path.endsWith("/lab-projects/p")) {
+          return { ok: true, json: async () => ({ counts: {} }) };
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+    const onResolved = vi.fn();
+    render(<ApprovalModal projectId="p" runId="r" onResolved={onResolved} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Edit draft…" }));
+    const area = await screen.findByLabelText("Synthesis draft");
+    fireEvent.change(area, { target: { value: "   " } });
+    fireEvent.click(screen.getByRole("button", { name: "Save & continue" }));
+    expect(await screen.findByText(/empty/)).toBeDefined();
+    expect(onResolved).not.toHaveBeenCalled();
+    const posts = (fetch as ReturnType<typeof vi.fn>).mock.calls.filter(
+      ([url]) => String(url).endsWith("/approve"),
+    );
+    expect(posts).toHaveLength(0);
+  });
 });
 
   it("dossier failure never blocks the buttons", async () => {

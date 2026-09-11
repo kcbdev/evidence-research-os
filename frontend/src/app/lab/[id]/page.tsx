@@ -214,7 +214,7 @@ export default function LabOverview() {
                 <EmptyHeader>
                   <EmptyTitle>No runs yet</EmptyTitle>
                   <EmptyDescription>
-                    History appears here (newest first); it resets if the
+                    History appears here (newest first) and survives
                     backend restarts.
                   </EmptyDescription>
                 </EmptyHeader>

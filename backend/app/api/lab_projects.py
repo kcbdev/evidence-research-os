@@ -124,12 +124,22 @@ def get_lab_project(project_id: str, request: Request):
 @router.patch("/{project_id}")
 def update_lab_project(project_id: str, payload: dict, request: Request):
     """Update model assignment ONLY (PBI-028): {council_models?,
-    judge_model?}. Merged over stored values, validated (judge overlap
-    refused with a readable 400), committed via the store. Everything
-    else in project.yaml is untouched — budgets stay run-scoped."""
+    judge_model?}. Per-key MERGE over stored values (batch-review fix:
+    pre-PBI-050 projects carry 3-key councils — wholesale replace
+    would force them to invent an ideator to save anything). Blank
+    ideator where none is stored reads as absent (grandfathered);
+    blank anywhere else 400s. Validated (judge overlap refused with a
+    readable 400), committed via the store. Everything else in
+    project.yaml is untouched — budgets stay run-scoped."""
     store = _store(_root(request), project_id)
     meta = store.read_meta()
-    council = payload.get("council_models", meta.council_models)
+    merged = dict(meta.council_models)
+    for role, model in (payload.get("council_models") or {}).items():
+        merged[role] = model
+    if not str(merged.get("ideator", "")).strip() \
+            and "ideator" not in meta.council_models:
+        merged.pop("ideator", None)  # grandfathered: never required it
+    council = merged
     judge = payload.get("judge_model", meta.judge_model)
     try:
         validate_model_assignment(council, judge)
