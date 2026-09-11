@@ -1,0 +1,89 @@
+id: witness-tier-ab-v1
+name: "Witness Tier A+B (PBI-061)"
+description: "PBI-061 witness: Deep Research pipeline + Tier A red-team custom role (prompt+tools only, zero custom_nodes files) + Tier B loop_condition on conflict_detection. NOT a default; delete after the witness."
+is_default: false
+compatible_modes:
+- research
+workflow:
+  stages:
+  - id: trigger_classifier
+    node: trigger_classifier
+    route: route_classifier
+  - id: plan
+    node: plan
+  - id: independent_first_pass
+    node: independent_first_pass
+    roles:
+    - scientist
+    - investigator
+    - skeptic
+  - id: evidence_extraction
+    node: evidence_extraction
+  - id: conflict_detection
+    node: conflict_detection
+    loop_condition: len(open_contradictions) > 0
+    loop_target: targeted_research
+  - id: targeted_research
+    node: targeted_research
+  - id: adversarial_review
+    node: adversarial_review
+  - id: evidence_adjudication
+    node: evidence_adjudication
+  - id: synthesis
+    node: synthesis
+  - id: red_team_review
+    node: red_team_reviewer
+  - id: citation_audit
+    node: citation_audit
+    route: route_audit
+  - id: targeted_repair
+    node: targeted_repair
+  - id: human_checkpoint
+    node: human_checkpoint
+    interrupt: true
+  - id: final_output
+    node: final_output
+tools:
+  enabled:
+  - search_web
+  - fetch_url
+  - fetch_pdf
+  - grep_project
+  - keyword_search
+  - semantic_search
+  - citation_verify
+  - store_source
+  - retrieve_evidence
+prompts:
+  set: role-prompts/v1
+  overrides: {}
+skills:
+  scientist:
+  - hypothesis-decomposition
+  investigator:
+  - source-retrieval
+  - contradiction-search
+  skeptic:
+  - adversarial-review-research
+  judge:
+  - evidence-adjudication
+models:
+  investigator: qwen/qwen3.5-flash-02-23
+  scientist: deepseek/deepseek-v4-flash-0731
+  skeptic: deepseek/deepseek-v4-flash-0731
+  ideator: deepseek/deepseek-v4-flash-0731
+  judge: meta-llama/llama-3.3-70b-instruct
+budget_defaults:
+  max_model_calls: 50
+  max_research_rounds: 5
+custom_roles:
+- id: red_team_reviewer
+  system_prompt: |
+    You review claims specifically for commercial viability objections
+    a skeptical investor would raise — separate from the Skeptic's
+    epistemic/methodological review. Use grep_project and keyword_search
+    to ground objections in the project's own evidence, then FINAL with
+    your verdict.
+  tools: [grep_project, keyword_search]
+  model: deepseek/deepseek-v4-flash-0731
+  output_schema: null

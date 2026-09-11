@@ -1,0 +1,77 @@
+id: witness-tier-c-v1
+name: "Witness Tier C (PBI-061)"
+description: "PBI-061 witness: Deep Research pipeline + Tier C experiment_scorer custom node (custom_nodes/experiment_scorer.py). NOT a default; delete after the witness."
+is_default: false
+compatible_modes:
+- research
+workflow:
+  stages:
+  - id: trigger_classifier
+    node: trigger_classifier
+    route: route_classifier
+  - id: plan
+    node: plan
+  - id: independent_first_pass
+    node: independent_first_pass
+    roles:
+    - scientist
+    - investigator
+    - skeptic
+  - id: evidence_extraction
+    node: evidence_extraction
+  - id: conflict_detection
+    node: conflict_detection
+    route: route_conflict
+  - id: targeted_research
+    node: targeted_research
+  - id: adversarial_review
+    node: adversarial_review
+  - id: evidence_adjudication
+    node: evidence_adjudication
+  - id: experiment_scoring
+    node: experiment_scorer
+  - id: synthesis
+    node: synthesis
+  - id: citation_audit
+    node: citation_audit
+    route: route_audit
+  - id: targeted_repair
+    node: targeted_repair
+  - id: human_checkpoint
+    node: human_checkpoint
+    interrupt: true
+  - id: final_output
+    node: final_output
+tools:
+  enabled:
+  - search_web
+  - fetch_url
+  - fetch_pdf
+  - grep_project
+  - keyword_search
+  - semantic_search
+  - citation_verify
+  - store_source
+  - retrieve_evidence
+prompts:
+  set: role-prompts/v1
+  overrides: {}
+skills:
+  scientist:
+  - hypothesis-decomposition
+  investigator:
+  - source-retrieval
+  - contradiction-search
+  skeptic:
+  - adversarial-review-research
+  judge:
+  - evidence-adjudication
+models:
+  investigator: qwen/qwen3.5-flash-02-23
+  scientist: deepseek/deepseek-v4-flash-0731
+  skeptic: deepseek/deepseek-v4-flash-0731
+  ideator: deepseek/deepseek-v4-flash-0731
+  judge: meta-llama/llama-3.3-70b-instruct
+budget_defaults:
+  max_model_calls: 50
+  max_research_rounds: 5

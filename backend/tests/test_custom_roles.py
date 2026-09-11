@@ -12,6 +12,9 @@ from app.tools.dispatch import get_tools_for_names
 
 MODELS = {"scientist": "m-sci", "investigator": "m-inv",
           "skeptic": "m-ske", "judge": "m-judge"}
+# Project council never carries a "judge" key (real project.yaml
+# shape) — strip it when seeding project meta.
+COUNCIL = {k: v for k, v in MODELS.items() if k != "judge"}
 
 
 def _methodology(stages, roles):
@@ -40,7 +43,7 @@ def _seed(tmp_path, monkeypatch):
     store.write_meta(ProjectMeta(
         id="p", title="t", question="q",
         created_at="2026-09-05T10:00:00Z",
-        council_models=dict(MODELS), judge_model="m-judge"))
+        council_models=dict(COUNCIL), judge_model="m-judge"))
     return store
 
 
@@ -141,3 +144,40 @@ def test_dispatch_registry_only_existing_tools():
                           "store_source"}
     with pytest.raises(ValueError, match="search_web"):
         get_tools_for_names(["search_web"])  # doesn't exist: not offered
+
+
+def _witness_state(**over):
+    state = {"lab_project_id": "p", "mode": "research",
+             "active_question": "is X viable?",
+             "budget": BudgetState(), "pending_tasks": [],
+             "open_contradictions": [], "escalate": True,
+             "audit_passed": False, "needs_human_approval": False,
+             "session_id": "s-w", "first_pass": {}}
+    state.update(over)
+    return state
+
+
+@pytest.mark.parametrize("mid,stage", [
+    ("witness-tier-ab-v1", "red_team_review"),
+    ("witness-tier-c-v1", "experiment_scoring"),
+])
+def test_witness_files_compile_and_execute(tmp_path, monkeypatch, mid,
+                                           stage):
+    """PBI-061 pre-proof (mocked): the committed witness methodologies
+    compile and run their custom stages to pause. The LIVE witness
+    (real models, budget/cache parity) stays human — needs a key."""
+    from app.store.methodology import MethodologyStore
+    _seed(tmp_path, monkeypatch)
+    monkeypatch.setattr("app.graph.nodes.call_model_resilient",
+                        lambda *a, **k: ("", 1))
+    monkeypatch.setattr("app.graph.generic_node.call_model_resilient",
+                        lambda *a, **k: ("FINAL: witness ok", 1))
+    m = MethodologyStore().get(mid)
+    graph = build_graph_from_methodology(m, tmp_path)
+    config = {"configurable": {"thread_id": f"t-{mid}"}}
+    names = []
+    for chunk in graph.stream(_witness_state(), config,
+                              stream_mode="updates"):
+        names.extend(chunk.keys())
+    assert stage in names
+    assert tuple(graph.get_state(config).next) == ("human_checkpoint",)

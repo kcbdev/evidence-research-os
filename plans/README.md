@@ -87,7 +87,7 @@ stays `In Progress` until the batch review sorts it).
 | PBI-054 | Done* | PBI-055 | Done* |
 | PBI-056 | Done* | PBI-057 | Done* |
 | PBI-058 | Done* | PBI-059 | Done* |
-| PBI-060 | Active | PBI-061 | Proposed |
+| PBI-060 | Done* | PBI-061 | Active |
 
 ## Dependency graph
 
