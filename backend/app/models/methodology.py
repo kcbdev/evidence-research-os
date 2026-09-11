@@ -54,6 +54,19 @@ class BudgetDefaults(BaseModel):
     max_research_rounds: int = 5
 
 
+class CustomRoleSpec(BaseModel):
+    """Tier A (PBI-058): a new agent role as pure YAML — system prompt
+    + tool list + model, no code. output_schema is a best-effort
+    validation hint ("module:Class"), not a second type system."""
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    system_prompt: str
+    tools: list[str] = []
+    model: str
+    output_schema: Optional[str] = None
+
+
 class Methodology(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -68,3 +81,4 @@ class Methodology(BaseModel):
     skills: dict[str, list[str]]
     models: dict[str, str]
     budget_defaults: BudgetDefaults
+    custom_roles: list[CustomRoleSpec] = []  # Tier A (PBI-058)

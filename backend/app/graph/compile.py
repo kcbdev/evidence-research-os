@@ -13,13 +13,16 @@ checkpoint.sqlite the hardcoded builder uses, so compiled graphs are
 thread-compatible with existing checkpoints.
 """
 import sqlite3
+import warnings
 from pathlib import Path
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.sqlite import SqliteSaver
 from app.agents.config import validate_model_assignment
+from app.graph.generic_node import make_prompt_agent_node
 from app.graph.state import LabProjectState
 from app.graph.registry import NODE_REGISTRY, CONDITION_REGISTRY
 from app.models.methodology import Methodology
+from app.tools.dispatch import get_tools_for_names
 
 
 def build_graph_from_methodology(methodology: Methodology,
@@ -47,7 +50,8 @@ def build_graph_from_methodology(methodology: Methodology,
             f"unknown {field} '{value}'")
 
     for stage in stages:
-        if stage.node not in NODE_REGISTRY:
+        if stage.node not in NODE_REGISTRY and \
+                stage.node not in {r.id for r in methodology.custom_roles}:
             _fail(stage.id, "node", stage.node)
         if stage.loop_while is not None:
             if stage.route is not None:
@@ -69,9 +73,29 @@ def build_graph_from_methodology(methodology: Methodology,
     checkpointer = SqliteSaver(conn)
     checkpointer.setup()
 
+    # Tier A (PBI-058): custom roles resolve FIRST. A custom id may
+    # shadow a built-in — explicit author intent, but loud about it.
+    custom: dict[str, object] = {}
+    for role in methodology.custom_roles:
+        if role.id in NODE_REGISTRY:
+            warnings.warn(
+                f"methodology {mid}: custom role '{role.id}' shadows "
+                "a built-in node")
+        try:
+            tools = get_tools_for_names(role.tools)
+        except ValueError as exc:
+            raise ValueError(f"methodology {mid} role {role.id}: {exc}")
+        custom[role.id] = make_prompt_agent_node(
+            role.model_dump(), lab_project_path, tools)
+
+    def _builder(stage):
+        if stage.node in custom:
+            return lambda _path: custom[stage.node]
+        return NODE_REGISTRY[stage.node]
+
     g = StateGraph(LabProjectState)
     for stage in stages:
-        g.add_node(stage.id, NODE_REGISTRY[stage.node](lab_project_path))
+        g.add_node(stage.id, _builder(stage)(lab_project_path))
 
     g.add_edge(START, ids[0])
     for i, stage in enumerate(stages):

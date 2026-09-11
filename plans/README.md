@@ -85,8 +85,8 @@ stays `In Progress` until the batch review sorts it).
 | PBI-050 | Done* | PBI-051 | Blocked (needs Keystatic spec) |
 | PBI-052 | Done* | PBI-053 | Done* |
 | PBI-054 | Done* | PBI-055 | Done* |
-| PBI-056 | Done* | PBI-057 | Active |
-| PBI-058 | Proposed | PBI-059 | Proposed |
+| PBI-056 | Done* | PBI-057 | Done* |
+| PBI-058 | Active | PBI-059 | Proposed |
 | PBI-060 | Proposed | PBI-061 | Proposed |
 
 ## Dependency graph
