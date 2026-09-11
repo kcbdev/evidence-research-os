@@ -105,16 +105,38 @@ def test_patch_idea_promote_creates_claim(client, tmp_path):
     assert "created_claim_id" in data
     claim_id = data["created_claim_id"]
     assert claim_id.startswith("C-")
-    # verify claim exists and links to idea
+    # verify claim exists and links back to the idea (provenance)
     resp2 = client.get(f"/api/v1/lab-projects/{pid}/claims/{claim_id}")
     assert resp2.status_code == 200
     assert resp2.json()["claim"]["statement"] == "second angle"
+    assert resp2.json()["claim"]["promoted_from_idea"] == "I-002"
     # idea status updated via list
     resp3 = client.get(f"/api/v1/lab-projects/{pid}/ideas",
                        params={"status": "promoted_to_claim"})
     data = resp3.json()
     assert len(data) == 1
     assert data[0]["id"] == "I-002"
+
+
+def test_promote_guards(client, tmp_path):
+    pid = _create(client)
+    _seed_ideas(tmp_path, pid)
+    url = f"/api/v1/lab-projects/{pid}/ideas/I-001"
+    assert client.patch(url, json={"status": "promoted_to_claim"}
+                        ).status_code == 200
+    # Re-promote mints nothing: 409, claim count stays 1.
+    assert client.patch(url, json={"status": "promoted_to_claim"}
+                        ).status_code == 409
+    assert len(client.get(
+        f"/api/v1/lab-projects/{pid}/claims").json()) == 1
+    # Reject-after-promote is allowed (reconsideration); the claim stays.
+    assert client.patch(url, json={"status": "rejected"}).status_code == 200
+    assert len(client.get(
+        f"/api/v1/lab-projects/{pid}/claims").json()) == 1
+    # Reject is idempotent (no extra commit churn asserted here —
+    # status simply stays rejected).
+    assert client.patch(url, json={"status": "rejected"}
+                        ).json()["status"] == "rejected"
 
 
 def test_patch_invalid_status_422(client, tmp_path):

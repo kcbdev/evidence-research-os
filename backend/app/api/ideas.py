@@ -1,10 +1,12 @@
 """Ideas API (PBI-036, Phase 2 guide Tasks 26-27).
 
 GET list/filter + PATCH status (promote/reject). Promote creates a Claim
-referencing the idea and returns created_claim_id.
+carrying promoted_from_idea provenance and returns created_claim_id.
+Transition guards: re-promote 409s (no duplicate claims); reject is
+idempotent; promote-after-reject is allowed (reconsideration).
 """
 from fastapi import APIRouter, HTTPException, Request
-from app.models.evidence import Claim, Idea
+from app.models.evidence import Claim
 from app.api.lab_projects import _root, _store
 
 router = APIRouter()
@@ -40,17 +42,22 @@ def patch_idea(project_id: str, idea_id: str, payload: dict, request: Request):
         )
 
     if new_status == "rejected":
-        idea.status = "rejected"
-        store.write_idea(idea)
+        if idea.status != "rejected":
+            idea.status = "rejected"
+            store.write_idea(idea)
         return idea.model_dump(mode="json")
 
-    # promoted_to_claim
+    # promoted_to_claim (re-promote 409s — one idea mints one claim)
+    if idea.status == "promoted_to_claim":
+        raise HTTPException(status_code=409,
+                            detail=f"idea {idea_id} already promoted")
     n = len(store.list_claims()) + 1
     claim = Claim(
         id=f"C-{n:03d}",
         statement=idea.statement,
         supporting_sources=[],
         opposing_sources=[],
+        promoted_from_idea=idea.id,
     )
     store.write_claim(claim)
     idea.status = "promoted_to_claim"

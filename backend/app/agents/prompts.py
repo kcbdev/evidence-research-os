@@ -14,8 +14,12 @@ _ROLE_FILES = {
     "skeptic-brainstorm": "skeptic-brainstorm.md",  # PBI-035: brainstorm rubric
 }
 
-SKEPTIC_RESEARCH_RUBRIC = "research"
-SKEPTIC_BRAINSTORM_RUBRIC = "brainstorm"
+_SKEPTIC_RUBRICS = {
+    "research": "skeptic",
+    "brainstorm": "skeptic-brainstorm",
+    # Academic runs research-grade evidence: research rubric.
+    "academic": "skeptic",
+}
 
 
 def load_prompt(role: str) -> str:
@@ -29,8 +33,10 @@ def load_prompt(role: str) -> str:
 
 
 def get_skeptic_rubric(mode: str) -> str:
-    """PBI-035: mode-conditional Skeptic rubric.
-    Returns the prompt filename suffix for the given mode."""
-    if mode == "brainstorm":
-        return "skeptic-brainstorm"
-    return "skeptic"
+    """PBI-035: mode-conditional Skeptic rubric. Explicit map (no
+    fail-open default — unknown modes error, though run-start 422s
+    them first)."""
+    try:
+        return _SKEPTIC_RUBRICS[mode]
+    except KeyError:
+        raise ValueError(f"unknown mode for skeptic rubric: {mode!r}")

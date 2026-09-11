@@ -57,6 +57,9 @@ class Claim(BaseModel):
     status: ClaimStatus = "INSUFFICIENT_EVIDENCE"
     confidence: Optional[Confidence] = None
     adjudicated_by: Optional[str] = None
+    # PBI-036: provenance for brainstorm promotions (a link, not a
+    # lifecycle — old claims read back as None).
+    promoted_from_idea: Optional[str] = None
 
 
 class Evidence(BaseModel):
@@ -90,6 +93,9 @@ class Idea(BaseModel):
     status: Literal[
         "proposed", "under_skeptic_review", "promoted_to_claim", "rejected"
     ] = "proposed"
+    # PBI-035: the skeptic's per-idea verdict line (None = unreviewed
+    # or unparseable — status still flips; transcript holds the rest).
+    skeptic_notes: Optional[str] = None
 
 
 class Task(BaseModel):

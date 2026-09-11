@@ -95,6 +95,30 @@ def test_parse_novelty_valid_and_garbage():
     assert _parse_novelty("free prose, no verdict") == ("novel", [])
 
 
+def test_skeptic_verdict_lines_recorded(tmp_path, monkeypatch):
+    from app.graph.nodes import _brainstorm_adversarial_review
+    from app.models.evidence import BudgetState, Idea, ProjectMeta
+    monkeypatch.setattr(
+        "app.graph.nodes.call_model_resilient",
+        lambda *a, **k: ("some prose\nVERDICT I-001: weak falsification\n"
+                         "VERDICT I-2: fine", 1))
+    for var in ("GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL",
+                "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL"):
+        monkeypatch.setenv(var, "t" if "NAME" in var else "t@e.org")
+    store = LabProjectStore(tmp_path, "p")
+    store.write_meta(ProjectMeta(
+        id="p", title="t", question="q",
+        created_at="2026-09-05T10:00:00Z",
+        council_models=dict(COUNCIL), judge_model=JUDGE))
+    store.write_idea(Idea(id="I-001", statement="first angle"))
+    out = _brainstorm_adversarial_review(store, "m-ske",
+                                         {"budget": BudgetState()})
+    first = store.read_idea("I-001")
+    assert first.status == "under_skeptic_review"
+    assert first.skeptic_notes == "weak falsification"
+    assert out["budget"].calls_used == 1
+
+
 # --- topology split (behavioral: streamed node order) ---
 
 def _streamed_nodes(tmp_path, mode, monkeypatch):
@@ -265,6 +289,10 @@ def test_brainstorm_run_writes_ideas_only(client, tmp_path):
     assert all(i.novelty_check.status == "novel" for i in ideas)
     assert all(i.proposed_experiment is not None for i in ideas)
     assert all(i.proposed_experiment.falsification_condition for i in ideas)
+    # PBI-035: the skeptic step flipped every idea to under review
+    # (mock gives no VERDICT lines → status flips, notes stay None).
+    assert all(i.status == "under_skeptic_review" for i in ideas)
+    assert all(i.skeptic_notes is None for i in ideas)
     # Divergence only: the research artifact types stay empty.
     assert store.list_claims() == []
     assert store.list_evidence() == []
@@ -279,6 +307,9 @@ def test_brainstorm_run_writes_ideas_only(client, tmp_path):
 def test_get_skeptic_rubric():
     assert get_skeptic_rubric("research") == "skeptic"
     assert get_skeptic_rubric("brainstorm") == "skeptic-brainstorm"
+    assert get_skeptic_rubric("academic") == "skeptic"
+    with pytest.raises(ValueError, match="unknown mode"):
+        get_skeptic_rubric("poetry")
 
 
 def test_brainstorm_skeptic_rubric_file_exists():

@@ -497,11 +497,28 @@ def make_adversarial_review(lab_project_path: Path):
     return adversarial_review
 
 
+def _parse_idea_verdicts(text: str) -> dict[str, str]:
+    """Parse VERDICT <id>: <line> verdicts. Unparseable lines are
+    dropped (silence is not a verdict — status still flips)."""
+    out = {}
+    for line in (text or "").splitlines():
+        line = line.strip()
+        if not line.startswith("VERDICT "):
+            continue
+        rest = line[len("VERDICT "):]
+        if ":" not in rest:
+            continue
+        iid, _, verdict = rest.partition(":")
+        if iid.strip() and verdict.strip():
+            out[iid.strip()] = verdict.strip()
+    return out
+
+
 def _brainstorm_adversarial_review(store, model, state):
     """PBI-035: Skeptic reviews Ideas (not claims) against the brainstorm
-    rubric. Writes verdicts onto Ideas: status under_skeptic_review,
-    novelty_check detail, experiment critique. No claim/evidence/source writes."""
-    from app.models.evidence import Idea
+    rubric. Writes verdicts onto Ideas: status under_skeptic_review +
+    per-idea skeptic_notes (VERDICT lines; missing lines leave None).
+    No claim/evidence/source writes."""
     ideas = [i for i in store.list_ideas()
              if i.status in ("proposed", "under_skeptic_review")]
     if not ideas:
@@ -515,8 +532,11 @@ def _brainstorm_adversarial_review(store, model, state):
     debates = Path(store.path) / "debates"
     debates.mkdir(parents=True, exist_ok=True)
     (debates / "adversarial.md").write_text(text, encoding="utf-8")
+    verdicts = _parse_idea_verdicts(text)
     for idea in ideas:
         idea.status = "under_skeptic_review"
+        if idea.id in verdicts:
+            idea.skeptic_notes = verdicts[idea.id]
         store.write_idea(idea)
     tmp = {"budget": state["budget"].model_copy()}
     consume_calls(tmp, attempts)
