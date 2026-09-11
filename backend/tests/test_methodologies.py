@@ -80,9 +80,9 @@ def test_validation_names_the_field(client):
     assert "unknown node 'nope'" in resp.json()["detail"]
     bad_shape = dict(MINIMAL, id="bad-2")
     bad_shape["workflow"] = {"stages": [
-        {"id": "a", "node": "plan", "loop_condition": "x"}]}
+        {"id": "a", "node": "plan", "teleport": True}]}
     assert client.post("/api/v1/methodologies",
-                       json=bad_shape).status_code == 422  # 5b-key
+                       json=bad_shape).status_code == 422  # unknown key
     overlap = dict(MINIMAL, id="bad-3")
     overlap["models"] = {"scientist": "m", "judge": "m"}
     assert client.post("/api/v1/methodologies",

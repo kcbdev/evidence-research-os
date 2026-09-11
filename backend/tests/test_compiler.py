@@ -226,12 +226,14 @@ def test_unknown_names_fail_loud(tmp_path):
             tmp_path)
 
 
-def test_phase5b_keys_rejected(tmp_path):
-    """Forward-authored Tier B/C syntax must error, not silently pass."""
+def test_unknown_keys_still_rejected(tmp_path):
+    """Forward-authored Tier C syntax (and typos) must error, not
+    silently pass. custom_roles/loop_condition graduated in
+    PBI-058/059 — this now guards the remaining frontier."""
     import pydantic
     with pytest.raises(pydantic.ValidationError):
         _methodology("m", ["research"], [
-            {"id": "a", "node": "plan", "loop_condition": "x > 1"}])
+            {"id": "a", "node": "plan", "teleport": True}])
     with pytest.raises(pydantic.ValidationError):
         Methodology(id="m", name="m", description="d",
                     compatible_modes=["research"],
@@ -239,7 +241,7 @@ def test_phase5b_keys_rejected(tmp_path):
                     tools={"enabled": []}, prompts={"set": "x"},
                     skills={}, models=dict(MODELS),
                     budget_defaults={},
-                    custom_roles=[{"id": "r"}])  # type: ignore[call-arg]
+                    custom_nodes=[{"id": "r"}])  # type: ignore[call-arg]
 
 
 def test_judge_overlap_refused(tmp_path):
