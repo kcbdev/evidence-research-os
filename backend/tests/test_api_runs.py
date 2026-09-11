@@ -128,10 +128,21 @@ def test_create_list_get_project(client):
 
 
 def test_default_models_refuse_to_run(client):
+    # PBI-056 precedence: bare auto/auto project inherits the default
+    # methodology's real models — creation is fine AND the run starts
+    # (fallback, not refusal). Explicit overlap still refuses below.
     resp = client.post("/api/v1/lab-projects",
                        json={"title": "T", "question": "q"})
-    pid = resp.json()["id"]  # creation itself is fine (fail-closed later)
-    bad = client.post(f"/api/v1/lab-projects/{pid}/runs", json={})
+    pid = resp.json()["id"]
+    ok = client.post(f"/api/v1/lab-projects/{pid}/runs", json={})
+    assert ok.status_code == 200
+    assert ok.json()["methodology_id"] == "deep-research-council-v1"
+
+
+def test_explicit_overlap_still_refuses(client):
+    pid = _create(client)
+    bad = client.post(f"/api/v1/lab-projects/{pid}/runs",
+                      json={"judge_model": "m-sci"})
     assert bad.status_code == 400 and "self-preference" in bad.text
 
 
