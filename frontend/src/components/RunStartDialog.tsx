@@ -13,6 +13,7 @@ import {
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { startRun } from "@/lib/api";
+import MethodologyPicker from "@/components/MethodologyPicker";
 
 const MODES = ["research", "brainstorm", "academic"] as const;
 
@@ -20,8 +21,8 @@ export default function RunStartDialog({
   projectId,
   defaultQuestion,
   defaultMode,
-  // PBI-056 slot: the methodology picker renders here (filtered by
-  // mode). Today nothing passes it — no dead UI, just the seam.
+  // PBI-056: the picker renders by default (mode-filtered);
+  // methodologyPicker overrides (tests).
   methodologyPicker,
   onStarted,
 }: {
@@ -39,6 +40,7 @@ export default function RunStartDialog({
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [maxCalls, setMaxCalls] = useState("");
   const [maxRounds, setMaxRounds] = useState("");
+  const [methodologyId, setMethodologyId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
 
@@ -59,6 +61,7 @@ export default function RunStartDialog({
         question: question.trim() || undefined,
         mode,
         ...(Object.keys(budget).length > 0 ? { budget } : {}),
+        ...(methodologyId ? { methodology_id: methodologyId } : {}),
       });
       setOpen(false);
       onStarted(run.run_id);
@@ -106,7 +109,13 @@ export default function RunStartDialog({
                 ))}
               </div>
             </Field>
-            {methodologyPicker}
+            {methodologyPicker ?? (
+              <MethodologyPicker
+                mode={mode}
+                value={methodologyId}
+                onChange={setMethodologyId}
+              />
+            )}
             <div>
               <Button
                 type="button"

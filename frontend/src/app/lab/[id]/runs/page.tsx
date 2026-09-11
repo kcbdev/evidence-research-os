@@ -81,6 +81,7 @@ export default function RunsPage() {
                 <TableHead>Run</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Mode</TableHead>
+                <TableHead>Methodology</TableHead>
                 <TableHead>Events</TableHead>
                 <TableHead>Error</TableHead>
               </TableRow>
@@ -102,6 +103,9 @@ export default function RunsPage() {
                     {run.needs_approval ? " · needs approval" : ""}
                   </TableCell>
                   <TableCell>{run.mode ?? "—"}</TableCell>
+                  <TableCell className="font-mono text-xs max-w-48 truncate">
+                    {run.methodology_id ?? "—"}
+                  </TableCell>
                   <TableCell className="tabular-nums">{run.events_count}</TableCell>
                   <TableCell className="max-w-64 truncate text-muted-foreground">
                     {run.error ?? "—"}

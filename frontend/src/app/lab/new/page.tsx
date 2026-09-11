@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { createLabProject, startRun } from "@/lib/api";
+import MethodologyPicker from "@/components/MethodologyPicker";
 
 const MODES = ["research", "brainstorm", "academic"] as const;
 
@@ -21,6 +22,7 @@ export default function NewLabPage() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [maxCalls, setMaxCalls] = useState("50");
   const [maxRounds, setMaxRounds] = useState("5");
+  const [methodologyId, setMethodologyId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
 
@@ -55,6 +57,7 @@ export default function NewLabPage() {
         mode,
         council_models,
         judge_model: models.judge.trim(),
+        ...(methodologyId ? { methodology_id: methodologyId } : {}),
       });
       if (!startImmediately) {
         router.push(`/lab/${project.id}`);
@@ -153,6 +156,11 @@ export default function NewLabPage() {
                   onChange={(e) => setModel("judge", e.target.value)}
                 />
               </Field>
+              <MethodologyPicker
+                mode={mode}
+                value={methodologyId}
+                onChange={setMethodologyId}
+              />
               <div>
                 <Button
                   type="button"

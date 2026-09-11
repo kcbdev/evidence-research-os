@@ -99,6 +99,8 @@ export async function createLabProject(input: {
   mode?: string;
   council_models?: Record<string, string>;
   judge_model?: string;
+  methodology_id?: string;
+  budget_overrides?: { max_model_calls?: number; max_research_rounds?: number };
 }): Promise<LabProjectDetail> {
   const res = await fetch(`${BASE}/api/v1/lab-projects`, {
     method: "POST",
@@ -120,6 +122,7 @@ export interface RunSummary {
   mode?: string;
   started_at?: string | null;
   duration_s?: number | null;
+  methodology_id?: string | null;
 }
 
 export function listRuns(projectId: string): Promise<RunSummary[]> {
@@ -141,8 +144,9 @@ export async function startRun(
     question?: string;
     mode?: string;
     budget?: { max_model_calls?: number; max_research_rounds?: number };
+    methodology_id?: string;
   } = {},
-): Promise<{ run_id: string; status: string }> {
+): Promise<{ run_id: string; status: string; methodology_id: string }> {
   const res = await fetch(`${BASE}/api/v1/lab-projects/${projectId}/runs`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -153,7 +157,7 @@ export async function startRun(
     // status code sent a witness on a blind alley during PBI-019.
     throw new Error(`POST runs: ${res.status} — ${await res.text()}`);
   }
-  return (await res.json()) as { run_id: string; status: string };
+  return (await res.json()) as { run_id: string; status: string; methodology_id: string };
 }
 
 export function getRun(projectId: string, runId: string): Promise<RunStatus> {
@@ -351,6 +355,18 @@ export function searchProjects(
 ): Promise<SearchHit[]> {
   const params = new URLSearchParams({ q, limit: String(limit) });
   return get<SearchHit[]>(`/api/v1/search?${params.toString()}`);
+}
+
+export interface MethodologySummary {
+  id: string;
+  name: string;
+  description: string;
+  is_default: boolean;
+  compatible_modes: string[];
+}
+
+export function listMethodologies(): Promise<MethodologySummary[]> {
+  return get<MethodologySummary[]>("/api/v1/methodologies");
 }
 
 export interface Idea {
