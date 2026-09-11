@@ -24,6 +24,7 @@ workflow:
     route: route_conflict
   - id: targeted_research
     node: targeted_research
+    loop_always: conflict_detection
   - id: adversarial_review
     node: adversarial_review
   - id: evidence_adjudication
@@ -35,6 +36,7 @@ workflow:
     route: route_audit
   - id: targeted_repair
     node: targeted_repair
+    loop_always: citation_audit
   - id: human_checkpoint
     node: human_checkpoint
     interrupt: true

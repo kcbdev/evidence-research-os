@@ -37,6 +37,8 @@ export function previewStages(yamlText: string): { stages: StagePreview[]; error
         if (key === "node") current.node = val;
         else if (key === "route") current.via = `route ${val}`;
         else if (key === "loop_while") current.via = `loop ${val}`;
+        else if (key === "loop_condition") current.via = `loop ${val}`;
+        else if (key === "loop_always") current.via = `always → ${val}`;
         else if (key === "loop_target") current.via = `${current.via ?? "loop"} → ${val}`;
         else if (key === "interrupt" && val === "true") current.interrupt = true;
       }

@@ -31,6 +31,7 @@ workflow:
     route: route_audit
   - id: targeted_repair
     node: targeted_repair
+    loop_always: citation_audit
   - id: human_checkpoint
     node: human_checkpoint
     interrupt: true

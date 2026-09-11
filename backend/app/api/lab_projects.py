@@ -64,7 +64,7 @@ def create_lab_project(payload: dict, request: Request):
                     status_code=422,
                     detail=f"budget_overrides.{key} must be a positive int")
             setattr(budget, key, value)
-    methodology_id = payload.get("methodology_id")
+    methodology_id = payload.get("methodology_id") or None
     if methodology_id is not None:
         from app.store.methodology import MethodologyStore
         try:

@@ -8,7 +8,7 @@ unknown ids 404.
 """
 from fastapi import APIRouter, HTTPException
 from pydantic import ValidationError
-from app.graph.registry import CONDITION_REGISTRY, NODE_REGISTRY
+from app.graph.registry import CONDITION_REGISTRY
 from app.models.methodology import Methodology
 from app.store.methodology import MethodologyStore
 
@@ -22,36 +22,54 @@ def _check_names(m: Methodology):
     """Registry validation at save time (compile re-checks at use):
     unknown names 422 naming methodology + stage + field. Judge overlap
     enforced when a judge is set; empty judge means unconfigured (same
-    rule as the settings API)."""
+    rule as the settings API). Mirrors compile.py validation (custom
+    roles, all four branch forms) — the two must stay in sync."""
+    from app.graph.custom_nodes import get_full_node_registry
+    from app.graph.expr_condition import make_expr_condition
     ids = {s.id for s in m.workflow.stages}
+    node_registry = get_full_node_registry()
+    custom_ids = {r.id for r in m.custom_roles}
+
+    def _fail(stage_id, field, value):
+        raise HTTPException(
+            status_code=422,
+            detail=f"methodology {m.id} stage {stage_id}: "
+                   f"unknown {field} '{value}'")
+
     for stage in m.workflow.stages:
-        if stage.node not in NODE_REGISTRY:
+        if stage.node not in node_registry and stage.node not in custom_ids:
+            _fail(stage.id, "node", stage.node)
+        branch_forms = [f for f in (stage.loop_while,
+                                    stage.loop_condition,
+                                    stage.loop_always,
+                                    stage.route)
+                        if f is not None]
+        if len(branch_forms) > 1:
             raise HTTPException(
                 status_code=422,
                 detail=f"methodology {m.id} stage {stage.id}: "
-                       f"unknown node '{stage.node}'")
+                       "loop_while, loop_condition, loop_always and "
+                       "route are mutually exclusive")
         if stage.loop_while is not None:
-            if stage.route is not None:
-                raise HTTPException(
-                    status_code=422,
-                    detail=f"methodology {m.id} stage {stage.id}: "
-                           "loop_while and route are mutually exclusive")
             if stage.loop_while not in CONDITION_REGISTRY:
-                raise HTTPException(
-                    status_code=422,
-                    detail=f"methodology {m.id} stage {stage.id}: "
-                           f"unknown loop_while '{stage.loop_while}'")
+                _fail(stage.id, "loop_while", stage.loop_while)
             if stage.loop_target not in ids:
-                raise HTTPException(
-                    status_code=422,
-                    detail=f"methodology {m.id} stage {stage.id}: "
-                           f"unknown loop_target '{stage.loop_target}'")
+                _fail(stage.id, "loop_target", stage.loop_target)
+        if stage.loop_condition is not None:
+            if stage.loop_target not in ids:
+                _fail(stage.id, "loop_target", stage.loop_target)
+            try:
+                make_expr_condition(stage.loop_condition)
+            except ValueError as exc:
+                raise HTTPException(status_code=422,
+                                    detail=f"methodology {m.id} "
+                                           f"stage {stage.id}: {exc}")
+        if stage.loop_always is not None and \
+                stage.loop_always not in ids:
+            _fail(stage.id, "loop_always", stage.loop_always)
         if stage.route is not None and \
                 stage.route not in CONDITION_REGISTRY:
-            raise HTTPException(
-                status_code=422,
-                detail=f"methodology {m.id} stage {stage.id}: "
-                       f"unknown route '{stage.route}'")
+            _fail(stage.id, "route", stage.route)
     if m.models.get("judge"):
         from app.agents.config import validate_model_assignment
         try:

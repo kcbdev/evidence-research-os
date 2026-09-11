@@ -156,3 +156,104 @@ def test_restart_keeps_pinned_methodology(client, tmp_path):
                 json={"decision": "approve"})
     final = _wait_for(client, pid, rid, {"done"})
     assert final["methodology_id"] == "academic-publication-v1"
+
+
+def test_frozen_models_win_over_project_yaml(tmp_path, monkeypatch):
+    """Batch review: nodes use state-frozen models, never mid-run
+    project.yaml reads. Frozen diverges from meta → frozen executes."""
+    from app.graph.nodes import _models
+    from app.models.evidence import ProjectMeta as PM
+    for var in ("GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL",
+                "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL"):
+        monkeypatch.setenv(var, "t" if "NAME" in var else "t@e.org")
+    store = LabProjectStore(tmp_path, "p")
+    store.write_meta(PM(id="p", title="t", question="q",
+                        created_at="2026-09-05T10:00:00Z",
+                        council_models=dict(COUNCIL),
+                        judge_model=JUDGE))
+    frozen = {"council": {"scientist": "m-frozen"}, "judge": "m-jfrozen"}
+    council, judge = _models({"models": frozen}, store)
+    assert council == {"scientist": "m-frozen"} and judge == "m-jfrozen"
+    # Ad-hoc states (no frozen key) fall back to project.yaml.
+    council, judge = _models({}, store)
+    assert council == COUNCIL and judge == JUDGE
+
+
+def test_frozen_judge_adjudicates(tmp_path, monkeypatch):
+    """Node-level firewall proof: adjudication consults the frozen
+    judge model, not project.yaml's."""
+    from app.graph import nodes
+    from app.models.evidence import Claim, Confidence, Evidence, Source
+    seen = {}
+    monkeypatch.setattr(
+        "app.graph.nodes.call_model_resilient",
+        lambda *a, **k: (seen.setdefault("model", a[0]),
+                         ("STATUS C-1: SUPPORTED", 1))[1])
+    for var in ("GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL",
+                "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL"):
+        monkeypatch.setenv(var, "t" if "NAME" in var else "t@e.org")
+    store = LabProjectStore(tmp_path, "p")
+    store.write_meta(PM_meta(tmp_path))
+    store.write_source(Source(
+        id="S-1", kind="primary_paper", url="https://e.org/1",
+        title="t", retrieved_at="2026-09-05T10:00:00Z", quality_tier=2))
+    store.write_claim(Claim(
+        id="C-1", statement="s", supporting_sources=["S-1"],
+        confidence=Confidence(source_quality=0.5,
+                              methodological_strength=0.5,
+                              independent_confirmation=0.5,
+                              contradiction_level=0.5, overall=0.5)))
+    store.write_evidence(Evidence(
+        id="E-1", source_id="S-1", location={"section": "x"},
+        text_reference="t", supports=["C-1"],
+        evidence_type="empirical", strength="high"))
+    from app.models.evidence import BudgetState
+    state = {"lab_project_id": "p", "mode": "research",
+             "active_question": "q", "budget": BudgetState(),
+             "models": {"council": dict(COUNCIL), "judge": "m-frozen"},
+             "pending_tasks": [], "open_contradictions": [],
+             "escalate": True, "audit_passed": False,
+             "needs_human_approval": False, "session_id": "s",
+             "first_pass": {}}
+    nodes.make_evidence_adjudication(tmp_path)(state)
+    assert seen["model"] == "m-frozen"
+    assert store.read_claim("C-1").adjudicated_by == "m-frozen"
+
+
+def PM_meta(tmp_path):
+    from app.models.evidence import ProjectMeta as PM
+    return PM(id="p", title="t", question="q",
+              created_at="2026-09-05T10:00:00Z",
+              council_models=dict(COUNCIL), judge_model=JUDGE)
+
+
+def test_unspecified_run_follows_set_default(client, tmp_path, monkeypatch):
+    """Batch review: set-default flips which methodology an
+    unspecified run uses — proven over HTTP via the seam (committed
+    YAMLs never mutated)."""
+    import app.api.runs as runs_api
+    from app.store.methodology import MethodologyStore as MS
+    from app.models.methodology import Methodology as M
+    mem = MS(tmp_path / "mem")
+    base = {"name": "n", "description": "d",
+            "compatible_modes": ["research"],
+            "workflow": {"stages": [
+                {"id": "trigger_classifier", "node": "trigger_classifier",
+                 "route": "route_classifier"},
+                {"id": "plan", "node": "plan"},
+                {"id": "final_output", "node": "final_output"}]},
+            "tools": {"enabled": []}, "prompts": {"set": "x"},
+            "skills": {}, "budget_defaults": {}}
+    mem.save(M(**{**base, "id": "first", "is_default": True,
+                  "models": {"scientist": "m", "judge": "j"}}))
+    mem.save(M(**{**base, "id": "second", "is_default": False,
+                  "models": {"scientist": "m", "judge": "j"}}))
+    monkeypatch.setattr(runs_api, "_methodology_store", lambda: mem)
+    pid = _create(client)["id"]
+    first = client.post(f"/api/v1/lab-projects/{pid}/runs",
+                        json={}).json()
+    assert first["methodology_id"] == "first"
+    mem.set_default("second")
+    second = client.post(f"/api/v1/lab-projects/{pid}/runs",
+                         json={}).json()
+    assert second["methodology_id"] == "second"

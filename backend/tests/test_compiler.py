@@ -39,12 +39,14 @@ RESEARCH_STAGES = [
     _stage("evidence_extraction", "evidence_extraction"),
     _stage("conflict_detection", "conflict_detection",
            route="route_conflict"),
-    _stage("targeted_research", "targeted_research"),
+    _stage("targeted_research", "targeted_research",
+           loop_always="conflict_detection"),
     _stage("adversarial_review", "adversarial_review"),
     _stage("evidence_adjudication", "evidence_adjudication"),
     _stage("synthesis", "synthesis"),
     _stage("citation_audit", "citation_audit", route="route_audit"),
-    _stage("targeted_repair", "targeted_repair"),
+    _stage("targeted_repair", "targeted_repair",
+           loop_always="citation_audit"),
     _stage("human_checkpoint", "human_checkpoint", interrupt=True),
     _stage("final_output", "final_output"),
 ]
@@ -59,7 +61,8 @@ BRAINSTORM_STAGES = [
     _stage("evidence_adjudication", "evidence_adjudication"),
     _stage("synthesis", "synthesis"),
     _stage("citation_audit", "citation_audit", route="route_audit"),
-    _stage("targeted_repair", "targeted_repair"),
+    _stage("targeted_repair", "targeted_repair",
+           loop_always="citation_audit"),
     _stage("human_checkpoint", "human_checkpoint", interrupt=True),
     _stage("final_output", "final_output"),
 ]
@@ -72,14 +75,16 @@ ACADEMIC_STAGES = [
     _stage("evidence_extraction", "evidence_extraction"),
     _stage("conflict_detection", "conflict_detection",
            route="route_conflict"),
-    _stage("targeted_research", "targeted_research"),
+    _stage("targeted_research", "targeted_research",
+           loop_always="conflict_detection"),
     _stage("adversarial_review", "adversarial_review"),
     _stage("evidence_adjudication", "evidence_adjudication"),
     _stage("methodology_analysis", "methodology_analysis"),
     _stage("reproducibility_audit", "reproducibility_audit"),
     _stage("synthesis", "synthesis"),
     _stage("citation_audit", "citation_audit", route="route_audit"),
-    _stage("targeted_repair", "targeted_repair"),
+    _stage("targeted_repair", "targeted_repair",
+           loop_always="citation_audit"),
     _stage("human_checkpoint", "human_checkpoint", interrupt=True),
     _stage("final_output", "final_output"),
 ]
@@ -144,9 +149,11 @@ def test_captured_yaml_matches_inline_topology(tmp_path, monkeypatch,
     assert [s.id for s in captured.workflow.stages] == \
         [s["id"] for s in stages]
     assert [(s.id, s.node, s.route, s.loop_while, s.loop_target,
-             s.interrupt) for s in captured.workflow.stages] == \
+             s.loop_condition, s.loop_always, s.interrupt)
+            for s in captured.workflow.stages] == \
         [(s["id"], s["node"], s.get("route"), s.get("loop_while"),
-          s.get("loop_target"), s.get("interrupt", False))
+          s.get("loop_target"), s.get("loop_condition"),
+          s.get("loop_always"), s.get("interrupt", False))
          for s in stages]
     # ...and the captured file still streams the full pipeline to pause.
     _seed_into(tmp_path / "new", mode)
@@ -155,6 +162,48 @@ def test_captured_yaml_matches_inline_topology(tmp_path, monkeypatch,
     names = _stream_names(graph, _state(mode), "t-new")
     assert "final_output" not in names  # interrupt stops the stream
     assert tuple(graph.get_state(config).next) == ("human_checkpoint",)
+
+
+def test_unconditional_back_edges_reexecute(tmp_path, monkeypatch):
+    """Batch-review find: targeted legs must loop back (conflict and
+    audit re-run), not fall through linearly."""
+    from app.models.evidence import Claim
+    from app.store.lab_project import LabProjectStore as LPS
+    _mock(monkeypatch)
+    # Loop tests reach retrieval/dedup hooks: seam-mock embeddings.
+    monkeypatch.setattr("app.tools.semantic_index.embed",
+                        lambda text: [0.1, 0.2, 0.3])
+    _seed_into(tmp_path / "back", "research")
+    from app.store.methodology import MethodologyStore
+    m = MethodologyStore().get("deep-research-council-v1")
+    graph = build_graph_from_methodology(m, tmp_path / "back")
+    # Repair loop (deterministic): dangling citation fails audit,
+    # repair voids it, audit re-runs and passes → pause.
+    store = LPS(tmp_path / "back", "p")
+    store.write_claim(Claim(id="C-9", statement="dangling",
+                            supporting_sources=["S-404"]))
+    config = {"configurable": {"thread_id": "t-repair"}}
+    names = _stream_names(graph, _state(), "t-repair")
+    assert names.count("citation_audit") == 2  # ran, repaired, re-ran
+    assert names.count("targeted_repair") == 1
+    assert tuple(graph.get_state(config).next) == ("human_checkpoint",)
+    # Conflict loop (guarded): first-pass skeptic challenge matches a
+    # seeded claim → contradiction recomputes forever (mocked models
+    # never resolve it).
+    def _role_aware(model, system, user, **k):
+        if "Skeptic" in system:
+            return ("CHALLENGE: Vitamin D does not help bones.\n", 1)
+        return "", 1
+    monkeypatch.setattr("app.graph.nodes.call_model_resilient",
+                        _role_aware)
+    store.write_claim(Claim(id="C-8", statement="Vitamin D helps bones"))
+    graph2 = build_graph_from_methodology(m, tmp_path / "back")
+    with pytest.raises(Exception, match="(?i)recursion"):
+        list(graph2.stream(
+            _state(),
+            {"configurable": {"thread_id": "t-conflict"},
+             "recursion_limit": 12},
+            stream_mode="updates"))
 
 
 def test_loop_form_compiles_and_loops(tmp_path, monkeypatch):

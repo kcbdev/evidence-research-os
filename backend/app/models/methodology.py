@@ -20,12 +20,17 @@ class StageSpec(BaseModel):
     loop_target: Optional[str] = None   # another stage id
     # Tier B ad hoc (PBI-059): inline simpleeval expression; same
     # semantics as loop_while (loop back when true, else next).
+    # Batch-review catch: the real topology ALSO has UNCONDITIONAL
+    # back-edges (targeted_research→conflict_detection,
+    # targeted_repair→citation_audit) that no conditional form
+    # expresses. `loop_always` is that form: always go back to target.
+    loop_always: Optional[str] = None   # another stage id
     # PBI-053 addition beyond the guide sketch: the real topology has
     # FORWARD branches the loop form cannot express (classifier
     # escalate, exhaustion short-circuits). `route` names a router in
     # CONDITION_REGISTRY returning the next stage id (or "END").
     # A stage carries at most one of loop_while / loop_condition /
-    # route (two set 422s at compile).
+    # loop_always / route (two set 422s at compile).
     route: Optional[str] = None
     loop_condition: Optional[str] = None
     interrupt: bool = False

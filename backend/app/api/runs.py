@@ -37,6 +37,12 @@ from app.store.methodology import MethodologyStore
 
 router = APIRouter()
 
+
+def _methodology_store() -> MethodologyStore:
+    """Seam for tests: production uses the committed registry; tests
+    monkeypatch this to a tmp dir (committed YAMLs never mutated)."""
+    return MethodologyStore()
+
 RESTING = ("awaiting_approval", "done", "failed", "rejected",
            "interrupted")
 
@@ -66,14 +72,14 @@ def resolve_methodology(mode: str, methodology_id: str | None = None,
     (fail-closed reference — a run must never start on a guessed
     pipeline)."""
     wanted = methodology_id or project_methodology_id
-    if wanted is not None:
+    if wanted:
         try:
-            return MethodologyStore().get(wanted)
+            return _methodology_store().get(wanted)
         except KeyError:
             raise HTTPException(status_code=404,
                                 detail=f"unknown methodology: {wanted}")
     try:
-        return MethodologyStore().get_default_for_mode(mode)
+        return _methodology_store().get_default_for_mode(mode)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -108,11 +114,8 @@ def get_graph(root: Path, project_id: str, mode: str,
     # process lifetime — acceptable MVP; clear_graph_cache() for tests/ops.
     # NOTE: the compiler takes the lab ROOT (nodes append project_id
     # themselves) — passing store.path here doubles the id.
-    base = {k: v for k, v in methodology.models.items() if k != "judge"}
-    # Project/payload overrides apply only when actually configured —
-    # AUTO_MODEL/blank means "inherit the methodology" (PBI-056).
-    # Merge itself lives in _effective_assignment (shared with the
-    # state freeze below — the two can never diverge).
+    # Merge lives in _effective_assignment (shared with the state
+    # freeze — the two can never diverge).
     council, judge = _effective_assignment(methodology, council_models,
                                            judge_model)
     if mode not in methodology.compatible_modes:
@@ -346,7 +349,10 @@ def start_run(project_id: str, payload: dict, request: Request):
     methodology selected by explicit run id > project pin > mode
     default; models = methodology base under project/payload overrides
     (AUTO/blank means inherit); budget = payload > project >
-    methodology defaults. Validates models (400 on judge overlap),
+    methodology defaults, except untouched 50/5 project defaults defer
+    to the methodology (explicitly setting 50/5 also defers — quirk,
+    documented here because it surprises). Validates models (400 on
+    judge overlap),
     returns {run_id, status, methodology_id}.
     session_id == run_id == thread_id."""
     root = _root(request)

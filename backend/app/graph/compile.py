@@ -65,12 +65,14 @@ def build_graph_from_methodology(methodology: Methodology,
             _fail(stage.id, "node", stage.node)
         branch_forms = [f for f in (stage.loop_while,
                                     stage.loop_condition,
+                                    stage.loop_always,
                                     stage.route)
                         if f is not None]
         if len(branch_forms) > 1:
             raise ValueError(
                 f"methodology {mid} stage {stage.id}: loop_while, "
-                "loop_condition and route are mutually exclusive")
+                "loop_condition, loop_always and route are mutually "
+                "exclusive")
         if stage.loop_while is not None:
             if stage.loop_while not in CONDITION_REGISTRY:
                 _fail(stage.id, "loop_while", stage.loop_while)
@@ -84,6 +86,9 @@ def build_graph_from_methodology(methodology: Methodology,
             except ValueError as exc:
                 raise ValueError(
                     f"methodology {mid} stage {stage.id}: {exc}")
+        if stage.loop_always is not None:
+            if stage.loop_always not in by_id:
+                _fail(stage.id, "loop_always", stage.loop_always)
         if stage.route is not None and \
                 stage.route not in CONDITION_REGISTRY:
             _fail(stage.id, "route", stage.route)
@@ -148,6 +153,8 @@ def build_graph_from_methodology(methodology: Methodology,
             def _expr_loop(s, cond=cond, target=target, nxt=linear):
                 return target if cond(s) else nxt
             g.add_conditional_edges(stage.id, _expr_loop)
+        elif stage.loop_always is not None:
+            g.add_edge(stage.id, stage.loop_always)
         else:
             g.add_edge(stage.id, linear)
 

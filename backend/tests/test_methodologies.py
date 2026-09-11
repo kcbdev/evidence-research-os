@@ -44,12 +44,11 @@ def test_seeded_registry_lists_captured_three(tmp_path):
     with TC(ca(tmp_path)) as c:
         ids = sorted(m["id"] for m in
                      c.get("/api/v1/methodologies").json())
-    assert ids == ["academic-publication-v1",
-                   "brainstorm-ideation-v1",
-                   "deep-research-council-v1",
-                   # PBI-061 witness files ship alongside (marked,
-                   # non-default, deleted after the witness).
-                   "witness-tier-ab-v1", "witness-tier-c-v1"]
+    # The three captured pipelines must always be present (subset, not
+    # exact list — witness/experimental files come and go by design).
+    assert {"academic-publication-v1",
+            "brainstorm-ideation-v1",
+            "deep-research-council-v1"} <= set(ids)
     one = c.get("/api/v1/methodologies/deep-research-council-v1").json()
     assert one["is_default"] is True
     assert len(one["workflow"]["stages"]) == 13

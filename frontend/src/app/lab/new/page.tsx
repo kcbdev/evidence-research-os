@@ -63,11 +63,18 @@ export default function NewLabPage() {
         router.push(`/lab/${project.id}`);
         return;
       }
+      // Batch-review nit: only forward budget keys the operator
+      // touched — untouched defaults stay absent so the methodology
+      // chain resolves them (identical outcome, cleaner payload).
       const budget: { max_model_calls?: number; max_research_rounds?: number } = {};
       const calls = Number(maxCalls);
       const rounds = Number(maxRounds);
-      if (Number.isFinite(calls) && calls > 0) budget.max_model_calls = calls;
-      if (Number.isFinite(rounds) && rounds > 0) budget.max_research_rounds = rounds;
+      if (maxCalls.trim() !== "" && maxCalls.trim() !== "50" && Number.isFinite(calls) && calls > 0) {
+        budget.max_model_calls = calls;
+      }
+      if (maxRounds.trim() !== "" && maxRounds.trim() !== "5" && Number.isFinite(rounds) && rounds > 0) {
+        budget.max_research_rounds = rounds;
+      }
       const run = await startRun(project.id, {
         mode,
         ...(Object.keys(budget).length > 0 ? { budget } : {}),

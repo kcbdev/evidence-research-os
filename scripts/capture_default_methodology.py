@@ -29,13 +29,15 @@ RESEARCH_STAGES = [
     {"id": "evidence_extraction", "node": "evidence_extraction"},
     {"id": "conflict_detection", "node": "conflict_detection",
      "route": "route_conflict"},
-    {"id": "targeted_research", "node": "targeted_research"},
+    {"id": "targeted_research", "node": "targeted_research",
+     "loop_always": "conflict_detection"},
     {"id": "adversarial_review", "node": "adversarial_review"},
     {"id": "evidence_adjudication", "node": "evidence_adjudication"},
     {"id": "synthesis", "node": "synthesis"},
     {"id": "citation_audit", "node": "citation_audit",
      "route": "route_audit"},
-    {"id": "targeted_repair", "node": "targeted_repair"},
+    {"id": "targeted_repair", "node": "targeted_repair",
+     "loop_always": "citation_audit"},
     {"id": "human_checkpoint", "node": "human_checkpoint",
      "interrupt": True},
     {"id": "final_output", "node": "final_output"},
@@ -80,12 +82,15 @@ def main() -> None:
         "max_model_calls": budget.get("max_model_calls", 50),
         "max_research_rounds": budget.get("max_research_rounds", 5)}
 
-    # Brainstorm drops the whole conflict loop (detection AND its
-    # targeted leg): the leg is reachable only via conflict's route, so
-    # keeping it linearly would EXECUTE it (spending a round) — a
-    # behavior change vs the hardcoded branch, not a capture.
+    # Brainstorm drops the conflict leg (detection AND its targeted
+    # leg): the leg is reachable only via conflict's route, so keeping
+    # it linearly would EXECUTE it (spending a round) — a behavior
+    # change vs the hardcoded branch, not a capture. The repair leg
+    # STAYS with its unconditional loop (old edge applied to all modes).
     brainstorm_stages = [
-        s for s in RESEARCH_STAGES
+        dict(s, **({"loop_always": "citation_audit"}
+                   if s["id"] == "targeted_repair" else {}))
+        for s in RESEARCH_STAGES
         if s["id"] not in ("evidence_extraction", "conflict_detection",
                            "targeted_research")]
     brainstorm_stages.insert(
