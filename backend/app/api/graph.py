@@ -47,8 +47,9 @@ def get_graph(project_id: str, request: Request,
                 for e in evidence])
     edges = []
     for e in evidence:
-        edges.append({"from": e.source_id, "to": e.id,
-                      "relation": "references"})
+        if e.source_id in sources:
+            edges.append({"from": e.source_id, "to": e.id,
+                          "relation": "references"})
         for cid in e.supports:
             if cid in keep_claims:
                 edges.append({"from": e.id, "to": cid,

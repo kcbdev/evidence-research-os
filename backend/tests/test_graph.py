@@ -43,13 +43,18 @@ def _seed(tmp_path):
         id="E-1", source_id="S-1", location={"section": "R"},
         text_reference="gains", supports=["C-1"],
         evidence_type="empirical", strength="high"))
+    # Dangling source link: node absent AND no edge may point at it.
+    store.write_evidence(Evidence(
+        id="E-2", source_id="S-gone", location={"section": "R"},
+        text_reference="hearsay", supports=["C-1"],
+        evidence_type="argumentative", strength="low"))
 
 
 def test_full_neighborhood(client, tmp_path):
     _seed(tmp_path)
     body = client.get("/api/v1/lab-projects/p/graph").json()
     by_id = {n["id"]: n for n in body["nodes"]}
-    assert set(by_id) == {"C-1", "C-2", "S-1", "S-2", "E-1"}
+    assert set(by_id) == {"C-1", "C-2", "S-1", "S-2", "E-1", "E-2"}
     assert by_id["C-1"]["status"] == "DISPUTED"
     assert by_id["S-1"]["url"] == "https://e.org/1"
     assert by_id["E-1"]["excerpt"] == "gains"
@@ -59,13 +64,18 @@ def test_full_neighborhood(client, tmp_path):
     assert ("S-1", "E-1", "references") in rels
     # Lonely claim: node present, no edges.
     assert not [e for e in body["edges"] if "C-2" in (e["from"], e["to"])]
+    # Dangling evidence: node present, edges only to real nodes.
+    assert "E-2" in by_id
+    assert not [e for e in body["edges"] if "S-gone" in (e["from"], e["to"])]
+    assert ("E-2", "C-1", "supports") in rels
 
 
 def test_status_filter_restricts_to_neighborhood(client, tmp_path):
     _seed(tmp_path)
     body = client.get("/api/v1/lab-projects/p/graph",
                       params={"status_filter": "DISPUTED"}).json()
-    assert {n["id"] for n in body["nodes"]} == {"C-1", "S-1", "S-2", "E-1"}
+    assert {n["id"] for n in body["nodes"]} == {"C-1", "S-1", "S-2",
+                                               "E-1", "E-2"}
     assert all("C-2" not in (e["from"], e["to"]) for e in body["edges"])
     assert client.get("/api/v1/lab-projects/p/graph",
                       params={"status_filter": "SUPPORTED"}).json() == \

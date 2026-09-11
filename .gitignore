@@ -8,6 +8,7 @@ node_modules/
 .next/
 # Evidence Research OS derived indices (regeneratable, never committed)
 .index/
+.shared-index/
 # Lab Project data volume (separate git remote per Lab Project, own history;
 # only the .gitkeep placeholder is tracked so clones reproduce the layout)
 lab-projects/*

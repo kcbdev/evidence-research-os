@@ -79,10 +79,32 @@ def test_retry_failed_run_resumes_same_id(client, tmp_path, monkeypatch):
     final = _wait_for(client, pid, rid, {"done", "awaiting_approval"})
     assert final["run_id"] == rid
     assert len(final["events"]) >= len(before)
+    assert final["error"] is None  # retry clears the failure
     assert final["started_at"] is not None
     if final["status"] == "done":
         assert final["duration_s"] is not None
         assert final["duration_s"] >= 0
+
+
+def test_retry_interrupted_run_post_restart(client, tmp_path, monkeypatch):
+    # Batch review: interrupted (not just failed) must retry — via a
+    # simulated restart so the graph=None recompile path executes too.
+    from app.api.runs import clear_graph_cache, rehydrate_runs
+    import app.api.runs as runs_mod
+    pid = _create(client)
+    rid = client.post(f"/api/v1/lab-projects/{pid}/runs",
+                      json={}).json()["run_id"]
+    _wait_for(client, pid, rid, {"awaiting_approval"})
+    runs_mod._runs.clear()
+    clear_graph_cache()
+    assert rehydrate_runs(tmp_path) >= 1
+    # Mark the revived record interrupted (restart caught it live).
+    rec = runs_mod._runs[rid]
+    rec["status"] = "interrupted"
+    resp = client.post(f"/api/v1/lab-projects/{pid}/runs/{rid}/retry")
+    assert resp.json() == {"run_id": rid, "status": "running"}
+    final = _wait_for(client, pid, rid, {"done", "awaiting_approval"})
+    assert final["run_id"] == rid
 
 
 def test_legacy_six_col_db_migrates_with_history(client, tmp_path):

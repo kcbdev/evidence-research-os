@@ -120,3 +120,33 @@ def test_targeted_research_carries_semantic_context(tmp_path, monkeypatch,
     nodes.make_targeted_research(tmp_path)(state)
     assert "semantic index" in seen["user"]
     assert "C-2" in seen["user"]
+
+
+def test_scoped_search_never_leaks_projects(tmp_path, no_download):
+    """Batch review: one shared table must not cross-contaminate the
+    investigator's project-scoped reads."""
+    _seed(tmp_path)
+    store = LabProjectStore(tmp_path, "q")
+    with store.repo.config_writer() as cfg:
+        cfg.set_value("user", "name", "test")
+        cfg.set_value("user", "email", "test@example.org")
+    from app.models.evidence import ProjectMeta as PM
+    store.write_meta(PM(id="q", title="Q", question="q",
+                        created_at="2026-09-05T10:00:00Z",
+                        council_models=COUNCIL, judge_model=JUDGE))
+    store.write_claim(Claim(id="C-9", statement="microbe census"))
+    backfill_shared_index(tmp_path)
+    hits = semantic_search(tmp_path / "p", "microbe", project_id="p")
+    assert hits, "expected hits"
+    assert all(h["project_id"] == "p" for h in hits)
+    assert "__seed__" not in [h["id"] for h in hits]
+
+
+def test_predicate_guard_rejects_malicious_ids(tmp_path, no_download):
+    from app.tools.semantic_index import _check_project_id
+    import pytest as _p
+    for bad in ("a'b OR '1'='1", "x; DROP TABLE", "../../etc",
+                "p\nq", ""):
+        with _p.raises(ValueError):
+            _check_project_id(bad)
+    _check_project_id("slm-project-66fc97")  # sane ids pass
