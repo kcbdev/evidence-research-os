@@ -47,6 +47,10 @@ def _mock_llm(monkeypatch):
         return "targeted finding", 1
 
     monkeypatch.setattr("app.graph.nodes.call_model_resilient", fake)
+    # M1 (batch review): these graph tests reach the Tier-3/dedup hooks
+    # with real fixtures — the embed seam stays mocked (no download).
+    monkeypatch.setattr("app.tools.semantic_index.embed",
+                        lambda text: [0.1, 0.2, 0.3])
     return seen
 
 

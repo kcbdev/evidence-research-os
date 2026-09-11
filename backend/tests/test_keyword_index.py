@@ -53,6 +53,14 @@ def test_stale_index_rebuilds(tmp_path):
     assert [h["id"] for h in hits] == ["C-2"]
 
 
+def test_deleted_doc_leaves_index(tmp_path):
+    # Batch-review N1: deletion changes the id set → rebuild drops it.
+    store = _seed(tmp_path)
+    assert [h["id"] for h in keyword_search(tmp_path / "p", "microbe")] == ["C-1"]
+    (tmp_path / "p" / "claims" / "C-1.yaml").unlink()
+    assert keyword_search(tmp_path / "p", "microbe") == []
+
+
 def test_targeted_research_carries_index_context(tmp_path, monkeypatch):
     store = _seed(tmp_path)
     seen = {}

@@ -31,9 +31,23 @@ def _index_dir(project_dir: Path) -> Path:
     return Path(project_dir) / ".index" / "tantivy"
 
 
+def _manifest(idx_dir: Path) -> Path:
+    return idx_dir / "ids.json"
+
+
 def _is_stale(project_dir: Path, files: list[Path]) -> bool:
+    import json
     idx = _index_dir(project_dir)
     if not (idx / "meta.json").exists():
+        return True
+    # Batch-review N1: deletions must invalidate too — compare the
+    # indexed id set, not just mtimes.
+    try:
+        indexed = set(json.loads(
+            _manifest(idx).read_text(encoding="utf-8")))
+    except (OSError, ValueError):
+        return True
+    if indexed != {f.stem for f in files}:
         return True
     index_mtime = (idx / "meta.json").stat().st_mtime
     return any(f.stat().st_mtime > index_mtime for f in files)
@@ -42,6 +56,7 @@ def _is_stale(project_dir: Path, files: list[Path]) -> bool:
 def rebuild_index(project_dir: Path):
     """Full regenerate (not merge) — indexes are derived, cheap at this
     scale, and regenerate-not-merge can't drift."""
+    import json
     project_dir = Path(project_dir)
     files = _source_files(project_dir)
     idx_dir = _index_dir(project_dir)
@@ -54,6 +69,8 @@ def rebuild_index(project_dir: Path):
             id=f.stem, body=f.read_text(encoding="utf-8")))
     writer.commit()
     index.reload()
+    _manifest(idx_dir).write_text(
+        json.dumps(sorted(f.stem for f in files)), encoding="utf-8")
 
 
 def keyword_search(project_dir: Path, query: str,
@@ -81,5 +98,15 @@ def keyword_search(project_dir: Path, query: str,
         doc = searcher.doc(addr)
         body = doc["body"][0]
         hits.append({"id": doc["id"][0],
-                     "snippet": body[:500]})
+                     "snippet": _snippet(body)})
     return hits
+
+
+def _snippet(body: str) -> str:
+    """Batch-review N5: prefer content lines (statement/excerpt/title)
+    over YAML front-matter keys in investigator context."""
+    content = [ln.strip() for ln in body.splitlines()
+               if ln.strip() and not ln.strip().startswith(
+                   ("id:", "type:", "status:", "confidence:"))]
+    text = " ".join(content) or body
+    return text[:500]

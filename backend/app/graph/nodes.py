@@ -435,6 +435,7 @@ def make_targeted_research(lab_project_path: Path):
             agent = task.assigned_agent if isinstance(task, Task) else task["assigned_agent"]
             tid = task.id if isinstance(task, Task) else task["id"]
             question = task.question if isinstance(task, Task) else task["question"]
+            task_question = question  # pristine: Tier-3 embeds this (M2)
             # PBI-041: Tier-2 retrieval — prior-art hits ride along as
             # context so targeted work builds on the index, not just the
             # task text. Fail-loud: a broken index must surface, never
@@ -448,7 +449,9 @@ def make_targeted_research(lab_project_path: Path):
             # PBI-042: Tier-3 alongside — paraphrase-tolerant hits from
             # the vector index ride the same block. Same fail-loud rule.
             # PBI-046: shared table, filtered to this project.
-            sem = semantic_search(project_dir, question, limit=5,
+            # Batch-review M2: the ORIGINAL task text is embedded, not
+            # the keyword-enriched string — tiers stay independent.
+            sem = semantic_search(project_dir, task_question, limit=5,
                                   project_id=state["lab_project_id"])
             if sem:
                 context = "\n".join(f"- {h['id']} (d={h['distance']:.3f}): "
