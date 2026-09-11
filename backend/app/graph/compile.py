@@ -18,6 +18,7 @@ from pathlib import Path
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.sqlite import SqliteSaver
 from app.agents.config import validate_model_assignment
+from app.graph.custom_nodes import get_full_node_registry
 from app.graph.expr_condition import make_expr_condition
 from app.graph.generic_node import make_prompt_agent_node
 from app.graph.state import LabProjectState
@@ -50,8 +51,13 @@ def build_graph_from_methodology(methodology: Methodology,
             f"methodology {mid} stage {stage_id}: "
             f"unknown {field} '{value}'")
 
+    # Tier C (PBI-060): built-ins overlaid with discovered files.
+    # Discovery failures are loud (filename + reason) and abort the
+    # build before any node, dir, or sqlite is created.
+    node_registry = get_full_node_registry()
+
     for stage in stages:
-        if stage.node not in NODE_REGISTRY and \
+        if stage.node not in node_registry and \
                 stage.node not in {r.id for r in methodology.custom_roles}:
             _fail(stage.id, "node", stage.node)
         branch_forms = [f for f in (stage.loop_while,
@@ -86,14 +92,13 @@ def build_graph_from_methodology(methodology: Methodology,
     checkpointer = SqliteSaver(conn)
     checkpointer.setup()
 
-    # Tier A (PBI-058): custom roles resolve FIRST. A custom id may
-    # shadow a built-in — explicit author intent, but loud about it.
+    # Tier A (PBI-058): custom roles resolve FIRST (shadow warns).
     custom: dict[str, object] = {}
     for role in methodology.custom_roles:
-        if role.id in NODE_REGISTRY:
+        if role.id in node_registry:
             warnings.warn(
                 f"methodology {mid}: custom role '{role.id}' shadows "
-                "a built-in node")
+                "a node")
         try:
             tools = get_tools_for_names(role.tools)
         except ValueError as exc:
@@ -104,7 +109,7 @@ def build_graph_from_methodology(methodology: Methodology,
     def _builder(stage):
         if stage.node in custom:
             return lambda _path: custom[stage.node]
-        return NODE_REGISTRY[stage.node]
+        return node_registry[stage.node]
 
     g = StateGraph(LabProjectState)
     for stage in stages:
