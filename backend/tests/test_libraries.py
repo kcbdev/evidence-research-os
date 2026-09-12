@@ -176,3 +176,17 @@ def test_validate_matches_save_and_writes_nothing(client):
         "/api/v1/methodologies/lib-overlap/validate")
     assert overlap_resp.status_code == 422  # validate refuses identically
     assert "overlaps with a council model" in overlap_resp.json()["detail"]
+
+
+def test_custom_nodes_lists_discovered_files(client):
+    rows = client.get("/api/v1/custom-nodes").json()
+    by_file = {r["filename"]: r for r in rows}
+    # The repo ships one committed example node (read-only probe —
+    # the endpoint never imports, so this is safe against any cwd).
+    assert "experiment_scorer.py" in by_file
+    row = by_file["experiment_scorer.py"]
+    assert row["node_id"] == "experiment_scorer"
+    assert row["load_error"] is None
+    assert row["description"] == "Example Tier C custom node (PBI-060)."
+    assert all(set(r) >= {"node_id", "filename", "description",
+                          "load_error"} for r in rows)

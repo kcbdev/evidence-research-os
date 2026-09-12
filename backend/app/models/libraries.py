@@ -88,3 +88,18 @@ class ConditionField(BaseModel):
 
     field: str
     type: Literal["count", "bool"]
+
+
+class CustomNodeInfo(BaseModel):
+    """One row of the discovered-custom-nodes listing (PBI-067). Parsed
+    with `ast` — never imported: a broken file must not break the
+    listing (import-time failures stay loud at build/validate time).
+    `node_id` is None when the file defines none; `load_error` names
+    files that don't even parse. `description` is the docstring's first
+    paragraph (summary, not the whole manual)."""
+    model_config = ConfigDict(extra="forbid")
+
+    node_id: Optional[str]
+    filename: str
+    description: str
+    load_error: Optional[str] = None

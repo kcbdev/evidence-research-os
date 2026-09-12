@@ -13,8 +13,9 @@ name the field, duplicate create 409s, unknown ids 404.
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Response
 from pydantic import ValidationError
-from app.models.libraries import (ConditionField, LibraryRole, Prompt,
-                                  PromptVersion, Skill, ToolInfo)
+from app.models.libraries import (ConditionField, CustomNodeInfo,
+                                  LibraryRole, Prompt, PromptVersion,
+                                  Skill, ToolInfo)
 from app.store.libraries import LibraryStore
 
 router = APIRouter()
@@ -243,3 +244,47 @@ def validate_methodology(id: str):
         raise HTTPException(status_code=422, detail=str(exc))
     methodologies_api._check_names(m)
     return {"valid": True, "id": id}
+
+
+@router.get("/custom-nodes")
+def list_custom_nodes():
+    """Discovered Tier C nodes for the builder palette (PBI-067).
+    Parsed with `ast` — never imported: listing must work even when a
+    file is broken (import-time failures stay loud at build/validate
+    time via discover_custom_nodes). Mirrors CUSTOM_NODES_DIR skipping
+    (`_`-prefixed helpers are not nodes)."""
+    import ast
+    from app.graph.custom_nodes import CUSTOM_NODES_DIR
+    rows = []
+    if CUSTOM_NODES_DIR.is_dir():
+        for f in sorted(CUSTOM_NODES_DIR.glob("*.py")):
+            if f.name.startswith("_"):
+                continue
+            try:
+                tree = ast.parse(f.read_text(encoding="utf-8"))
+            except (SyntaxError, ValueError) as exc:
+                rows.append(CustomNodeInfo(
+                    node_id=None, filename=f.name, description="",
+                    load_error=f"{f.name} does not parse: {exc}"))
+                continue
+            doc = ast.get_docstring(tree) or ""
+            description = doc.split("\n\n")[0].strip()
+            node_id = None
+            for stmt in tree.body:
+                if not isinstance(stmt, ast.Assign):
+                    continue
+                if not any(isinstance(t, ast.Name) and t.id == "NODE_ID"
+                           for t in stmt.targets):
+                    continue
+                try:
+                    value = ast.literal_eval(stmt.value)
+                except (ValueError, SyntaxError):
+                    continue
+                if isinstance(value, str) and value:
+                    node_id = value
+            rows.append(CustomNodeInfo(
+                node_id=node_id, filename=f.name,
+                description=description,
+                load_error=None if node_id else
+                f"{f.name} defines no NODE_ID: str"))
+    return [r.model_dump(mode="json") for r in rows]
