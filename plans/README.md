@@ -88,7 +88,11 @@ stays `In Progress` until the batch review sorts it).
 | PBI-056 | Done | PBI-057 | Done |
 | PBI-058 | Done | PBI-059 | Done |
 | PBI-060 | Done | PBI-061 | In Review (manual: live witness) |
-| PBI-062 | Active | | |
+| PBI-062 | Done | | |
+| PBI-063 | Active (builder libraries API) | PBI-064 | Proposed (builder deps) |
+| PBI-065 | Proposed (libraries UI) | PBI-066 | Proposed (canvas shell) |
+| PBI-067 | Proposed (role/code nodes) | PBI-068 | Proposed (conditions) |
+| PBI-069 | Proposed (tabs + retire editor) | PBI-070 | Proposed (toolbar + witness) |
 
 Chain protocol (2026-09-10/11, user-directed, complete): PBIs executed
 back-to-back on deterministic gates; adversarial reviews batched at the
@@ -232,12 +236,94 @@ Parallel-safe openers: {034, 038, 041, 042, 045, 049, 050} (disjoint files).
   number, not creation order: 034→34, 035→36, 036→35, 037→37, 038→40,
   039→39, 040→38, 041→41, 042→43, 043→47, 044→45, 045→44, 046→42,
   047→46, 048→48, 049→49, 050→51, 051→50, 052→52, 053→53, 054→54,
-  055→55, 056→58, 057→60, 058→59, 059→57, 060→56, 061→61
-  (identifier `kcb/EVRSH-N`). Each card's Context carries its link.
-  Plane issues, created with true statuses — 17 × Done (PBI-001–004,
-  006–018), 2 × In Progress (PBI-005 infra = EVRSH-2, PBI-019 release
-  = EVRSH-21), 2 × Backlog (PBI-020 = EVRSH-18, PBI-021 = EVRSH-20).
-  Full PBI↔issue map: PBI-001→1, 002→3, 003→5,
-  004→4, 005→2, 006→6, 007→7, 008→8, 009→14, 010→13, 011→11, 012→10,
-  013→9, 014→12, 015→15, 016→16, 017→17, 018→19, 019→21, 020→18,
-  021→20. Each card's Context carries its `Plane: kcb/EVRSH-N` link.
+   055→55, 056→58, 057→60, 058→59, 059→57, 060→56, 061→61
+   (identifier `kcb/EVRSH-N`). Each card's Context carries its link.
+   Plane issues, created with true statuses — 17 × Done (PBI-001–004,
+   006–018), 2 × In Progress (PBI-005 infra = EVRSH-2, PBI-019 release
+   = EVRSH-21), 2 × Backlog (PBI-020 = EVRSH-18, PBI-021 = EVRSH-20).
+   Full PBI↔issue map: PBI-001→1, 002→3, 003→5,
+   004→4, 005→2, 006→6, 007→7, 008→8, 009→14, 010→13, 011→11, 012→10,
+   013→9, 014→12, 015→15, 016→16, 017→17, 018→19, 019→21, 020→18,
+   021→20. Each card's Context carries its `Plane: kcb/EVRSH-N` link.
+
+## Execution order — No-Code Methodology Builder (PBI-063–070, planned 2026-09-12)
+
+Spec: `specs/nocode-methodology-builder/spec.md`. Input:
+`DOCS/Evidence-Research-OS-NoCode-Builder-UX-shadcn.md` (replaces §14
+of the Frontend UX spec — "YAML editor, not a builder"). Next PBI
+number was 063 (062 last). No milestone hierarchy — ordering only.
+
+62. PBI-062 — Model selector on /lab/new (Done; preceding tail)
+63. PBI-063 — Library store + API (skills/prompts/roles/tools/
+    condition-fields/validate; no deps — backend-only, new files)
+64. PBI-064 — Builder deps + shadcn pull (no deps; parallel-safe with
+    063 — disjoint files; tooling-only, zero behavioral diff)
+65. PBI-065 — Libraries UI pages (needs 063, 064)
+66. PBI-066 — Canvas shell: stage nodes + sequential edges +
+    round-trip (needs 064; sequenced after 065 — shared `api.ts`)
+67. PBI-067 — Role nodes + Custom Code nodes (needs 065, 066)
+68. PBI-068 — Condition Builder + loop-back edges (needs 066, 063;
+    sequenced after 067 — same-file chain)
+69. PBI-069 — Builder tabs + retire YAML-editor route (needs 066, 067)
+70. PBI-070 — Toolbar + witness, human-gated (needs 066–069, 063;
+    last in chain)
+
+## Dependency graph — No-Code Methodology Builder
+
+```text
+063 -+-> 065 -+-> 067 -+-> 069 -+
+     |        |       |         v
+064 -+--------+------>|         070 (human gate: scratch-project witness)
+     |                |
+     +------------> 066 -+----> 068 -+
+     |                   |(needs 063)|
+     +-------------------+-----------+
+```
+
+Same-file chains (sequenced, never parallel): `frontend/src/lib/api.ts`
+(065-library → 066-builder → 068-condition-fields → 070-toolbar,
+append-only per PBI), builder route dir
+(066 → 067 → 068 → 069 → 070), `methodology-graph.ts` (066 → 067 → 068).
+Parallel-safe openers: {063, 064} (disjoint: backend-new-files vs
+package.json + components/ui).
+`.codegraph/` index initialized 2026-09-12 (160 files, 1,882 nodes,
+5,056 edges) — execution can now use `codegraph_explore` for measured
+blast radius (verified live against the methodology store/API). Index
+is gitignored as a derived artifact; it auto-syncs on file change.
+
+## Gate plan — No-Code Methodology Builder (extends the above, unchanged commands)
+
+- Deterministic gates: backend halves (`uv run pytest tests/ -q
+  --ignore=tests/test_api_runs.py` + `uv run pytest
+  tests/test_api_runs.py -q`, workdir `backend/`), frontend
+  `typecheck` + `vitest run` + `next build`. No PBI starts until its
+  gate is runnable (Ralph Loop).
+- Review gates: adversarial vs the builder spec + `ARCHITECTURE.md`;
+  PBI-066 gets a round-trip review (canvas state the compiler cannot
+  compile is a builder bug); PBI-068 gets an expression-honesty review
+  (no silent rewrites, `loop_always`/`route` byte-identical);
+  PBI-069 gets a one-surface review (no links to the raw editor remain).
+- Human gates: PBI-070 witness (scratch-project run, production
+  default untouched until human approval). Set-as-Default confirm is
+  UI-level, not a plan gate.
+- Watch items: React Flow in jsdom (ResizeObserver mock); `@uiw/react-
+  md-editor` + CodeMirror bundle weight (build-gate catches bloat only
+  via failure — eyeball the build output); fastembed-style first-run
+  downloads do NOT apply here (no new model deps).
+
+## Tooling (adopted this plan — Spec/PBIs may cite)
+
+- Skills: `shadcn`, `ui-ux-pro-max` (already adopted, reused). No new
+  agent skills; no third-party planning skills.
+- Tools: npm packages installed once by PBI-064 on approval —
+  `@xyflow/react`, `react-hook-form`, `zod`, `sonner`,
+  `@uiw/react-md-editor`, `@codemirror/view` (+ `lang-javascript` /
+  `cmdk` only if needed). Capability discovery 2026-09-12: no
+  `skills` CLI in this environment (established 2026-09-10); these
+  are maintainer-official, multi-M-download/week packages per the
+  input doc — recorded here so Specs/PBIs can cite them.
+- Plane sync: push-create (2026-09-12, No-Code Builder plan): 8 × Todo,
+  one per PBI-063–070. Parallel creation interleaved sequence_ids — map
+  by PBI number, not creation order: 063→63, 064→69, 065→70, 066→65,
+  067→66, 068→67, 069→68, 070→64 (identifier `kcb/EVRSH-N`). Each
+  card's Context carries its link.

@@ -531,3 +531,8 @@ are Phase-1 backlog, executable after release).
 
 ## 2026-09-08 - PBI-033 Done + UX TRACK COMPLETE (eyeball approved)
 - User approved the restyled UI. EVRSH-32 Done. Track EVRSH-30..33 all Done. Project: 33 issues, 29 Done, 1 In Progress (PBI-005 infra), 3 Backlog (020, 021, 029). Control panel now: shadcn v4, dark-first OLED, AppShell nav, responsive measured, checklist signed.
+
+## 2026-09-12 - PBI-063 Active (builder libraries API, EVRSH-63 In Progress)
+- New: models/libraries.py (Skill/Prompt+history/LibraryRole/ToolInfo/ConditionField), store/libraries.py (generic YAML-per-id LibraryStore), api/libraries.py (skills/prompts/roles CRUD, prompt POST-or-version + PUT-always-versions + /versions, role tool-gate 422, read-only /tools, condition-fields, /methodologies/{id}/validate via shared _check_names), mount in main.py, tests/test_libraries.py (6 tests), backend/libraries/{skills,prompts,roles}/.gitkeep.
+- Failed approaches (do not repeat): (1) create_prompt returned {"status": 201} in a 200 body — fixed via Response.status_code; (2) test asserted PUT /tools/x == 405, real is 404 (no route at all) — fixed expectation + DELETE probe; (3) REAL BUG: methodologies GET /{id} shadowed GET /methodologies/condition-fields (first-match-wins) — fixed by mounting libraries router BEFORE methodologies router in main.py. Any future exact-path route under /methodologies/* must live-or-mount before the {id} catch.
+- ToolInfo.source = "backend-local" (honest: dispatch adapters, not MCP servers — spec input said "source MCP server", no such layer exists; documented in model + endpoint docstrings, not silently relabeled).

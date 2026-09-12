@@ -9,6 +9,7 @@ node_modules/
 # Evidence Research OS derived indices (regeneratable, never committed)
 .index/
 .shared-index/
+.codegraph/
 # Lab Project data volume (separate git remote per Lab Project, own history;
 # only the .gitkeep placeholder is tracked so clones reproduce the layout)
 lab-projects/*

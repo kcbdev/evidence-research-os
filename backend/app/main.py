@@ -7,7 +7,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app import config
 from app.api import (audits, claims, graph, ideas, lab_projects,
-                   methodologies, product, runs, search, settings)
+                   libraries, methodologies, product, runs, search,
+                   settings)
 
 
 def _allowed_origins() -> list[str]:
@@ -48,6 +49,12 @@ def create_app(lab_root=None) -> FastAPI:
     app.include_router(graph.router, prefix="/api/v1/lab-projects")
     # PBI-049: product-note handoff, same mount.
     app.include_router(product.router, prefix="/api/v1/lab-projects")
+    # PBI-063: builder libraries (skills/prompts/roles/tools) + the
+    # methodology validate/condition-fields helpers, same mount.
+    # Mounted BEFORE the methodology registry: its GET
+    # /methodologies/{id} would otherwise shadow the exact
+    # /methodologies/condition-fields path (first match wins).
+    app.include_router(libraries.router, prefix="/api/v1")
     # PBI-055: methodology registry lives at /api/v1 (not scoped).
     app.include_router(methodologies.router, prefix="/api/v1")
     # PBI-046: cross-project search lives at /api/v1 (not scoped).
