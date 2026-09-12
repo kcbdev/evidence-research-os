@@ -88,6 +88,7 @@ stays `In Progress` until the batch review sorts it).
 | PBI-056 | Done | PBI-057 | Done |
 | PBI-058 | Done | PBI-059 | Done |
 | PBI-060 | Done | PBI-061 | In Review (manual: live witness) |
+| PBI-062 | Active | | |
 
 Chain protocol (2026-09-10/11, user-directed, complete): PBIs executed
 back-to-back on deterministic gates; adversarial reviews batched at the

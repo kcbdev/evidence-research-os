@@ -10,6 +10,8 @@ import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { createLabProject, startRun } from "@/lib/api";
 import MethodologyPicker from "@/components/MethodologyPicker";
+import ModelSelector from "@/components/ModelSelector";
+import { DEFAULT_MODELS } from "@/lib/openrouter";
 
 const MODES = ["research", "brainstorm", "academic"] as const;
 
@@ -18,7 +20,7 @@ export default function NewLabPage() {
   const [title, setTitle] = useState("");
   const [question, setQuestion] = useState("");
   const [mode, setMode] = useState<(typeof MODES)[number]>("research");
-  const [models, setModels] = useState({ scientist: "", investigator: "", skeptic: "", ideator: "", judge: "" });
+  const [models, setModels] = useState({ ...DEFAULT_MODELS });
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [maxCalls, setMaxCalls] = useState("50");
   const [maxRounds, setMaxRounds] = useState("5");
@@ -142,25 +144,19 @@ export default function NewLabPage() {
               {(["scientist", "investigator", "skeptic", "ideator"] as const).map((role) => (
                 <Field key={role}>
                   <FieldLabel htmlFor={`nl-${role}`}>{role[0].toUpperCase() + role.slice(1)} model</FieldLabel>
-                  <Input
-                    id={`nl-${role}`}
-                    aria-label={`${role[0].toUpperCase() + role.slice(1)} model`}
-                    placeholder={`${role} model (OpenRouter ID)`}
-                    className="font-mono min-h-[44px]"
+                  <ModelSelector
+                    label={`${role[0].toUpperCase() + role.slice(1)} model`}
                     value={models[role]}
-                    onChange={(e) => setModel(role, e.target.value)}
+                    onChange={(v) => setModel(role, v)}
                   />
                 </Field>
               ))}
               <Field>
                 <FieldLabel htmlFor="nl-judge">Judge model</FieldLabel>
-                <Input
-                  id="nl-judge"
-                  aria-label="Judge model"
-                  placeholder="Judge model (OpenRouter ID, must differ)"
-                  className="font-mono min-h-[44px]"
+                <ModelSelector
+                  label="Judge model"
                   value={models.judge}
-                  onChange={(e) => setModel("judge", e.target.value)}
+                  onChange={(v) => setModel("judge", v)}
                 />
               </Field>
               <MethodologyPicker

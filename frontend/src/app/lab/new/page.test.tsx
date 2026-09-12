@@ -69,13 +69,15 @@ describe("NewLabPage", () => {
     expect(startBody).toMatchObject({ mode: "brainstorm", budget: { max_model_calls: 30 } });
   });
 
-  it("blocks create without models", async () => {
+  it("blocks create when a model is cleared", async () => {
     stubFetch(() => {
       throw new Error("must not post");
     });
     render(<NewLabPage />);
     fireEvent.change(screen.getByLabelText("Project title"), { target: { value: "T" } });
     fireEvent.change(screen.getByLabelText("Initial question"), { target: { value: "q" } });
+    // Defaults prefill all roles (spec) — clearing one re-arms the guard.
+    fireEvent.change(screen.getByLabelText("Judge model"), { target: { value: "" } });
     fireEvent.click(screen.getByRole("button", { name: "Create" }));
     expect(await screen.findByText(/Model selection is required/)).toBeDefined();
   });
