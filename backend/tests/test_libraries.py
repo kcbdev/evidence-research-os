@@ -99,6 +99,8 @@ def test_prompts_version_on_repost_and_put(client):
     assert client.get("/api/v1/prompts/ghost").status_code == 404
     assert client.get(
         "/api/v1/prompts/ghost/versions").status_code == 404
+    assert client.put("/api/v1/prompts/ghost",
+                      json=dict(PROMPT, id="ghost")).status_code == 404
     mismatch = dict(PROMPT, id="other")
     assert client.put("/api/v1/prompts/skeptic-v1",
                       json=mismatch).status_code == 422
@@ -130,6 +132,8 @@ def test_tools_registry_read_only(client):
     assert client.put("/api/v1/tools/x", json={}).status_code == 404
     assert client.delete("/api/v1/tools/grep_project").status_code in (
         404, 405)
+    assert client.patch("/api/v1/tools/grep_project",
+                        json={}).status_code in (404, 405)
 
 
 def test_condition_fields_shape(client):
@@ -166,4 +170,9 @@ def test_validate_matches_save_and_writes_nothing(client):
     overlap = dict(METHOD, id="lib-overlap",
                    models={"scientist": "m", "judge": "m"})
     assert client.post("/api/v1/methodologies",
-                       json=overlap).status_code == 422  # judge overlap
+                       json=overlap).status_code == 422  # save refuses
+    methodologies_api.store.save(Methodology(**overlap))  # raw seed
+    overlap_resp = client.post(
+        "/api/v1/methodologies/lib-overlap/validate")
+    assert overlap_resp.status_code == 422  # validate refuses identically
+    assert "overlaps with a council model" in overlap_resp.json()["detail"]

@@ -135,8 +135,8 @@ def prompt_versions(id: str):
     entry revertable by PUTting its text."""
     p = _read(prompts, id, "prompt")
     return [*(v.model_dump(mode="json") for v in p.history),
-            {"version": p.version, "text": p.text,
-             "saved_at": p.updated_at}]
+            PromptVersion(version=p.version, text=p.text,
+                          saved_at=p.updated_at).model_dump(mode="json")]
 
 
 @router.put("/prompts/{id}")
@@ -204,9 +204,10 @@ def list_tools():
 
 @router.get("/methodologies/condition-fields")
 def condition_fields():
-    """Reference data for the Condition Builder's Field dropdown.
-    Grounded in LabProjectState + CONDITION_REGISTRY usage: the two
-    list fields conditions count over, the three booleans they test."""
+    """Reference data for the Condition Builder's Field dropdown: the
+    LabProjectState fields loop conditions read at runtime (the two
+    list fields conditions count over, the three booleans they test),
+    compiled client-side to `simpleeval` over these exact names."""
     return [ConditionField(field="open_contradictions",
                            type="count").model_dump(mode="json"),
             ConditionField(field="pending_tasks",
@@ -233,8 +234,12 @@ def validate_methodology(id: str):
     except KeyError:
         raise HTTPException(status_code=404,
                             detail=f"unknown methodology: {id}")
-    # Re-parse through the schema (fail-closed on drift), then run the
-    # shared name/judge checks — 422s identical to save-validation.
-    methodologies_api._check_names(
-        Methodology(**stored.model_dump(mode="json")))
+    # Re-parse through the schema (fail-closed on drift — a corrupt
+    # on-disk YAML 422s here exactly as a save attempt would, never
+    # 500s), then run the shared name/judge checks.
+    try:
+        m = Methodology(**stored.model_dump(mode="json"))
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    methodologies_api._check_names(m)
     return {"valid": True, "id": id}
