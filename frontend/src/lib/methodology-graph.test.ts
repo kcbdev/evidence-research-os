@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   bridgeDeletions,
   connectConstrained,
+  embedDiffers,
   methodologyToFlow,
   nextStageId,
   orderStages,
@@ -152,5 +153,14 @@ describe("methodology-graph", () => {
     const fork = [...chain, { id: "e-xc", source: "x", target: "c" }];
     expect(pair(bridgeDeletions(fork, ["b", "c"]))).toEqual([]);
     expect(bridgeDeletions(chain, [])).toBe(chain);
+  });
+
+  it("embedDiffers compares model and tool sets, protects unknowns", () => {
+    const lib = { model: "m", tools: ["a", "b"] };
+    expect(embedDiffers({ model: "m", tools: ["b", "a"] }, lib)).toBe(false);
+    expect(embedDiffers({ model: "other", tools: ["a", "b"] }, lib)).toBe(true);
+    expect(embedDiffers({ model: "m", tools: ["a"] }, lib)).toBe(true);
+    expect(embedDiffers(undefined, lib)).toBe(true);
+    expect(embedDiffers({ model: "m", tools: [] }, undefined)).toBe(true);
   });
 });

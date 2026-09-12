@@ -137,7 +137,7 @@ describe("BuilderPage", () => {
     render(<BuilderPage />);
     await screen.findByTestId("stage-card-plan");
     fireEvent.keyDown(document, { key: "k", metaKey: true });
-    expect(await screen.findByPlaceholderText("Search stages…")).toBeDefined();
+    expect(await screen.findByPlaceholderText("Search nodes…")).toBeDefined();
   });
 
   it("deletes the head node with no bridge and saves", async () => {
@@ -410,6 +410,11 @@ describe("BuilderPage roles and code", () => {
     fireEvent.change(within(dlg).getByLabelText("System prompt"), {
       target: { value: "Defend." },
     });
+    // The canvas refuses model-less placements (unrunnable at run
+    // time) — set a model so auto-place proceeds.
+    fireEvent.change(within(dlg).getByLabelText("Role model"), {
+      target: { value: "m-blue" },
+    });
     fireEvent.click(within(dlg).getByRole("button", { name: "Save" }));
     await vi.waitFor(() => {
       expect(posts.length).toBe(1);
@@ -423,7 +428,7 @@ describe("BuilderPage roles and code", () => {
     const body = puts[0].body as {
       custom_roles: { id: string; system_prompt: string }[];
     };
-    expect(body.custom_roles).toMatchObject([{ id: "blue-team", system_prompt: "Defend." }]);
+    expect(body.custom_roles).toMatchObject([{ id: "blue-team", system_prompt: "Defend.", model: "m-blue" }]);
   });
 
   it("role inspector overrides the embedded model copy", async () => {
@@ -491,5 +496,134 @@ describe("BuilderPage roles and code", () => {
     await vi.waitFor(() => {
       expect(content.style.width).toBe("520px");
     });
+  });
+
+  it("toggling a model override off reverts to the library snapshot", async () => {
+    const { puts, handler } = libraryStub();
+    stubFetch(handler);
+    render(<BuilderPage />);
+    await screen.findByTestId("stage-card-plan");
+    fireEvent.click(screen.getByRole("button", { name: "Add node" }));
+    fireEvent.click(await screen.findByText("Red Team"));
+    await screen.findByTestId("role-card-red-team");
+    fireEvent.click(screen.getByTestId("role-card-red-team"));
+    const sheet = await screen.findByRole("dialog", { name: "Red Team" });
+    const toggle = within(sheet).getByRole("switch", {
+      name: "Override model for this methodology",
+    });
+    fireEvent.click(toggle);
+    fireEvent.change(within(sheet).getByLabelText("Role model override"), {
+      target: { value: "stale-model" },
+    });
+    fireEvent.click(toggle); // OFF reverts, never keeps stale values
+    fireEvent.keyDown(sheet, { key: "Escape", code: "Escape" });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await vi.waitFor(() => {
+      expect(puts.length).toBe(1);
+    });
+    const body = puts[0].body as {
+      custom_roles: { id: string; model: string }[];
+    };
+    expect(body.custom_roles).toMatchObject([{ id: "red-team", model: "m-test" }]);
+  });
+
+  it("refuses to place a model-less role", async () => {
+    const { puts, handler } = libraryStub((url, init) => {
+      if (!init?.method && url.endsWith("/api/v1/roles")) {
+        return [{ ...LIB_ROLE, id: "ghost", name: "Ghost", model: "" }];
+      }
+      return undefined;
+    });
+    stubFetch(handler);
+    render(<BuilderPage />);
+    await screen.findByTestId("stage-card-plan");
+    fireEvent.click(screen.getByRole("button", { name: "Add node" }));
+    fireEvent.click(await screen.findByText("Ghost"));
+    expect(await screen.findByText(/has no model set/)).toBeDefined();
+    expect(screen.queryByTestId("role-card-ghost")).toBeNull();
+    expect(puts.length).toBe(0);
+  });
+
+  it("prunes orphaned embeds when their node is deleted", async () => {
+    const { puts, handler } = libraryStub();
+    stubFetch(handler);
+    render(<BuilderPage />);
+    await screen.findByTestId("stage-card-plan");
+    fireEvent.click(screen.getByRole("button", { name: "Add node" }));
+    fireEvent.click(await screen.findByText("Red Team"));
+    await screen.findByTestId("role-card-red-team");
+    fireEvent.click(screen.getByRole("button", { name: "Delete Red Team" }));
+    await vi.waitFor(() => {
+      expect(screen.queryByTestId("role-card-red-team")).toBeNull();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await vi.waitFor(() => {
+      expect(puts.length).toBe(1);
+    });
+    const body = puts[0].body as {
+      custom_roles?: unknown[];
+      workflow: { stages: { node: string }[] };
+    };
+    expect(body.workflow.stages.map((s) => s.node)).not.toContain("red-team");
+    expect(body.custom_roles ?? []).toEqual([]);
+  });
+
+  it("one embed serves every node using the role", async () => {
+    const { puts, handler } = libraryStub();
+    stubFetch(handler);
+    render(<BuilderPage />);
+    await screen.findByTestId("stage-card-plan");
+    fireEvent.click(screen.getByRole("button", { name: "Add node" }));
+    fireEvent.click(await screen.findByText("Red Team"));
+    await screen.findByTestId("role-card-red-team");
+    fireEvent.click(screen.getByRole("button", { name: "Add node" }));
+    // The canvas card already shows "Red Team" — scope the second pick
+    // to the palette dialog to avoid the ambiguity.
+    const pal = await screen.findByRole("dialog", { name: "Command Palette" });
+    fireEvent.click(within(pal).getByRole("option", { name: /Red Team/ }));
+    await screen.findByTestId("role-card-red-team-2");
+    // Override through the first inspector: both badges follow, one entry.
+    fireEvent.click(screen.getByTestId("role-card-red-team"));
+    const sheet = await screen.findByRole("dialog", { name: "Red Team" });
+    fireEvent.click(
+      within(sheet).getByRole("switch", { name: "Override model for this methodology" }),
+    );
+    fireEvent.change(within(sheet).getByLabelText("Role model override"), {
+      target: { value: "shared-override" },
+    });
+    expect(screen.getByTestId("role-card-red-team-2")).toBeDefined();
+    fireEvent.keyDown(sheet, { key: "Escape", code: "Escape" });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await vi.waitFor(() => {
+      expect(puts.length).toBe(1);
+    });
+    const body = puts[0].body as {
+      custom_roles: { id: string; model: string }[];
+    };
+    expect(body.custom_roles).toMatchObject([{ id: "red-team", model: "shared-override" }]);
+    expect(body.custom_roles.filter((r) => r.id === "red-team").length).toBe(1);
+  });
+
+  it("copy-path copies the repo-relative path", async () => {
+    const writeText = vi.fn(async () => {});
+    Object.assign(navigator, { clipboard: { writeText } });
+    try {
+      const { handler } = libraryStub();
+      stubFetch(handler);
+      render(<BuilderPage />);
+      await screen.findByTestId("stage-card-plan");
+      fireEvent.click(screen.getByRole("button", { name: "Add node" }));
+      fireEvent.click(await screen.findByText("experiment_scorer.py"));
+      await screen.findByTestId("code-card-experiment_scorer");
+      fireEvent.click(screen.getByTestId("code-card-experiment_scorer"));
+      const sheet = await screen.findByRole("dialog", { name: "experiment_scorer.py" });
+      fireEvent.click(within(sheet).getByRole("button", { name: "Copy path" }));
+      await vi.waitFor(() => {
+        expect(writeText).toHaveBeenCalledWith("backend/custom_nodes/experiment_scorer.py");
+      });
+      expect(await within(sheet).findByText("Copied.")).toBeDefined();
+    } finally {
+      delete (navigator as unknown as Record<string, unknown>).clipboard;
+    }
   });
 });

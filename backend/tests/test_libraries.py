@@ -190,3 +190,24 @@ def test_custom_nodes_lists_discovered_files(client):
     assert row["description"] == "Example Tier C custom node (PBI-060)."
     assert all(set(r) >= {"node_id", "filename", "description",
                           "load_error"} for r in rows)
+
+
+def test_custom_nodes_annassign_and_unreadable(tmp_path, monkeypatch):
+    import app.graph.custom_nodes as custom_nodes_mod
+    d = tmp_path / "cn"
+    d.mkdir()
+    (d / "annotated.py").write_text(
+        '"""Annotated node."""\nNODE_ID: str = "annotated_thing"\n'
+        'def run(state):\n    return {}\n', encoding="utf-8")
+    (d / "broken.py").write_text("def broken(:\n", encoding="utf-8")
+    monkeypatch.setattr(custom_nodes_mod, "CUSTOM_NODES_DIR", d)
+    from fastapi.testclient import TestClient
+    from app.main import create_app
+    with TestClient(create_app(tmp_path)) as c:
+        rows = c.get("/api/v1/custom-nodes").json()
+    by_file = {r["filename"]: r for r in rows}
+    assert by_file["annotated.py"]["node_id"] == "annotated_thing"
+    assert by_file["annotated.py"]["load_error"] is None
+    assert by_file["annotated.py"]["description"] == "Annotated node."
+    assert by_file["broken.py"]["node_id"] is None
+    assert "does not parse" in by_file["broken.py"]["load_error"]

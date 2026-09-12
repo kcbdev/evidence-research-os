@@ -72,6 +72,7 @@ import {
 import {
   bridgeDeletions,
   connectConstrained,
+  embedDiffers,
   methodologyToFlow,
   nextStageId,
   orderStages,
@@ -142,11 +143,9 @@ export default function BuilderPage() {
     placeAfterSave: boolean;
   } | null>(null);
 
-  // Stage ids whose embedded role copy carries methodology-local
-  // model/tool overrides (library edits must not clobber them).
-  const [customized, setCustomized] = useState<string[]>([]);
-
-  // Inspector-local override drafting, reset on selection change.
+  // "Has local overrides" is DERIVED (embed vs library), never
+  // tracked: derivation survives reloads, entry switches, and deletes,
+  // which flag-tracking cannot (PBI-067 review).
   const [modelOverrideOn, setModelOverrideOn] = useState(false);
   const [modelValue, setModelValue] = useState("");
   const [toolsOverrideOn, setToolsOverrideOn] = useState(false);
@@ -188,7 +187,7 @@ export default function BuilderPage() {
           m,
           roles.map((r) => ({ id: r.id, name: r.name, model: r.model, tools: r.tools })),
           codes
-            .filter((c) => c.node_id !== null)
+            .filter((c) => c.node_id !== null && c.load_error === null)
             .map((c) => ({
               node_id: c.node_id as string,
               filename: c.filename,
@@ -221,8 +220,11 @@ export default function BuilderPage() {
   useEffect(() => {
     lastEdgesRef.current = edges;
   }, [edges]);
-  // The Saved indicator is only true for the exact saved state — any
-  // edit dirties it again (PBI-070's Validate-gating builds on this).
+  // The Saved indicator is only true for the exact saved state.
+  // nodes/edges/name/modes cover structural edits; embed and flag
+  // mutations clear it explicitly at their call sites (a deps entry on
+  // methodology/stageMap would clobber the post-save Saved=true, since
+  // save itself resyncs both). PBI-070's Validate-gating builds on this.
   useEffect(() => {
     setSaved(false);
   }, [nodes, edges, name, modes]);
@@ -313,6 +315,9 @@ export default function BuilderPage() {
 
   function upsertEmbedded(entry: LibraryRoleEntry) {
     const spec = toEmbedded(entry);
+    // Asymmetry accepted: the library save gates tool names, but this
+    // embed path does not re-check them (the UI only offers registry
+    // rows; hand-built payloads fail later at compile, same as today).
     setMethodology((m) =>
       m === null
         ? m
@@ -349,6 +354,13 @@ export default function BuilderPage() {
   }
 
   function placeRoleEntry(entry: LibraryRoleEntry) {
+    if (entry.model.trim() === "") {
+      // Placement is the run path: an empty model would 400 at run
+      // time with no gate anywhere downstream. The library tolerates
+      // drafts; the canvas demands runnable entries.
+      setNotice(`Role ${entry.id} has no model set — set one in the Roles library before placing it.`);
+      return;
+    }
     upsertEmbedded(entry);
     const stageId = nextStageId(entry.id, new Set(nodes.map((n) => n.id)));
     addStageNode(stageId, entry.id, {
@@ -369,7 +381,6 @@ export default function BuilderPage() {
       filename: info?.filename ?? nodeId,
       fileDescription: info?.description ?? "",
     });
-    setStageMap((m) => ({ ...m, [stageId]: { id: stageId, node: nodeId } }));
   }
 
   function toggleMode(mode: string) {
@@ -388,10 +399,15 @@ export default function BuilderPage() {
     setError(null);
     setNotice(null);
     try {
+      // Prune orphan embeds (deleted/retargeted role nodes): the PUT
+      // carries only what the saved stages reference — stale snapshots
+      // never accumulate.
+      const usedRoles = new Set(ordered.stages.map((s) => s.node));
       const savedDoc = await putMethodology(id, {
         ...methodology,
         name,
         compatible_modes: modes,
+        custom_roles: (methodology.custom_roles ?? []).filter((r) => usedRoles.has(r.id)),
         workflow: { stages: ordered.stages },
       });
       setMethodology(savedDoc);
@@ -426,7 +442,16 @@ export default function BuilderPage() {
     selected !== null && selected.data.kind === "code"
       ? (customNodes.find((c) => c.node_id === selected.data.node) ?? null)
       : null;
-  const isCustomized = selected !== null && customized.includes(selected.id);
+  const isCustomized =
+    selected !== null &&
+    selected.data.kind === "role" &&
+    selectedEmbedded !== null &&
+    embedDiffers(
+      { model: selectedEmbedded.model, tools: selectedEmbedded.tools },
+      selectedLibrary !== null
+        ? { model: selectedLibrary.model, tools: selectedLibrary.tools }
+        : undefined,
+    );
 
   // Reset override drafting whenever the selection changes.
   useEffect(() => {
@@ -443,6 +468,14 @@ export default function BuilderPage() {
 
   function applyRoleOverride(patch: Partial<EmbeddedSpec>) {
     if (selected === null || selectedEmbedded === null) return;
+    if (patch.model !== undefined && patch.model.trim() === "") {
+      // The empty-model "inherit" marker has no runtime resolution
+      // anywhere (no compiler/backend/UI path resolves it) — a run
+      // would 400 on an empty model id. Refuse, don't file a bomb.
+      setNotice("Empty model refused — set a real model id, or leave the override off to keep the embedded one.");
+      return;
+    }
+    setSaved(false);
     const next: EmbeddedSpec = { ...selectedEmbedded, ...patch };
     setMethodology((m) =>
       m === null
@@ -452,45 +485,36 @@ export default function BuilderPage() {
             custom_roles: (m.custom_roles ?? []).map((r) => (r.id === next.id ? next : r)),
           },
     );
+    // Overrides apply to the shared embed: every node using this role
+    // updates together, so badges can never diverge.
     setNodes((ns) =>
       ns.map((n) =>
-        n.id === selected.id
+        n.data.kind === "role" && n.data.node === next.id
           ? { ...n, data: { ...n.data, model: next.model, toolCount: next.tools.length } }
           : n,
       ),
     );
-    setCustomized((c) => (c.includes(selected.id) ? c : [...c, selected.id]));
   }
 
   function switchRoleEntry(roleId: string) {
     const entry = libraryRoles.find((r) => r.id === roleId);
     if (!entry || selected === null) return;
+    if (entry.model.trim() === "") {
+      setNotice(`Role ${entry.id} has no model set — set one in the Roles library before using it here.`);
+      return;
+    }
     // Switching entries re-embeds a fresh snapshot (local overrides do
     // not carry across entries) and retargets the stage — preserving
     // every other stage key (interrupt, loop/route forms).
     upsertEmbedded(entry);
+    setSaved(false);
     setStageMap((m) => ({ ...m, [selected.id]: { ...m[selected.id], id: selected.id, node: roleId } }));
     refreshRoleNode(selected.id, roleId, entry);
-    setCustomized((c) => c.filter((sid) => sid !== selected.id));
     setModelOverrideOn(false);
     setModelValue(entry.model);
     setToolsOverrideOn(false);
     setToolsValue([...entry.tools]);
   }
-
-  // Reset override drafting whenever the selection changes so one
-  // node's draft never leaks into another's inspector.
-  useEffect(() => {
-    if (selectedEmbedded !== null) {
-      setModelOverrideOn(false);
-      setModelValue(selectedEmbedded.model);
-      setToolsOverrideOn(false);
-      setToolsValue([...selectedEmbedded.tools]);
-    }
-    setCopied(false);
-    setCopyError(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId]);
 
   async function copyPath(text: string) {
     setCopied(false);
@@ -671,29 +695,33 @@ export default function BuilderPage() {
             return [...rest, entry];
           });
           // A library save refreshes canvases referencing the entry —
-          // unless the node carries methodology-local overrides.
-          const affected = nodes.filter(
+          // unless the embed carries local overrides (derived, never
+          // tracked: survives reloads by construction).
+          const embed = (methodology?.custom_roles ?? []).find((r) => r.id === entry.id);
+          const referenced = nodes.some(
             (n) => n.data.kind === "role" && n.data.node === entry.id,
           );
-          for (const n of affected) {
-            if (!customized.includes(n.id)) {
+          if (referenced) {
+            if (embed && embedDiffers(
+              { model: embed.model, tools: embed.tools },
+              { model: entry.model, tools: entry.tools },
+            )) {
+              setNotice(
+                `Library role ${entry.id} saved — nodes with local overrides kept their methodology copies.`,
+              );
+            } else {
               upsertEmbedded(entry);
-              refreshRoleNode(n.id, entry.id, entry);
+              for (const n of nodes) {
+                if (n.data.kind === "role" && n.data.node === entry.id) {
+                  refreshRoleNode(n.id, entry.id, entry);
+                }
+              }
             }
           }
           if (roleDialog?.placeAfterSave) {
             // Place straight from the saved entry (the library list
             // state hasn't refreshed yet — no stale lookup).
             placeRoleEntry(entry);
-          }
-          if (
-            customized.some((sid) =>
-              nodes.some((n) => n.id === sid && n.data.node === entry.id),
-            )
-          ) {
-            setNotice(
-              `Library role ${entry.id} saved — nodes with local overrides kept their methodology copies.`,
-            );
           }
           setRoleDialog(null);
         }}
@@ -702,7 +730,10 @@ export default function BuilderPage() {
       <Sheet open={selected !== null} onOpenChange={(open) => !open && setSelectedId(null)}>
         {/* Inspector: resizable via the left-edge drag handle (PBI-066
             deferral, owned here). */}
-        <SheetContent style={{ width: sheetWidth }} className="sm:max-w-none">
+        <SheetContent
+          style={{ width: sheetWidth, maxWidth: "calc(100vw - 2rem)" }}
+          className="sm:max-w-none"
+        >
           <div
             role="separator"
             aria-orientation="vertical"
@@ -726,12 +757,17 @@ export default function BuilderPage() {
               <label className="flex min-h-[44px] cursor-pointer items-center gap-2 text-sm">
                 <Switch
                   checked={(selectedStage?.interrupt as boolean | undefined) === true}
-                  onCheckedChange={(v) =>
-                    setStageMap((m) => ({
-                      ...m,
-                      [selected.id]: { ...m[selected.id], interrupt: v === true },
-                    }))
-                  }
+                  onCheckedChange={(v) => {
+                    // Omit the default on OFF (schema default false) —
+                    // no YAML bloat for untouched stages.
+                    setStageMap((m) => {
+                      const cur = { ...(m[selected.id] ?? { id: selected.id }) };
+                      if (v === true) cur.interrupt = true;
+                      else delete cur.interrupt;
+                      return { ...m, [selected.id]: cur };
+                    });
+                    setSaved(false);
+                  }}
                 />
                 Pause here for approval
               </label>
@@ -766,13 +802,21 @@ export default function BuilderPage() {
                 </Select>
               </div>
               <div className="flex flex-col gap-1">
-                <label className="flex min-h-[44px] cursor-pointer items-center gap-2 text-sm">
-                  <Switch
-                    checked={modelOverrideOn}
-                    onCheckedChange={setModelOverrideOn}
-                  />
-                  Override model for this methodology
-                </label>
+              <label className="flex min-h-[44px] cursor-pointer items-center gap-2 text-sm">
+                <Switch
+                  checked={modelOverrideOn}
+                  onCheckedChange={(v) => {
+                    setModelOverrideOn(v);
+                    if (!v && selectedLibrary !== null) {
+                      // OFF reverts to the library snapshot (F1: hiding
+                      // the input must never keep stale values).
+                      setModelValue(selectedLibrary.model);
+                      applyRoleOverride({ model: selectedLibrary.model });
+                    }
+                  }}
+                />
+                Override model for this methodology
+              </label>
                 {modelOverrideOn && (
                   <>
                     <ModelSelector
@@ -797,6 +841,11 @@ export default function BuilderPage() {
                       setToolsOverrideOn(v);
                       if (v && selectedEmbedded !== null) {
                         setToolsValue([...selectedEmbedded.tools]);
+                      }
+                      if (!v && selectedLibrary !== null) {
+                        // OFF reverts to the library snapshot.
+                        setToolsValue([...selectedLibrary.tools]);
+                        applyRoleOverride({ tools: [...selectedLibrary.tools] });
                       }
                     }}
                   />

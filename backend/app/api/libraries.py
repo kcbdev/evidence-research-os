@@ -261,7 +261,14 @@ def list_custom_nodes():
             if f.name.startswith("_"):
                 continue
             try:
-                tree = ast.parse(f.read_text(encoding="utf-8"))
+                text = f.read_text(encoding="utf-8")
+            except OSError as exc:
+                rows.append(CustomNodeInfo(
+                    node_id=None, filename=f.name, description="",
+                    load_error=f"{f.name} unreadable: {exc}"))
+                continue
+            try:
+                tree = ast.parse(text)
             except (SyntaxError, ValueError) as exc:
                 rows.append(CustomNodeInfo(
                     node_id=None, filename=f.name, description="",
@@ -271,13 +278,21 @@ def list_custom_nodes():
             description = doc.split("\n\n")[0].strip()
             node_id = None
             for stmt in tree.body:
-                if not isinstance(stmt, ast.Assign):
+                if isinstance(stmt, ast.Assign):
+                    targets, value_node = stmt.targets, stmt.value
+                elif isinstance(stmt, ast.AnnAssign) and \
+                        stmt.value is not None and \
+                        isinstance(stmt.target, ast.Name):
+                    # NODE_ID: str = "x" (annotated form) counts too —
+                    # the import-based discovery loads it either way.
+                    targets, value_node = [stmt.target], stmt.value
+                else:
                     continue
                 if not any(isinstance(t, ast.Name) and t.id == "NODE_ID"
-                           for t in stmt.targets):
+                           for t in targets):
                     continue
                 try:
-                    value = ast.literal_eval(stmt.value)
+                    value = ast.literal_eval(value_node)
                 except (ValueError, SyntaxError):
                     continue
                 if isinstance(value, str) and value:

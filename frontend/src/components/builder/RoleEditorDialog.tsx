@@ -273,28 +273,31 @@ export default function RoleEditorDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{isNew ? "New Role" : "Edit Role"}</DialogTitle>
-          <DialogDescription className="flex flex-wrap items-center gap-1">
-            Editing affects all methodologies using this role.
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
-                    type="button"
-                    className="min-h-[44px] min-w-[44px] px-2 text-sm underline"
-                  >
-                    Why?
-                  </button>
-                }
-              />
-              <TooltipContent>
-                Roles are referenced, not copied — a save here changes
-                every methodology that names this role.
-              </TooltipContent>
-            </Tooltip>
-          </DialogDescription>
-        </DialogHeader>
+          <DialogHeader>
+            <DialogTitle>{isNew ? "New Role" : "Edit Role"}</DialogTitle>
+            <DialogDescription className="flex flex-wrap items-center gap-1">
+              Library roles are snapshotted into each methodology on
+              placement — a save here updates the library, and canvases
+              refresh entries without local overrides.
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <button
+                      type="button"
+                      className="min-h-[44px] min-w-[44px] px-2 text-sm underline"
+                    >
+                      Why?
+                    </button>
+                  }
+                />
+                <TooltipContent>
+                  Placement copies the entry into the methodology; later
+                  library edits refresh canvases unless a node carries
+                  methodology-local overrides.
+                </TooltipContent>
+              </Tooltip>
+            </DialogDescription>
+          </DialogHeader>
         {error && (
           <Alert variant="destructive">
             <AlertTitle>Something went wrong</AlertTitle>

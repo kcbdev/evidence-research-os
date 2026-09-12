@@ -238,8 +238,7 @@ export function connectConstrained(
 }
 
 /**
- * Re-link across a deletion batch (PBI-066): surviving entries into
- * the removed closure connect straight to surviving exits. Covers
+ * Re-link across a deletion batch (PBI-066): surviving entries into * the removed closure connect straight to surviving exits. Covers
  * single middle delete, head/tail delete (no bridge), and
  * multi-select block delete with one rule — never silently fork or
  * strand. Pure for the same reason as connectConstrained: jsdom never
@@ -267,4 +266,27 @@ export function bridgeDeletions(edges: Edge[], removedIds: string[]): Edge[] {
     }
   }
   return kept;
+}
+
+export interface EmbedLike {
+  model: string;
+  tools: string[];
+}
+
+/**
+ * Whether a methodology-embedded role copy differs from its library
+ * entry (PBI-067). The canvas derives "has local overrides" from this
+ * instead of tracking flags — derivation survives reloads, switches,
+ * and deletes, which flag-tracking cannot. A missing side protects
+ * (never clobber what you cannot compare).
+ */
+export function embedDiffers(
+  embed: EmbedLike | undefined,
+  lib: EmbedLike | undefined,
+): boolean {
+  if (!embed || !lib) return true;
+  if (embed.model !== lib.model) return true;
+  const a = [...embed.tools].sort().join(" ");
+  const b = [...lib.tools].sort().join(" ");
+  return a !== b;
 }

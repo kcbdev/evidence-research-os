@@ -38,7 +38,7 @@ export default function NodePalette({
   return (
     <CommandDialog open={open} onOpenChange={onOpenChange}>
       <Command>
-        <CommandInput placeholder="Search stages…" aria-label="Search stages" />
+        <CommandInput placeholder="Search nodes…" aria-label="Search nodes" />
         <CommandList>
           <CommandEmpty>No matching entry.</CommandEmpty>
           <CommandGroup heading="Built-in Stages">

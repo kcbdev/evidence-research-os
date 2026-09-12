@@ -300,3 +300,45 @@ def test_judge_overlap_refused(tmp_path):
     m.models = overlap
     with pytest.raises(ValueError, match="overlap"):
         build_graph_from_methodology(m, tmp_path)
+
+
+def test_canvas_emitted_shapes_compile_and_run(tmp_path, monkeypatch):
+    """PBI-067 gate: every YAML shape the builder canvas can emit must
+    compile AND execute (mocked models, real graph/store/registry).
+    Payload mirrors the canvas emits exactly: role stage + embedded
+    spec (overridden model/tools, the serialize contract), Tier C
+    stage by NODE_ID (no embed), interrupt flag. Live-model proof of
+    a full builder methodology stays with the PBI-070 witness."""
+    _mock(monkeypatch)
+    monkeypatch.setattr("app.graph.generic_node.call_model_resilient",
+                        lambda *a, **k: ("FINAL: done", 1))
+    payload = {
+        "id": "canvas-v1", "name": "Canvas", "description": "d",
+        "is_default": False, "compatible_modes": ["research"],
+        "workflow": {"stages": [
+            {"id": "plan", "node": "plan"},
+            {"id": "red-team", "node": "red-team"},
+            {"id": "scorer", "node": "experiment_scorer"},
+            {"id": "out", "node": "final_output", "interrupt": True},
+        ]},
+        "tools": {"enabled": []}, "prompts": {"set": "x"},
+        "skills": {}, "models": dict(MODELS),
+        "budget_defaults": {"max_model_calls": 50,
+                            "max_research_rounds": 5},
+        "custom_roles": [{
+            "id": "red-team", "system_prompt": "Find flaws.",
+            "tools": ["grep_project"], "model": "m-override",
+            "output_schema": None,
+        }],
+    }
+    m = Methodology(**payload)
+    _seed_into(tmp_path / "canvas", "research")
+    graph = build_graph_from_methodology(m, tmp_path / "canvas")
+    assert {"plan", "red-team", "scorer", "out"} <= set(
+        graph.get_graph().nodes)
+    names = _stream_names(graph, _state(), "t-canvas")
+    assert "red-team" in names  # Tier A stage ran, not just compiled
+    assert "scorer" in names  # Tier C discovered file executed
+    assert "out" not in names  # interrupt stops the stream
+    assert tuple(graph.get_state(
+        {"configurable": {"thread_id": "t-canvas"}}).next) == ("out",)
