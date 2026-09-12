@@ -11,7 +11,7 @@ FROM node:22-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-ARG NEXT_PUBLIC_API_URL=https://api.evidence.kcb.ma
+ARG NEXT_PUBLIC_API_URL=https://evidence-api.kcb.ma
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 RUN npm run build
 
