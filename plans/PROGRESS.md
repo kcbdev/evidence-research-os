@@ -559,3 +559,8 @@ are Phase-1 backlog, executable after release).
 
 ## 2026-09-12 - PBI-066 → Active (chain)
 - Pre-flight done: README Active, EVRSH-65 In Progress. Deps PBI-064 Done; sequenced after PBI-065 (shared api.ts) Done. Implementation (canvas shell) starts next: builder route + StageCard + NodePalette (stages-only) + methodology-graph.ts mapping + api.ts builder load/save appends.
+
+## 2026-09-12 - PBI-066 implemented, gates green (review pending)
+- Built: lib/methodology-graph.ts (edge-walked orderStages with named cycle/disconnected errors; loop/route keys preserved by never rewriting stage objects) + 5 unit tests; api.ts putMethodology (JSON PUT); StageCard (handles + lucide-X delete via deleteElements); NodePalette (CommandDialog); builder route (header w/ editable name + mode badges/adder, vertical tabs, RF canvas, Cmd+K, single-chain onConnect, delete-bridging, Sheet placeholder).
+- Failed approaches (do not repeat): (1) palette children outside `<Command>` — the vendored CommandDialog leaves the cmdk provider to the caller; crash `reading subscribe` is the symptom; (2) RF nodes need explicit width/height or they stay visibility:hidden in jsdom (invisible to role queries while testids match) — set NODE_W/H at creation, which also kills the production measure-flash; (3) RF deleteElements is async — poll, don't assert sync; (4) cmdk needs scrollIntoView stubbed in jsdom; (5) adding a node must auto-edge from a single tail or every save fails disconnected — implemented, tested; (6) orderStages multi-start handling: walk-first-then-name-unreachable (a second chain IS disconnected nodes; counting chains was vaguer).
+- Gates: typecheck clean, 109/109 vitest (10 new), build green with /builder route (21 routes).

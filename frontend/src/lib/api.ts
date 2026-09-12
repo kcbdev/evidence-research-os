@@ -659,3 +659,14 @@ export function updateRole(id: string, entry: LibraryRoleEntry): Promise<Library
 export function listTools(): Promise<ToolRow[]> {
   return get<ToolRow[]>("/api/v1/tools");
 }
+
+// --- Builder canvas (PBI-066 owns these; PBI-070 appends validate etc.)
+
+export function putMethodology(id: string, doc: unknown): Promise<MethodologyDetail> {
+  // The builder works in JSON throughout (no YAML round-trip): full
+  // methodology document, same validation as saveMethodology.
+  return putLibrary<MethodologyDetail>(
+    `/api/v1/methodologies/${encodeURIComponent(id)}`,
+    doc,
+  );
+}
