@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import {
@@ -38,6 +38,7 @@ import {
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  getPrompt,
   getPromptVersions,
   listPrompts,
   listRoles,
@@ -100,8 +101,19 @@ export default function PromptsPage() {
     defaultValues: { id: "", name: "", description: "", text: "" },
   });
 
+  // Identity-guarded init (same lesson as the Roles page): saving
+  // produces a new entry object for the same id — re-running reset +
+  // refetch on object identity would wipe in-flight drafts and double
+  // the versions traffic. Save paths refresh explicitly instead.
+  const editingKey = editing === null ? null : editing === "new" ? "new" : editing.id;
+  const prevEditingKey = useRef<string | null>(null);
   useEffect(() => {
-    if (editing === null) return;
+    if (editing === null) {
+      prevEditingKey.current = null;
+      return;
+    }
+    if (prevEditingKey.current === editingKey) return;
+    prevEditingKey.current = editingKey;
     setVersions(null);
     setSaved(false);
     if (editing === "new") {
@@ -119,7 +131,8 @@ export default function PromptsPage() {
           setError(err instanceof Error ? err.message : "versions failed"),
         );
     }
-  }, [editing, reset]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingKey]);
 
   const isNew = editing === "new";
 
@@ -138,12 +151,19 @@ export default function PromptsPage() {
     setError(null);
     try {
       if (isNew || base === null) {
-        await savePrompt({
-          ...parsed.data,
-          version: 1,
-          updated_at: "",
-          history: [],
-        });
+        // Backend POST is upsert and history stores text only — a
+        // typo'd id would clobber another prompt's metadata beyond
+        // recovery. Guard client-side; the save stays authoritative.
+        try {
+          await getPrompt(parsed.data.id);
+          setFieldError("id", {
+            message: "This ID already exists — edit it from the list instead.",
+          });
+          return;
+        } catch {
+          // Absent (or unreadable) — proceed; save errors surface below.
+        }
+        await savePrompt({ ...parsed.data });
         setEditing(null);
       } else {
         const savedEntry = await updatePrompt(base.id, {
@@ -321,7 +341,7 @@ export default function PromptsPage() {
               <Textarea
                 id="prompt-text"
                 rows={10}
-                className="font-mono"
+                className="font-mono min-h-[44px]"
                 {...register("text")}
               />
               {fieldError(errors.text?.message)}

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -42,6 +42,7 @@ import ModelSelector from "@/components/ModelSelector";
 import {
   createRole,
   getMethodology,
+  getPrompt,
   listMethodologies,
   listPrompts,
   listRoles,
@@ -61,6 +62,17 @@ const roleSchema = z.object({
   name: z.string().min(1, "Name is required"),
   description: z.string(),
   system_prompt: z.string().min(1, "System prompt is required"),
+});
+
+// Full client mirror of backend LibraryRole (PBI-063): the five fields
+// living in editor-local state are validated as part of the assembled
+// object on submit, not just the four RHF-bound text fields.
+const fullRoleSchema = roleSchema.extend({
+  prompt_ref: z.string().nullable(),
+  tools: z.array(z.string()),
+  model: z.string(),
+  output_schema: z.string().nullable(),
+  skills: z.array(z.string()),
 });
 
 type RoleForm = z.infer<typeof roleSchema>;
@@ -93,11 +105,14 @@ export default function RolesPage() {
   // zod validates the assembled object on submit).
   const [promptMode, setPromptMode] = useState<"library" | "inline">("inline");
   const [selectedPromptId, setSelectedPromptId] = useState("");
+  const [pickedText, setPickedText] = useState<string | null>(null);
   const [promote, setPromote] = useState(false);
   const [toolNames, setToolNames] = useState<string[]>([]);
   const [skillIds, setSkillIds] = useState<string[]>([]);
   const [model, setModel] = useState("");
   const [outputSchema, setOutputSchema] = useState("");
+  const [notice, setNotice] = useState<string | null>(null);
+  const [refsWarning, setRefsWarning] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setError(null);
@@ -113,6 +128,7 @@ export default function RolesPage() {
       setPrompts(pr);
       setSkills(sk);
       setTools(to);
+      let failedRefs = 0;
       const details = await Promise.all(
         ms.map(async (m: MethodologySummary) => {
           try {
@@ -123,11 +139,17 @@ export default function RolesPage() {
               customRoleIds: (full.custom_roles ?? []).map((c) => c.id),
             };
           } catch {
+            failedRefs += 1;
             return { id: m.id, name: m.name, customRoleIds: [] };
           }
         }),
       );
       setMethodologies(details);
+      setRefsWarning(
+        failedRefs > 0
+          ? `${failedRefs} methodolog${failedRefs === 1 ? "y" : "ies"} failed to load — reference badges may be incomplete.`
+          : null,
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "failed to load");
     }
@@ -142,23 +164,36 @@ export default function RolesPage() {
     handleSubmit,
     reset,
     setValue,
+    watch,
     setError: setFieldError,
     formState: { errors },
   } = useForm<RoleForm>({
     defaultValues: { id: "", name: "", description: "", system_prompt: "" },
   });
 
+  // The init effect resets editor state when a different entry opens.
+  // Guarded by identity (not by `prompts`): a mid-edit list refresh
+  // must never wipe draft tool/skill checks.
+  const editingKey = editing === null ? null : editing === "new" ? "new" : editing.id;
+  const prevEditingKey = useRef<string | null>(null);
   useEffect(() => {
-    if (editing === null) return;
+    if (editing === null) {
+      prevEditingKey.current = null; // allow the same entry to reopen fresh
+      return;
+    }
+    if (prevEditingKey.current === editingKey) return;
+    prevEditingKey.current = editingKey;
     if (editing === "new") {
       reset({ id: "", name: "", description: "", system_prompt: "" });
       setPromptMode("inline");
       setSelectedPromptId("");
+      setPickedText(null);
       setPromote(false);
       setToolNames([]);
       setSkillIds([]);
       setModel("");
       setOutputSchema("");
+      setNotice(null);
     } else {
       reset({
         id: editing.id,
@@ -171,13 +206,16 @@ export default function RolesPage() {
         prompts.some((p) => p.id === editing.prompt_ref);
       setPromptMode(inLibrary ? "library" : "inline");
       setSelectedPromptId(inLibrary ? (editing.prompt_ref as string) : "");
+      setPickedText(inLibrary ? editing.system_prompt : null);
       setPromote(false);
       setToolNames(editing.tools);
       setSkillIds(editing.skills);
       setModel(editing.model);
       setOutputSchema(editing.output_schema ?? "");
+      setNotice(null);
     }
-  }, [editing, reset, prompts]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingKey]);
 
   const isNew = editing === "new";
 
@@ -189,8 +227,20 @@ export default function RolesPage() {
     if (id === null) return;
     setSelectedPromptId(id);
     const found = prompts.find((p) => p.id === id);
-    if (found) setValue("system_prompt", found.text);
+    if (found) {
+      setValue("system_prompt", found.text);
+      setPickedText(found.text);
+    }
   }
+
+  // Library picks copy text once: a later manual edit diverges from the
+  // library entry, so the provenance link must not claim otherwise.
+  const liveSystemPrompt = watch("system_prompt");
+  const diverged =
+    promptMode === "library" &&
+    selectedPromptId !== "" &&
+    pickedText !== null &&
+    liveSystemPrompt !== pickedText;
 
   async function onSubmit(data: RoleForm) {
     const parsed = roleSchema.safeParse(data);
@@ -205,26 +255,37 @@ export default function RolesPage() {
     }
     setSaving(true);
     setError(null);
+    setNotice(null);
     try {
       const roleId = isNew ? parsed.data.id : (editing as LibraryRoleEntry).id;
       let promptRef: string | null =
         isNew ? null : ((editing as LibraryRoleEntry).prompt_ref ?? null);
       if (promptMode === "library" && selectedPromptId) {
-        promptRef = selectedPromptId;
+        // Diverged manual edits must not file false provenance.
+        promptRef = diverged ? null : selectedPromptId;
       }
+      let promptCreated: string | null = null;
       if (promptMode === "inline" && promote && parsed.data.system_prompt.trim()) {
-        const saved = await savePrompt({
-          id: `${roleId}-prompt`,
-          name: `${parsed.data.name} prompt`,
-          description: `Promoted from role ${roleId}.`,
-          text: parsed.data.system_prompt,
-          version: 1,
-          updated_at: "",
-          history: [],
-        });
-        promptRef = saved.id;
+        const promptId = `${roleId}-prompt`;
+        try {
+          await getPrompt(promptId);
+          // Already exists: link it, never clobber its text/history.
+          promptRef = promptId;
+          setNotice(
+            `Linked existing prompt ${promptId} — edit its text in the Prompts library.`,
+          );
+        } catch {
+          const saved = await savePrompt({
+            id: promptId,
+            name: `${parsed.data.name} prompt`,
+            description: `Promoted from role ${roleId}.`,
+            text: parsed.data.system_prompt,
+          });
+          promptRef = saved.id;
+          promptCreated = saved.id;
+        }
       }
-      const payload = {
+      const assembled = {
         id: roleId,
         name: parsed.data.name,
         description: parsed.data.description,
@@ -235,10 +296,27 @@ export default function RolesPage() {
         output_schema: outputSchema || null,
         skills: skillIds,
       };
-      if (isNew) {
-        await createRole(payload);
-      } else {
-        await updateRole(roleId, payload);
+      const full = fullRoleSchema.safeParse(assembled);
+      if (!full.success) {
+        setError(`Role failed validation: ${full.error.issues[0]?.message ?? "unknown"}`);
+        return;
+      }
+      try {
+        if (isNew) {
+          await createRole(full.data);
+        } else {
+          await updateRole(roleId, full.data);
+        }
+      } catch (err) {
+        // The prompt half may already be saved — say so explicitly,
+        // never leave a half-state silent.
+        const reason = err instanceof Error ? err.message : "save failed";
+        setError(
+          promptCreated !== null
+            ? `Prompt ${promptCreated} was created, but the role was NOT saved: ${reason}`
+            : reason,
+        );
+        return;
       }
       setEditing(null);
       await refresh();
@@ -249,10 +327,10 @@ export default function RolesPage() {
     }
   }
 
-  function referencing(id: string): string[] {
+  function referencing(id: string): { id: string; name: string }[] {
     return methodologies
       .filter((m) => m.customRoleIds.includes(id))
-      .map((m) => m.name);
+      .map((m) => ({ id: m.id, name: m.name }));
   }
 
   return (
@@ -276,6 +354,12 @@ export default function RolesPage() {
         <Alert variant="destructive">
           <AlertTitle>Something went wrong</AlertTitle>
           <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+      {refsWarning && (
+        <Alert>
+          <AlertTitle>Heads up</AlertTitle>
+          <AlertDescription>{refsWarning}</AlertDescription>
         </Alert>
       )}
       {roles === null && !error && (
@@ -302,8 +386,8 @@ export default function RolesPage() {
                   <CardTitle className="text-base flex flex-wrap items-center gap-2">
                     {r.name}
                     {refs.map((m) => (
-                      <Badge key={m} variant="secondary">
-                        {m}
+                      <Badge key={m.id} variant="secondary">
+                        {m.name}
                       </Badge>
                     ))}
                   </CardTitle>
@@ -315,13 +399,22 @@ export default function RolesPage() {
                     {r.tools.length} · skills: {r.skills.length}
                   </p>
                   <div>
-                    <Button
-                      variant="outline"
-                      className="min-h-[44px]"
-                      onClick={() => setEditing(r)}
-                    >
-                      Edit
-                    </Button>
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <Button
+                            variant="outline"
+                            className="min-h-[44px]"
+                            onClick={() => setEditing(r)}
+                          >
+                            Edit
+                          </Button>
+                        }
+                      />
+                      <TooltipContent>
+                        Editing affects all methodologies using this role.
+                      </TooltipContent>
+                    </Tooltip>
                   </div>
                 </CardContent>
               </Card>
@@ -339,7 +432,10 @@ export default function RolesPage() {
               <Tooltip>
                 <TooltipTrigger
                   render={
-                    <button type="button" className="text-sm underline">
+                    <button
+                      type="button"
+                      className="min-h-[44px] min-w-[44px] px-2 text-sm underline"
+                    >
                       Why?
                     </button>
                   }
@@ -382,16 +478,20 @@ export default function RolesPage() {
               />
             </div>
             <div className="flex flex-col gap-1">
-              <label htmlFor="prompt-mode" className="text-sm font-medium">
+              <span id="prompt-mode-label" className="text-sm font-medium">
                 System prompt source
-              </label>
+              </span>
               <Select
                 value={promptMode}
                 onValueChange={(v) => {
                   if (v === "library" || v === "inline") setPromptMode(v);
                 }}
               >
-                <SelectTrigger id="prompt-mode" className="min-h-[44px]">
+                <SelectTrigger
+                  id="prompt-mode"
+                  aria-labelledby="prompt-mode-label"
+                  className="min-h-[44px]"
+                >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -402,11 +502,15 @@ export default function RolesPage() {
             </div>
             {promptMode === "library" && (
               <div className="flex flex-col gap-1">
-                <label htmlFor="prompt-pick" className="text-sm font-medium">
+                <span id="prompt-pick-label" className="text-sm font-medium">
                   Prompt
-                </label>
+                </span>
                 <Select value={selectedPromptId} onValueChange={pickPrompt}>
-                  <SelectTrigger id="prompt-pick" className="min-h-[44px]">
+                  <SelectTrigger
+                    id="prompt-pick"
+                    aria-labelledby="prompt-pick-label"
+                    className="min-h-[44px]"
+                  >
                     <SelectValue placeholder="Pick a prompt" />
                   </SelectTrigger>
                   <SelectContent>
@@ -426,9 +530,15 @@ export default function RolesPage() {
               <Textarea
                 id="role-system-prompt"
                 rows={8}
-                className="font-mono"
+                className="font-mono min-h-[44px]"
                 {...register("system_prompt")}
               />
+              {diverged && (
+                <p className="text-xs text-muted-foreground">
+                  Edited — no longer linked to the library prompt and will
+                  save unlinked.
+                </p>
+              )}
               {fieldError(errors.system_prompt?.message)}
             </div>
             {promptMode === "inline" && (
@@ -463,7 +573,7 @@ export default function RolesPage() {
               </div>
             </div>
             <div className="flex flex-col gap-1">
-              <span id="role-model-label" className="text-sm font-medium">
+              <span aria-hidden="true" className="text-sm font-medium">
                 Model
               </span>
               <ModelSelector
@@ -476,16 +586,20 @@ export default function RolesPage() {
               </p>
             </div>
             <div className="flex flex-col gap-1">
-              <label htmlFor="output-schema" className="text-sm font-medium">
+              <span id="output-schema-label" className="text-sm font-medium">
                 Output schema
-              </label>
+              </span>
               <Select
                 value={outputSchema || "__freeform__"}
                 onValueChange={(v) =>
                   setOutputSchema(v === "__freeform__" ? "" : (v ?? ""))
                 }
               >
-                <SelectTrigger id="output-schema" className="min-h-[44px]">
+                <SelectTrigger
+                  id="output-schema"
+                  aria-labelledby="output-schema-label"
+                  className="min-h-[44px]"
+                >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -533,6 +647,12 @@ export default function RolesPage() {
               </Button>
             </DialogFooter>
           </form>
+          {notice && (
+            <Alert>
+              <AlertTitle>Note</AlertTitle>
+              <AlertDescription>{notice}</AlertDescription>
+            </Alert>
+          )}
         </DialogContent>
       </Dialog>
     </div>

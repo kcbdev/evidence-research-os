@@ -188,7 +188,8 @@ export default function SkillsPage() {
                   <p className="text-sm text-muted-foreground">{s.description}</p>
                   <p className="text-xs text-muted-foreground font-mono">{s.id}</p>
                   <p className="text-xs text-muted-foreground">
-                    Used by: {users.length > 0 ? users.join(", ") : "no roles"}
+                    Used by library roles:{" "}
+                    {users.length > 0 ? users.join(", ") : "none"}
                   </p>
                   <div>
                     <Button

@@ -15,17 +15,22 @@ beforeEach(() => {
 
 describe("ToolsPage", () => {
   it("renders the read-only registry with no write affordance", async () => {
+    const urls: string[] = [];
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => ({
-        ok: true,
-        status: 200,
-        json: async () => TOOLS,
-        text: async () => "",
-      })),
+      vi.fn(async (url: string) => {
+        urls.push(url);
+        return {
+          ok: true,
+          status: 200,
+          json: async () => TOOLS,
+          text: async () => "",
+        };
+      }),
     );
     render(<ToolsPage />);
     expect(await screen.findByText("grep_project")).toBeDefined();
+    expect(urls[0].endsWith("/api/v1/tools")).toBe(true);
     expect(screen.getByText("fetch_url")).toBeDefined();
     expect(screen.getAllByText("backend-local").length).toBe(2);
     expect(screen.queryByRole("button")).toBeNull();

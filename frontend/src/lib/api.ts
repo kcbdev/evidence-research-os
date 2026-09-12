@@ -603,7 +603,7 @@ export function listSkills(): Promise<SkillEntry[]> {
 }
 
 export function getSkill(id: string): Promise<SkillEntry> {
-  return get<SkillEntry>(`/api/v1/skills/${id}`);
+  return get<SkillEntry>(`/api/v1/skills/${encodeURIComponent(id)}`);
 }
 
 export function createSkill(entry: SkillEntry): Promise<SkillEntry> {
@@ -611,7 +611,7 @@ export function createSkill(entry: SkillEntry): Promise<SkillEntry> {
 }
 
 export function updateSkill(id: string, entry: SkillEntry): Promise<SkillEntry> {
-  return putLibrary<SkillEntry>(`/api/v1/skills/${id}`, entry);
+  return putLibrary<SkillEntry>(`/api/v1/skills/${encodeURIComponent(id)}`, entry);
 }
 
 export function listPrompts(): Promise<PromptEntry[]> {
@@ -619,20 +619,25 @@ export function listPrompts(): Promise<PromptEntry[]> {
 }
 
 export function getPrompt(id: string): Promise<PromptEntry> {
-  return get<PromptEntry>(`/api/v1/prompts/${id}`);
+  return get<PromptEntry>(`/api/v1/prompts/${encodeURIComponent(id)}`);
 }
 
 export function getPromptVersions(id: string): Promise<PromptVersionRow[]> {
-  return get<PromptVersionRow[]>(`/api/v1/prompts/${id}/versions`);
+  return get<PromptVersionRow[]>(
+    `/api/v1/prompts/${encodeURIComponent(id)}/versions`,
+  );
 }
 
-export function savePrompt(entry: PromptEntry): Promise<PromptEntry> {
+export type NewPrompt = Pick<PromptEntry, "id" | "name" | "description" | "text">;
+
+export function savePrompt(entry: NewPrompt): Promise<PromptEntry> {
   // POST covers both create (201) and re-save-as-new-version (200).
+  // Version/history are server-managed — never client-sent.
   return postLibrary<PromptEntry>("/api/v1/prompts", entry);
 }
 
 export function updatePrompt(id: string, entry: PromptEntry): Promise<PromptEntry> {
-  return putLibrary<PromptEntry>(`/api/v1/prompts/${id}`, entry);
+  return putLibrary<PromptEntry>(`/api/v1/prompts/${encodeURIComponent(id)}`, entry);
 }
 
 export function listRoles(): Promise<LibraryRoleEntry[]> {
@@ -640,7 +645,7 @@ export function listRoles(): Promise<LibraryRoleEntry[]> {
 }
 
 export function getRole(id: string): Promise<LibraryRoleEntry> {
-  return get<LibraryRoleEntry>(`/api/v1/roles/${id}`);
+  return get<LibraryRoleEntry>(`/api/v1/roles/${encodeURIComponent(id)}`);
 }
 
 export function createRole(entry: LibraryRoleEntry): Promise<LibraryRoleEntry> {
@@ -648,7 +653,7 @@ export function createRole(entry: LibraryRoleEntry): Promise<LibraryRoleEntry> {
 }
 
 export function updateRole(id: string, entry: LibraryRoleEntry): Promise<LibraryRoleEntry> {
-  return putLibrary<LibraryRoleEntry>(`/api/v1/roles/${id}`, entry);
+  return putLibrary<LibraryRoleEntry>(`/api/v1/roles/${encodeURIComponent(id)}`, entry);
 }
 
 export function listTools(): Promise<ToolRow[]> {

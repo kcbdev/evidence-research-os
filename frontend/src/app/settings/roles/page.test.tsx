@@ -78,6 +78,7 @@ describe("RolesPage", () => {
     await vi.waitFor(() => {
       expect(posted.length).toBe(1);
     });
+    expect(posted[0].url.endsWith("/api/v1/roles")).toBe(true);
     expect(posted[0].body).toMatchObject({
       id: "blue-team",
       system_prompt: "Defend the claim.",
@@ -86,15 +87,46 @@ describe("RolesPage", () => {
     });
   });
 
+  it("edits a role through PUT", async () => {
+    const puts: { url: string; body: unknown }[] = [];
+    stubFetch((url, init) => {
+      if (init?.method === "PUT" && url.endsWith("/api/v1/roles/red-team")) {
+        puts.push({ url, body: JSON.parse(String(init.body)) });
+        return { ...ROLE, name: "Red Team v2" };
+      }
+      return baseStub(url);
+    });
+    render(<RolesPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    const prompt = await screen.findByLabelText("System prompt");
+    expect((prompt as HTMLTextAreaElement).value).toBe("Find flaws.");
+    fireEvent.change(screen.getByLabelText("Name"), {
+      target: { value: "Red Team v2" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await vi.waitFor(() => {
+      expect(puts.length).toBe(1);
+    });
+    expect(puts[0].url.endsWith("/api/v1/roles/red-team")).toBe(true);
+    expect(puts[0].body).toMatchObject({ id: "red-team", name: "Red Team v2" });
+  });
+
   it("promotes inline prompts to the library on save", async () => {
     const promptsPosted: unknown[] = [];
     const rolesPosted: unknown[] = [];
+    const order: string[] = [];
     stubFetch((url, init) => {
+      // Single-prompt read: emulate the backend 404 so promote creates.
+      if (url.includes("/api/v1/prompts/") && !init?.method) {
+        throw new Error("GET /prompts/blue-team-prompt: 404");
+      }
       if (init?.method === "POST" && url.endsWith("/api/v1/prompts")) {
+        order.push("prompts");
         promptsPosted.push(JSON.parse(String(init.body)));
         return { id: "blue-team-prompt", version: 1 };
       }
       if (init?.method === "POST" && url.endsWith("/api/v1/roles")) {
+        order.push("roles");
         rolesPosted.push(JSON.parse(String(init.body)));
         return { ...ROLE };
       }
@@ -113,6 +145,8 @@ describe("RolesPage", () => {
       expect(rolesPosted.length).toBe(1);
     });
     expect(promptsPosted.length).toBe(1);
+    // The prompt half must land before the role that references it.
+    expect(order).toEqual(["prompts", "roles"]);
     expect(promptsPosted[0]).toMatchObject({
       id: "blue-team-prompt",
       text: "Defend the claim.",
