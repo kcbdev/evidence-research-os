@@ -89,7 +89,7 @@ stays `In Progress` until the batch review sorts it).
 | PBI-058 | Done | PBI-059 | Done |
 | PBI-060 | Done | PBI-061 | In Review (manual: live witness) |
 | PBI-062 | Done | | |
-| PBI-063 | Active (builder libraries API) | PBI-064 | Proposed (builder deps) |
+| PBI-063 | Done (2026-09-12, agentic) | PBI-064 | Done (2026-09-12, agentic) |
 | PBI-065 | Proposed (libraries UI) | PBI-066 | Proposed (canvas shell) |
 | PBI-067 | Proposed (role/code nodes) | PBI-068 | Proposed (conditions) |
 | PBI-069 | Proposed (tabs + retire editor) | PBI-070 | Proposed (toolbar + witness) |

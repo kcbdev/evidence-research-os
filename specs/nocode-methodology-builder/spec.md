@@ -123,7 +123,9 @@ the escape hatch (Export/Import), not the primary surface.
 - New npm deps (installed once, on approval, by PBI-064):
   `@xyflow/react`, `react-hook-form`, `zod`, `cmdk` (if not pulled
   by shadcn CLI), `sonner`, `@uiw/react-md-editor`,
-  `@codemirror/lang-javascript` + `@codemirror/view` (minimal CM6).
+  `@codemirror/lang-javascript` + `@codemirror/view` (minimal CM6;
+  PBI-064 installed `@codemirror/view` only — `lang-javascript`
+  deferred to PBI-068, which owns the first CodeMirror code).
   Quality: all are multi-million-download/week, maintainer-official
   packages (xyflow team, RHF, Vercel/shadcn-adjacent sonner) —
   no skills.sh lookup needed; no `skills` CLI in this environment
