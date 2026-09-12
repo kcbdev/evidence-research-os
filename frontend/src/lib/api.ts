@@ -376,6 +376,9 @@ export interface MethodologyDetail extends MethodologySummary {
   skills: Record<string, string[]>;
   models: Record<string, string>;
   budget_defaults: { max_model_calls: number; max_research_rounds: number };
+  // PBI-065 widening: the backend dump always carries Tier A custom
+  // roles; the Roles page needs their ids for reference badges.
+  custom_roles?: { id: string }[];
 }
 
 export function getMethodology(id: string): Promise<MethodologyDetail> {
@@ -525,4 +528,129 @@ export function streamRun(
     }
     es.close(); // cleanup: no dangling subscriptions
   };
+}
+
+// --- Builder libraries (PBI-065 owns this section; later builder PBIs
+// append only). Shapes mirror backend/app/models/libraries.py 1:1.
+
+export interface SkillEntry {
+  id: string;
+  name: string;
+  description: string;
+  body: string;
+}
+
+export interface PromptVersionRow {
+  version: number;
+  text: string;
+  saved_at: string;
+}
+
+export interface PromptEntry {
+  id: string;
+  name: string;
+  description: string;
+  text: string;
+  version: number;
+  updated_at: string;
+  history: PromptVersionRow[];
+}
+
+export interface LibraryRoleEntry {
+  id: string;
+  name: string;
+  description: string;
+  system_prompt: string;
+  prompt_ref: string | null;
+  tools: string[];
+  model: string;
+  output_schema: string | null;
+  skills: string[];
+}
+
+export interface ToolRow {
+  name: string;
+  description: string;
+  source: string;
+}
+
+async function postLibrary<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    throw new Error(`POST ${path}: ${res.status} — ${await res.text()}`);
+  }
+  return (await res.json()) as T;
+}
+
+async function putLibrary<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    throw new Error(`PUT ${path}: ${res.status} — ${await res.text()}`);
+  }
+  return (await res.json()) as T;
+}
+
+export function listSkills(): Promise<SkillEntry[]> {
+  return get<SkillEntry[]>("/api/v1/skills");
+}
+
+export function getSkill(id: string): Promise<SkillEntry> {
+  return get<SkillEntry>(`/api/v1/skills/${id}`);
+}
+
+export function createSkill(entry: SkillEntry): Promise<SkillEntry> {
+  return postLibrary<SkillEntry>("/api/v1/skills", entry);
+}
+
+export function updateSkill(id: string, entry: SkillEntry): Promise<SkillEntry> {
+  return putLibrary<SkillEntry>(`/api/v1/skills/${id}`, entry);
+}
+
+export function listPrompts(): Promise<PromptEntry[]> {
+  return get<PromptEntry[]>("/api/v1/prompts");
+}
+
+export function getPrompt(id: string): Promise<PromptEntry> {
+  return get<PromptEntry>(`/api/v1/prompts/${id}`);
+}
+
+export function getPromptVersions(id: string): Promise<PromptVersionRow[]> {
+  return get<PromptVersionRow[]>(`/api/v1/prompts/${id}/versions`);
+}
+
+export function savePrompt(entry: PromptEntry): Promise<PromptEntry> {
+  // POST covers both create (201) and re-save-as-new-version (200).
+  return postLibrary<PromptEntry>("/api/v1/prompts", entry);
+}
+
+export function updatePrompt(id: string, entry: PromptEntry): Promise<PromptEntry> {
+  return putLibrary<PromptEntry>(`/api/v1/prompts/${id}`, entry);
+}
+
+export function listRoles(): Promise<LibraryRoleEntry[]> {
+  return get<LibraryRoleEntry[]>("/api/v1/roles");
+}
+
+export function getRole(id: string): Promise<LibraryRoleEntry> {
+  return get<LibraryRoleEntry>(`/api/v1/roles/${id}`);
+}
+
+export function createRole(entry: LibraryRoleEntry): Promise<LibraryRoleEntry> {
+  return postLibrary<LibraryRoleEntry>("/api/v1/roles", entry);
+}
+
+export function updateRole(id: string, entry: LibraryRoleEntry): Promise<LibraryRoleEntry> {
+  return putLibrary<LibraryRoleEntry>(`/api/v1/roles/${id}`, entry);
+}
+
+export function listTools(): Promise<ToolRow[]> {
+  return get<ToolRow[]>("/api/v1/tools");
 }
