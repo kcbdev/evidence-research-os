@@ -18,7 +18,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Sheet,
   SheetContent,
@@ -27,18 +36,38 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
 import {
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import ModelSelector from "@/components/ModelSelector";
+import CustomCodeCard from "@/components/builder/CustomCodeCard";
 import NodePalette from "@/components/builder/NodePalette";
+import RoleCard from "@/components/builder/RoleCard";
+import RoleEditorDialog from "@/components/builder/RoleEditorDialog";
 import StageCard from "@/components/builder/StageCard";
 import {
   getMethodology,
+  listCustomNodes,
+  listPrompts,
+  listRoles,
+  listSkills,
+  listTools,
   putMethodology,
+  type CustomNodeInfo,
+  type LibraryRoleEntry,
   type MethodologyDetail,
+  type PromptEntry,
+  type SkillEntry,
+  type ToolRow,
 } from "@/lib/api";
 import {
   bridgeDeletions,
@@ -50,11 +79,12 @@ import {
   NODE_H,
   NODE_W,
   ROW_H,
+  type BuilderNodeKind,
   type StageNode,
   type StageSpecLike,
 } from "@/lib/methodology-graph";
 
-const nodeTypes = { stage: StageCard };
+const nodeTypes = { stage: StageCard, role: RoleCard, code: CustomCodeCard };
 
 const ALL_MODES = ["research", "brainstorm", "academic"] as const;
 
@@ -64,6 +94,24 @@ const PLACEHOLDERS: Record<string, string> = {
   budget: "Budget default editing arrives in PBI-069.",
   metadata: "Full metadata editing arrives in PBI-069.",
 };
+
+interface EmbeddedSpec {
+  id: string;
+  system_prompt: string;
+  tools: string[];
+  model: string;
+  output_schema: string | null;
+}
+
+function toEmbedded(entry: LibraryRoleEntry): EmbeddedSpec {
+  return {
+    id: entry.id,
+    system_prompt: entry.system_prompt,
+    tools: [...entry.tools],
+    model: entry.model,
+    output_schema: entry.output_schema,
+  };
+}
 
 export default function BuilderPage() {
   const { id } = useParams<{ id: string }>();
@@ -80,36 +128,80 @@ export default function BuilderPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tab, setTab] = useState("workflow");
   const [notice, setNotice] = useState<string | null>(null);
-  // Live mirror of edges for callbacks that must not close over stale
-  // state (onConnect runs outside the render cycle).
-  const lastEdgesRef = useRef<Edge[]>([]);
-  useEffect(() => {
-    lastEdgesRef.current = edges;
-  }, [edges]);
-  // The Saved indicator is only true for the exact saved state — any
-  // edit dirties it again (PBI-070's Validate-gating builds on this).
-  useEffect(() => {
-    setSaved(false);
-  }, [nodes, edges, name, modes]);
+
+  // Library data for palette + inspector.
+  const [libraryRoles, setLibraryRoles] = useState<LibraryRoleEntry[]>([]);
+  const [rolePrompts, setRolePrompts] = useState<PromptEntry[]>([]);
+  const [roleSkills, setRoleSkills] = useState<SkillEntry[]>([]);
+  const [toolRows, setToolRows] = useState<ToolRow[]>([]);
+  const [customNodes, setCustomNodes] = useState<CustomNodeInfo[]>([]);
+
+  // Role editor dialog (canvas create flow + library edit flow).
+  const [roleDialog, setRoleDialog] = useState<{
+    initial: LibraryRoleEntry | "new";
+    placeAfterSave: boolean;
+  } | null>(null);
+
+  // Stage ids whose embedded role copy carries methodology-local
+  // model/tool overrides (library edits must not clobber them).
+  const [customized, setCustomized] = useState<string[]>([]);
+
+  // Inspector-local override drafting, reset on selection change.
+  const [modelOverrideOn, setModelOverrideOn] = useState(false);
+  const [modelValue, setModelValue] = useState("");
+  const [toolsOverrideOn, setToolsOverrideOn] = useState(false);
+  const [toolsValue, setToolsValue] = useState<string[]>([]);
+
+  // Resizable inspector (PBI-066 deferral, owned here).
+  const [sheetWidth, setSheetWidth] = useState(420);
+  const dragStart = useRef<{ x: number; w: number } | null>(null);
+
+  // Copy-path feedback.
+  const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState<string | null>(null);
 
   useEffect(() => {
-    getMethodology(id)
-      .then((m) => {
+    async function load() {
+      try {
+        const [m, roles, codes, pr, sk, to] = await Promise.all([
+          getMethodology(id),
+          listRoles(),
+          listCustomNodes(),
+          listPrompts(),
+          listSkills(),
+          listTools(),
+        ]);
         setMethodology(m);
         setName(m.name);
         setModes(m.compatible_modes);
+        setLibraryRoles(roles);
+        setRolePrompts(pr);
+        setRoleSkills(sk);
+        setToolRows(to);
+        setCustomNodes(codes);
         const map: Record<string, StageSpecLike> = {};
         for (const s of (m.workflow?.stages ?? []) as StageSpecLike[]) {
           map[s.id] = s;
         }
         setStageMap(map);
-        const flow = methodologyToFlow(m);
+        const flow = methodologyToFlow(
+          m,
+          roles.map((r) => ({ id: r.id, name: r.name, model: r.model, tools: r.tools })),
+          codes
+            .filter((c) => c.node_id !== null)
+            .map((c) => ({
+              node_id: c.node_id as string,
+              filename: c.filename,
+              description: c.description,
+            })),
+        );
         setNodes(flow.nodes);
         setEdges(flow.edges);
-      })
-      .catch((err: unknown) =>
-        setError(err instanceof Error ? err.message : "failed to load"),
-      );
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : "failed to load");
+      }
+    }
+    void load();
   }, [id]);
 
   useEffect(() => {
@@ -122,6 +214,18 @@ export default function BuilderPage() {
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, []);
+
+  // Live mirror of edges for callbacks that must not close over stale
+  // state (onConnect runs outside the render cycle).
+  const lastEdgesRef = useRef<Edge[]>([]);
+  useEffect(() => {
+    lastEdgesRef.current = edges;
+  }, [edges]);
+  // The Saved indicator is only true for the exact saved state — any
+  // edit dirties it again (PBI-070's Validate-gating builds on this).
+  useEffect(() => {
+    setSaved(false);
+  }, [nodes, edges, name, modes]);
 
   const onNodesChange = useCallback(
     (changes: NodeChange<StageNode>[]) => {
@@ -136,11 +240,11 @@ export default function BuilderPage() {
         // see no entries. Render scope is always pre-removal here
         // because this handler applies the removal itself.
         setEdges(bridgeDeletions(edges, removed));
-        // Drop orphaned stage data with the nodes: PBI-067's inspector
-        // must never read a deleted stage back.
+        // Drop orphaned stage data with the nodes: the inspector must
+        // never read a deleted stage back.
         setStageMap((m) => {
           const next = { ...m };
-          for (const id of removed) delete next[id];
+          for (const rid of removed) delete next[rid];
           return next;
         });
         const gone = new Set(removed);
@@ -172,29 +276,100 @@ export default function BuilderPage() {
   }, []);
 
   function addNode(node: string) {
-    const stageId = nextStageId(node, new Set(nodes.map((n) => n.id)));
+    addStageNode(nextStageId(node, new Set(nodes.map((n) => n.id))), node, {
+      kind: "stage",
+      label: stageLabel(node),
+    });
+  }
+
+  function addStageNode(
+    stageId: string,
+    node: string,
+    data: { kind: BuilderNodeKind; label: string } & Record<string, unknown>,
+  ) {
     const maxY = nodes.reduce((m, n) => Math.max(m, n.position.y), -ROW_H);
     setStageMap((m) => ({ ...m, [stageId]: { id: stageId, node } }));
     setNodes((ns) => [
       ...ns,
       {
         id: stageId,
-        type: "stage",
+        type: data.kind,
         position: { x: 0, y: maxY + ROW_H },
         width: NODE_W,
         height: NODE_H,
-        data: { stageId, node, label: stageLabel(node) },
+        data: { stageId, node, ...data },
       },
     ]);
     // Appending extends the chain: a single tail connects straight to
     // the new node. Multiple tails (or none) leave the node floating —
     // save validation names it instead of guessing.
     const sources = new Set(edges.map((e) => e.source));
-    const tails = nodes.map((n) => n.id).filter((id) => !sources.has(id));
+    const tails = nodes.map((n) => n.id).filter((nid) => !sources.has(nid));
     if (tails.length === 1) {
       const tail = tails[0];
       setEdges((es) => [...es, { id: `e-${tail}-${stageId}`, source: tail, target: stageId }]);
     }
+  }
+
+  function upsertEmbedded(entry: LibraryRoleEntry) {
+    const spec = toEmbedded(entry);
+    setMethodology((m) =>
+      m === null
+        ? m
+        : {
+            ...m,
+            custom_roles: [...(m.custom_roles ?? []).filter((r) => r.id !== spec.id), spec],
+          },
+    );
+  }
+
+  function refreshRoleNode(stageId: string, roleId: string, entry: LibraryRoleEntry) {
+    setNodes((ns) =>
+      ns.map((n) =>
+        n.id === stageId
+          ? {
+              ...n,
+              data: {
+                ...n.data,
+                node: roleId,
+                label: entry.name,
+                roleName: entry.name,
+                model: entry.model,
+                toolCount: entry.tools.length,
+              },
+            }
+          : n,
+      ),
+    );
+  }
+
+  function placeRole(roleId: string) {
+    const entry = libraryRoles.find((r) => r.id === roleId);
+    if (entry) placeRoleEntry(entry);
+  }
+
+  function placeRoleEntry(entry: LibraryRoleEntry) {
+    upsertEmbedded(entry);
+    const stageId = nextStageId(entry.id, new Set(nodes.map((n) => n.id)));
+    addStageNode(stageId, entry.id, {
+      kind: "role",
+      label: entry.name,
+      roleName: entry.name,
+      model: entry.model,
+      toolCount: entry.tools.length,
+    });
+  }
+
+  function placeCode(nodeId: string) {
+    const info = customNodes.find((c) => c.node_id === nodeId);
+    const stageId = nextStageId(nodeId, new Set(nodes.map((n) => n.id)));
+    addStageNode(stageId, nodeId, {
+      kind: "code",
+      label: info?.filename ?? nodeId,
+      filename: info?.filename ?? nodeId,
+      fileDescription: info?.description ?? "",
+    });
+    setStageMap((m) => ({ ...m, [stageId]: { id: stageId, node: nodeId } }));
   }
 
   function toggleMode(mode: string) {
@@ -236,7 +411,114 @@ export default function BuilderPage() {
     }
   }
 
-  const selected = selectedId !== null ? nodes.find((n) => n.id === selectedId) ?? null : null;
+  const selected =
+    selectedId !== null ? (nodes.find((n) => n.id === selectedId) ?? null) : null;
+  const selectedStage = selected !== null ? (stageMap[selected.id] ?? null) : null;
+  const selectedEmbedded =
+    selected !== null && selected.data.kind === "role"
+      ? ((methodology?.custom_roles ?? []).find((r) => r.id === selected.data.node) ?? null)
+      : null;
+  const selectedLibrary =
+    selected !== null && selected.data.kind === "role"
+      ? (libraryRoles.find((r) => r.id === selected.data.node) ?? null)
+      : null;
+  const selectedCode =
+    selected !== null && selected.data.kind === "code"
+      ? (customNodes.find((c) => c.node_id === selected.data.node) ?? null)
+      : null;
+  const isCustomized = selected !== null && customized.includes(selected.id);
+
+  // Reset override drafting whenever the selection changes.
+  useEffect(() => {
+    if (selectedEmbedded !== null) {
+      setModelOverrideOn(false);
+      setModelValue(selectedEmbedded.model);
+      setToolsOverrideOn(false);
+      setToolsValue([...selectedEmbedded.tools]);
+    }
+    setCopied(false);
+    setCopyError(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId]);
+
+  function applyRoleOverride(patch: Partial<EmbeddedSpec>) {
+    if (selected === null || selectedEmbedded === null) return;
+    const next: EmbeddedSpec = { ...selectedEmbedded, ...patch };
+    setMethodology((m) =>
+      m === null
+        ? m
+        : {
+            ...m,
+            custom_roles: (m.custom_roles ?? []).map((r) => (r.id === next.id ? next : r)),
+          },
+    );
+    setNodes((ns) =>
+      ns.map((n) =>
+        n.id === selected.id
+          ? { ...n, data: { ...n.data, model: next.model, toolCount: next.tools.length } }
+          : n,
+      ),
+    );
+    setCustomized((c) => (c.includes(selected.id) ? c : [...c, selected.id]));
+  }
+
+  function switchRoleEntry(roleId: string) {
+    const entry = libraryRoles.find((r) => r.id === roleId);
+    if (!entry || selected === null) return;
+    // Switching entries re-embeds a fresh snapshot (local overrides do
+    // not carry across entries) and retargets the stage — preserving
+    // every other stage key (interrupt, loop/route forms).
+    upsertEmbedded(entry);
+    setStageMap((m) => ({ ...m, [selected.id]: { ...m[selected.id], id: selected.id, node: roleId } }));
+    refreshRoleNode(selected.id, roleId, entry);
+    setCustomized((c) => c.filter((sid) => sid !== selected.id));
+    setModelOverrideOn(false);
+    setModelValue(entry.model);
+    setToolsOverrideOn(false);
+    setToolsValue([...entry.tools]);
+  }
+
+  // Reset override drafting whenever the selection changes so one
+  // node's draft never leaks into another's inspector.
+  useEffect(() => {
+    if (selectedEmbedded !== null) {
+      setModelOverrideOn(false);
+      setModelValue(selectedEmbedded.model);
+      setToolsOverrideOn(false);
+      setToolsValue([...selectedEmbedded.tools]);
+    }
+    setCopied(false);
+    setCopyError(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId]);
+
+  async function copyPath(text: string) {
+    setCopied(false);
+    setCopyError(null);
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+    } catch {
+      setCopyError("Copy failed — select the path manually.");
+    }
+  }
+
+  function onSheetResizeStart(e: React.MouseEvent) {
+    e.preventDefault();
+    dragStart.current = { x: e.clientX, w: sheetWidth };
+    const onMove = (ev: MouseEvent) => {
+      if (dragStart.current === null) return;
+      const next = dragStart.current.w + (dragStart.current.x - ev.clientX);
+      setSheetWidth(Math.min(720, Math.max(320, next)));
+    };
+    const onUp = () => {
+      dragStart.current = null;
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }
 
   return (
     <div className="flex flex-col gap-4 p-4">
@@ -360,23 +642,275 @@ export default function BuilderPage() {
         )
       )}
 
-      <NodePalette open={paletteOpen} onOpenChange={setPaletteOpen} onPick={addNode} />
+      <NodePalette
+        open={paletteOpen}
+        onOpenChange={setPaletteOpen}
+        onPick={addNode}
+        roles={libraryRoles}
+        customNodes={customNodes}
+        onPickRole={(roleId) => placeRole(roleId)}
+        onPickCode={(nodeId) => placeCode(nodeId)}
+        onCreateRole={() => {
+          setPaletteOpen(false);
+          setRoleDialog({ initial: "new", placeAfterSave: true });
+        }}
+      />
 
-      {/* Inspector: PBI-067 owns content + resizable widening
-          (deferred here — plain Sheet until the inspector has content
-          worth widening for). */}
+      <RoleEditorDialog
+        open={roleDialog !== null}
+        onOpenChange={(open) => {
+          if (!open) setRoleDialog(null);
+        }}
+        initial={roleDialog?.initial ?? "new"}
+        prompts={rolePrompts}
+        skills={roleSkills}
+        tools={toolRows}
+        onSaved={(entry) => {
+          setLibraryRoles((rs) => {
+            const rest = rs.filter((r) => r.id !== entry.id);
+            return [...rest, entry];
+          });
+          // A library save refreshes canvases referencing the entry —
+          // unless the node carries methodology-local overrides.
+          const affected = nodes.filter(
+            (n) => n.data.kind === "role" && n.data.node === entry.id,
+          );
+          for (const n of affected) {
+            if (!customized.includes(n.id)) {
+              upsertEmbedded(entry);
+              refreshRoleNode(n.id, entry.id, entry);
+            }
+          }
+          if (roleDialog?.placeAfterSave) {
+            // Place straight from the saved entry (the library list
+            // state hasn't refreshed yet — no stale lookup).
+            placeRoleEntry(entry);
+          }
+          if (
+            customized.some((sid) =>
+              nodes.some((n) => n.id === sid && n.data.node === entry.id),
+            )
+          ) {
+            setNotice(
+              `Library role ${entry.id} saved — nodes with local overrides kept their methodology copies.`,
+            );
+          }
+          setRoleDialog(null);
+        }}
+      />
+
       <Sheet open={selected !== null} onOpenChange={(open) => !open && setSelectedId(null)}>
-        <SheetContent>
+        {/* Inspector: resizable via the left-edge drag handle (PBI-066
+            deferral, owned here). */}
+        <SheetContent style={{ width: sheetWidth }} className="sm:max-w-none">
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize inspector"
+            className="absolute top-0 left-0 h-full w-2 cursor-ew-resize touch-none"
+            onMouseDown={onSheetResizeStart}
+          />
           <SheetHeader>
             <SheetTitle>{selected?.data.label ?? "Node"}</SheetTitle>
             <SheetDescription className="font-mono">
               {selected?.data.node}
             </SheetDescription>
           </SheetHeader>
-          <p className="px-4 text-sm text-muted-foreground">
-            Node inspector content arrives in PBI-067 (roles) and PBI-068
-            (conditions).
-          </p>
+          {selected !== null && selected.data.kind === "stage" && (
+            <div className="flex flex-col gap-3 px-4">
+              <p className="text-sm text-muted-foreground">
+                Built-in stage. {selectedStage !== null && selectedStage.interrupt === true
+                  ? "Pauses here for approval."
+                  : "Runs straight through."}
+              </p>
+              <label className="flex min-h-[44px] cursor-pointer items-center gap-2 text-sm">
+                <Switch
+                  checked={(selectedStage?.interrupt as boolean | undefined) === true}
+                  onCheckedChange={(v) =>
+                    setStageMap((m) => ({
+                      ...m,
+                      [selected.id]: { ...m[selected.id], interrupt: v === true },
+                    }))
+                  }
+                />
+                Pause here for approval
+              </label>
+            </div>
+          )}
+          {selected !== null && selected.data.kind === "role" && (
+            <div className="flex flex-col gap-3 px-4">
+              <div className="flex flex-col gap-1">
+                <span id="inspector-role-label" className="text-sm font-medium">
+                  Library entry
+                </span>
+                <Select
+                  value={selected.data.node as string}
+                  onValueChange={(v) => {
+                    if (v !== null) switchRoleEntry(v);
+                  }}
+                >
+                  <SelectTrigger
+                    id="inspector-role"
+                    aria-labelledby="inspector-role-label"
+                    className="min-h-[44px]"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {libraryRoles.map((r) => (
+                      <SelectItem key={r.id} value={r.id}>
+                        {r.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="flex min-h-[44px] cursor-pointer items-center gap-2 text-sm">
+                  <Switch
+                    checked={modelOverrideOn}
+                    onCheckedChange={setModelOverrideOn}
+                  />
+                  Override model for this methodology
+                </label>
+                {modelOverrideOn && (
+                  <>
+                    <ModelSelector
+                      label="Role model override"
+                      value={modelValue}
+                      onChange={(v) => {
+                        setModelValue(v);
+                        applyRoleOverride({ model: v });
+                      }}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Empty means inherit from Settings → Models.
+                    </p>
+                  </>
+                )}
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="flex min-h-[44px] cursor-pointer items-center gap-2 text-sm">
+                  <Switch
+                    checked={toolsOverrideOn}
+                    onCheckedChange={(v) => {
+                      setToolsOverrideOn(v);
+                      if (v && selectedEmbedded !== null) {
+                        setToolsValue([...selectedEmbedded.tools]);
+                      }
+                    }}
+                  />
+                  Override tools for this methodology
+                </label>
+                {toolsOverrideOn && (
+                  <div className="grid gap-2">
+                    {toolRows.map((t) => (
+                      <label
+                        key={t.name}
+                        className="flex min-h-[44px] cursor-pointer items-center gap-2 rounded border px-2 text-sm"
+                      >
+                        <Checkbox
+                          checked={toolsValue.includes(t.name)}
+                          onCheckedChange={() => {
+                            const next = toolsValue.includes(t.name)
+                              ? toolsValue.filter((x) => x !== t.name)
+                              : [...toolsValue, t.name];
+                            setToolsValue(next);
+                            applyRoleOverride({ tools: next });
+                          }}
+                        />
+                        <span className="font-mono">{t.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {isCustomized && (
+                <p className="text-xs text-muted-foreground">
+                  Methodology-local overrides active — library edits to this
+                  role will not refresh this node.
+                </p>
+              )}
+              {selectedLibrary !== null ? (
+                <div>
+                  <Button
+                    variant="outline"
+                    className="min-h-[44px]"
+                    onClick={() =>
+                      setRoleDialog({ initial: selectedLibrary, placeAfterSave: false })
+                    }
+                  >
+                    Edit this role
+                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <button
+                          type="button"
+                          className="ml-2 min-h-[44px] min-w-[44px] px-2 text-sm underline"
+                        >
+                          Why a warning?
+                        </button>
+                      }
+                    />
+                    <TooltipContent>
+                      Editing affects all methodologies using this role —
+                      except nodes with local overrides, which keep their
+                      methodology copies.
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  No longer in the library — methodology snapshot only.
+                </p>
+              )}
+            </div>
+          )}
+          {selected !== null && selected.data.kind === "code" && (
+            <div className="px-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="font-mono text-sm">
+                    {selected.data.filename as string}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="flex flex-col gap-2">
+                  <p className="font-mono text-xs text-muted-foreground">
+                    NODE_ID: {selected.data.node as string}
+                  </p>
+                  {(selected.data.fileDescription as string | undefined) && (
+                    <p className="text-sm text-muted-foreground">
+                      {selected.data.fileDescription as string}
+                    </p>
+                  )}
+                  <div>
+                    <Badge variant="outline">Authored in code — edit in your IDE</Badge>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <code className="rounded bg-muted px-2 py-1 font-mono text-xs">
+                      backend/custom_nodes/{selected.data.filename as string}
+                    </code>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="min-h-[44px]"
+                      onClick={() =>
+                        void copyPath(`backend/custom_nodes/${selected.data.filename as string}`)
+                      }
+                    >
+                      {copied ? "Copied." : "Copy path"}
+                    </Button>
+                  </div>
+                  {copyError && (
+                    <p role="alert" className="text-sm text-destructive">
+                      {copyError}
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          )}
         </SheetContent>
       </Sheet>
     </div>

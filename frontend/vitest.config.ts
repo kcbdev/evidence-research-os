@@ -7,5 +7,6 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     globals: true, // lets @testing-library/react auto-cleanup between tests
+    setupFiles: ["./src/test-setup.ts"],
   },
 });

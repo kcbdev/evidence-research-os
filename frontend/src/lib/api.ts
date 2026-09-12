@@ -376,9 +376,16 @@ export interface MethodologyDetail extends MethodologySummary {
   skills: Record<string, string[]>;
   models: Record<string, string>;
   budget_defaults: { max_model_calls: number; max_research_rounds: number };
-  // PBI-065 widening: the backend dump always carries Tier A custom
-  // roles; the Roles page needs their ids for reference badges.
-  custom_roles?: { id: string }[];
+  // PBI-065 widening (+PBI-067 full shape): the backend dump always
+  // carries Tier A custom roles; the Roles page needs their ids for
+  // reference badges and the builder needs full specs for embedding.
+  custom_roles?: {
+    id: string;
+    system_prompt: string;
+    tools: string[];
+    model: string;
+    output_schema: string | null;
+  }[];
 }
 
 export function getMethodology(id: string): Promise<MethodologyDetail> {
