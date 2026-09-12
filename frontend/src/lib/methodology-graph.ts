@@ -21,9 +21,19 @@ export interface StageNodeData extends Record<string, unknown> {
   stageId: string;
   node: string;
   label: string;
+  kind: BuilderNodeKind;
+  /** Role nodes: display name + embedded-spec summary (badges). */
+  roleName?: string;
+  model?: string;
+  toolCount?: number;
+  /** Custom-code nodes: discovered file facts (read-only). */
+  filename?: string;
+  fileDescription?: string;
 }
 
-export type StageNode = Node<StageNodeData, "stage">;
+export type BuilderNodeKind = "stage" | "role" | "code";
+
+export type StageNode = Node<StageNodeData, BuilderNodeKind>;
 
 /** Built-in stages, mirroring app/graph/registry.py NODE_REGISTRY.
  * OWNERSHIP: unavoidable frontend/backend duplication (the browser
@@ -62,23 +72,71 @@ export const NODE_W = 220;
 export const NODE_H = 120;
 export const ROW_H = 140;
 
-export function methodologyToFlow(m: MethodologyDetail): {
+export interface LibraryRoleLite {
+  id: string;
+  name: string;
+  model: string;
+  tools: string[];
+}
+
+export interface CustomNodeLite {
+  node_id: string;
+  filename: string;
+  description: string;
+}
+
+export function methodologyToFlow(
+  m: MethodologyDetail,
+  roles: LibraryRoleLite[] = [],
+  codes: CustomNodeLite[] = [],
+): {
   nodes: StageNode[];
   edges: Edge[];
 } {
   const stages = (m.workflow?.stages ?? []) as StageSpecLike[];
-  const nodes: StageNode[] = stages.map((s, i) => ({
-    id: s.id,
-    type: "stage",
-    position: { x: 0, y: i * ROW_H },
-    // Explicit dimensions: React Flow skips measuring (no layout flash
-    // in production) and renders nodes visible in jsdom, where nothing
-    // is ever measured (unmeasured nodes stay visibility:hidden and
-    // vanish from role queries).
-    width: NODE_W,
-    height: NODE_H,
-    data: { stageId: s.id, node: s.node, label: stageLabel(s.node) },
-  }));
+  const embedded = new Map(
+    ((m as { custom_roles?: { id: string; model: string; tools: string[] }[] }).custom_roles ?? []).map(
+      (r) => [r.id, r],
+    ),
+  );
+  const codeById = new Map(codes.map((c) => [c.node_id, c]));
+  const roleById = new Map(roles.map((r) => [r.id, r]));
+  const nodes: StageNode[] = stages.map((s, i) => {
+    const spec = embedded.get(s.node);
+    const code = spec === undefined ? codeById.get(s.node) : undefined;
+    const kind: BuilderNodeKind = spec !== undefined ? "role" : code !== undefined ? "code" : "stage";
+    const role = spec !== undefined ? roleById.get(s.node) : undefined;
+    return {
+      id: s.id,
+      type: kind === "stage" ? "stage" : kind === "role" ? "role" : "code",
+      position: { x: 0, y: i * ROW_H },
+      // Explicit dimensions: React Flow skips measuring (no layout flash
+      // in production) and renders nodes visible in jsdom, where nothing
+      // is ever measured (unmeasured nodes stay visibility:hidden and
+      // vanish from role queries).
+      width: NODE_W,
+      height: NODE_H,
+      data: {
+        stageId: s.id,
+        node: s.node,
+        label:
+          kind === "role"
+            ? (role?.name ?? stageLabel(s.node))
+            : stageLabel(s.node),
+        kind,
+        ...(spec !== undefined
+          ? {
+              roleName: role?.name ?? stageLabel(s.node),
+              model: spec.model,
+              toolCount: spec.tools.length,
+            }
+          : {}),
+        ...(code !== undefined
+          ? { filename: code.filename, fileDescription: code.description }
+          : {}),
+      },
+    };
+  });
   const edges: Edge[] = [];
   for (let i = 0; i + 1 < stages.length; i += 1) {
     edges.push({

@@ -67,7 +67,7 @@ describe("methodology-graph", () => {
       id,
       type: "stage",
       position: { x: 0, y: i * 140 },
-      data: { stageId: id, node: "plan", label: id },
+      data: { stageId: id, node: "plan", label: id, kind: "stage" as const },
     }));
     const map = stageMap(["a", "b"]);
     expect(orderStages(nodes, [{ id: "e1", source: "a", target: "b" }, { id: "e2", source: "b", target: "a" }], map)).toMatchObject({
@@ -78,7 +78,7 @@ describe("methodology-graph", () => {
     });
     const lone: StageNode[] = [
       ...nodes,
-      { id: "c", type: "stage", position: { x: 0, y: 280 }, data: { stageId: "c", node: "plan", label: "c" } },
+      { id: "c", type: "stage", position: { x: 0, y: 280 }, data: { stageId: "c", node: "plan", label: "c", kind: "stage" as const } },
     ];
     expect(
       orderStages(lone, [{ id: "e1", source: "a", target: "b" }], { ...map, c: { id: "c", node: "plan" } }),

@@ -654,6 +654,17 @@ export function listTools(): Promise<ToolRow[]> {
   return get<ToolRow[]>("/api/v1/tools");
 }
 
+export interface CustomNodeInfo {
+  node_id: string | null;
+  filename: string;
+  description: string;
+  load_error: string | null;
+}
+
+export function listCustomNodes(): Promise<CustomNodeInfo[]> {
+  return get<CustomNodeInfo[]>("/api/v1/custom-nodes");
+}
+
 // --- Builder canvas (PBI-066 owns these; PBI-070 appends validate etc.)
 
 export function putMethodology(id: string, doc: unknown): Promise<MethodologyDetail> {
