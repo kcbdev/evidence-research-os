@@ -25,7 +25,11 @@ function readCache(): Cached | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Cached;
     if (!Array.isArray(parsed.models)) return null;
-    return parsed;
+    // Validate entries (a poisoned cache must not crash filtering).
+    const models = parsed.models.filter(
+      (m) => m && typeof m.id === "string" && m.id.length > 0,
+    );
+    return { fetched_at: parsed.fetched_at ?? 0, models };
   } catch {
     return null;
   }
@@ -68,6 +72,11 @@ export async function fetchModels(): Promise<OpenRouterModel[]> {
       name: typeof m.name === "string" && m.name ? m.name : (m.id as string),
     }))
     .sort((a, b) => a.id.localeCompare(b.id));
+  // Empty results are not cached (an API hiccup must not poison 24h)
+  // and surface as failure so the user knows the list is missing.
+  if (models.length === 0) {
+    throw new Error("OpenRouter models: empty list");
+  }
   writeCache(models);
   return models;
 }

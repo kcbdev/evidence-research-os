@@ -145,6 +145,7 @@ export default function NewLabPage() {
                 <Field key={role}>
                   <FieldLabel htmlFor={`nl-${role}`}>{role[0].toUpperCase() + role.slice(1)} model</FieldLabel>
                   <ModelSelector
+                    id={`nl-${role}`}
                     label={`${role[0].toUpperCase() + role.slice(1)} model`}
                     value={models[role]}
                     onChange={(v) => setModel(role, v)}
@@ -154,6 +155,7 @@ export default function NewLabPage() {
               <Field>
                 <FieldLabel htmlFor="nl-judge">Judge model</FieldLabel>
                 <ModelSelector
+                  id="nl-judge"
                   label="Judge model"
                   value={models.judge}
                   onChange={(v) => setModel("judge", v)}

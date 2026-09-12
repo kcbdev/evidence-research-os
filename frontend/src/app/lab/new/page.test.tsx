@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import NewLabPage from "./page";
+import { DEFAULT_MODELS } from "@/lib/openrouter";
 
 const push = vi.fn();
 
@@ -34,9 +35,22 @@ function fillValid() {
 }
 
 describe("NewLabPage", () => {
-  it("creates and lands on the overview", async () => {
-    stubFetch((url) => {
-      if (url.endsWith("/api/v1/lab-projects")) return { id: "p1" };
+  it("prefills every role with the default set", async () => {
+    stubFetch(() => {
+      throw new Error("models list irrelevant here");
+    });
+    render(<NewLabPage />);
+    for (const [role, id] of Object.entries(DEFAULT_MODELS)) {
+      const label = `${role[0].toUpperCase() + role.slice(1)} model`;
+      expect((await screen.findByLabelText(label) as HTMLInputElement).value).toBe(id);
+    }
+  });  it("creates and lands on the overview", async () => {
+    let createBody: unknown = null;
+    stubFetch((url, init) => {
+      if (url.endsWith("/api/v1/lab-projects")) {
+        createBody = JSON.parse((init?.body as string) ?? "{}");
+        return { id: "p1" };
+      }
       throw new Error(`unexpected: ${url}`);
     });
     render(<NewLabPage />);
@@ -44,6 +58,16 @@ describe("NewLabPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create" }));
     await vi.waitFor(() => {
       expect(push).toHaveBeenCalledWith("/lab/p1");
+    });
+    // Selected (here typed) ids reach the create payload intact.
+    expect(createBody).toMatchObject({
+      council_models: {
+        scientist: "m-Scientist",
+        investigator: "m-Investigator",
+        skeptic: "m-Skeptic",
+        ideator: "m-Ideator",
+      },
+      judge_model: "m-Judge",
     });
   });
 

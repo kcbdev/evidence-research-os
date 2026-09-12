@@ -78,6 +78,21 @@ describe("ModelSelector", () => {
     expect(await screen.findByText(/type any OpenRouter ID manually/)).toBeDefined();
   });
 
+  it("degrades on non-ok responses too", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: false,
+        status: 500,
+        json: async () => ({}),
+        text: async () => "boom",
+      })),
+    );
+    render(<ModelSelector label="Skeptic model" value="" onChange={() => {}} />);
+    await screen.findByLabelText("Skeptic model");
+    expect(await screen.findByText(/type any OpenRouter ID manually/)).toBeDefined();
+  });
+
   it("reuses the 24h cache instead of refetching", async () => {
     const fetchMock = vi.fn(async () => ({
       ok: true,

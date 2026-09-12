@@ -13,10 +13,12 @@ export default function ModelSelector({
   label,
   value,
   onChange,
+  id,
 }: {
   label: string;
   value: string;
   onChange: (id: string) => void;
+  id?: string;
 }) {
   const [models, setModels] = useState<OpenRouterModel[] | null>(null);
   const [failed, setFailed] = useState(false);
@@ -96,6 +98,7 @@ export default function ModelSelector({
       <div className="flex gap-2">
         <div className="flex-1">
           <Input
+            id={id}
             aria-label={label}
             placeholder={`${label} (OpenRouter ID)`}
             className="font-mono min-h-[44px]"
