@@ -30,6 +30,9 @@ export default function NodePalette({
         <CommandList>
           <CommandEmpty>No matching stage.</CommandEmpty>
           <CommandGroup heading="Built-in Stages">
+            {/* cmdk option rows are intentionally compact (py-1.5):
+                dropdown options are the standard touch-target
+                exception, consistent with the app's Select items. */}
             {BUILT_IN_STAGES.map((s) => (
               <CommandItem
                 key={s.node}

@@ -4,7 +4,6 @@ import {
   Background,
   Controls,
   ReactFlow,
-  addEdge,
   applyEdgeChanges,
   applyNodeChanges,
   type Connection,
@@ -15,7 +14,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -42,6 +41,8 @@ import {
   type MethodologyDetail,
 } from "@/lib/api";
 import {
+  bridgeDeletions,
+  connectConstrained,
   methodologyToFlow,
   nextStageId,
   orderStages,
@@ -78,6 +79,18 @@ export default function BuilderPage() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tab, setTab] = useState("workflow");
+  const [notice, setNotice] = useState<string | null>(null);
+  // Live mirror of edges for callbacks that must not close over stale
+  // state (onConnect runs outside the render cycle).
+  const lastEdgesRef = useRef<Edge[]>([]);
+  useEffect(() => {
+    lastEdgesRef.current = edges;
+  }, [edges]);
+  // The Saved indicator is only true for the exact saved state — any
+  // edit dirties it again (PBI-070's Validate-gating builds on this).
+  useEffect(() => {
+    setSaved(false);
+  }, [nodes, edges, name, modes]);
 
   useEffect(() => {
     getMethodology(id)
@@ -117,28 +130,20 @@ export default function BuilderPage() {
         .map((c) => (c as { id: string }).id);
       setNodes((ns) => applyNodeChanges(changes, ns));
       if (removed.length > 0) {
+        // Compute from render-scope `edges` (the PRE-removal image):
+        // RF fires its own edge removals concurrently, so the setEdges
+        // updater arg is already post-removal and bridgeDeletions would
+        // see no entries. Render scope is always pre-removal here
+        // because this handler applies the removal itself.
+        setEdges(bridgeDeletions(edges, removed));
+        // Drop orphaned stage data with the nodes: PBI-067's inspector
+        // must never read a deleted stage back.
+        setStageMap((m) => {
+          const next = { ...m };
+          for (const id of removed) delete next[id];
+          return next;
+        });
         const gone = new Set(removed);
-        // Re-link the chain across each deletion: a removed middle
-        // node's predecessor connects straight to its successor, so
-        // deleting never silently forks or strands the chain.
-        const bridges: Edge[] = [];
-        for (const id of removed) {
-          const preds = edges.filter((e) => e.target === id && !gone.has(e.source));
-          const succs = edges.filter((e) => e.source === id && !gone.has(e.target));
-          if (preds.length === 1 && succs.length === 1 && preds[0].source !== succs[0].target) {
-            bridges.push({
-              id: `e-${preds[0].source}-${succs[0].target}`,
-              source: preds[0].source,
-              target: succs[0].target,
-            });
-          }
-        }
-        setEdges((es) => [
-          ...es.filter((e) => !gone.has(e.source) && !gone.has(e.target)),
-          ...bridges.filter(
-            (b) => !es.some((e) => e.source === b.source && e.target === b.target),
-          ),
-        ]);
         setSelectedId((sel) => (sel !== null && gone.has(sel) ? null : sel));
       }
     },
@@ -150,15 +155,20 @@ export default function BuilderPage() {
   }, []);
 
   // Sequential-only canvas: one chain. A new connection replaces any
-  // existing edge out of the source or into the target, so the graph
-  // can never fork or merge — forks arrive with loop/route UI later.
+  // existing edge out of the source or into the target, and says so —
+  // edges must never vanish magically (loops arrive in PBI-068).
   const onConnect = useCallback((conn: Connection) => {
-    setEdges((es) => {
-      const pruned = es.filter(
-        (e) => e.source !== conn.source && e.target !== conn.target,
-      );
-      return addEdge(conn, pruned);
-    });
+    const { edges: next, replaced } = connectConstrained(
+      // read current edges via setState updater to avoid stale closures
+      lastEdgesRef.current,
+      { source: conn.source, target: conn.target },
+    );
+    setEdges(next);
+    setNotice(
+      replaced
+        ? "Replaced the existing link — this canvas is sequential-only; loop-backs arrive in PBI-068."
+        : null,
+    );
   }, []);
 
   function addNode(node: string) {
@@ -195,11 +205,13 @@ export default function BuilderPage() {
     if (methodology === null) return;
     const ordered = orderStages(nodes, edges, stageMap);
     if ("error" in ordered) {
+      setSaved(false);
       setError(ordered.error);
       return;
     }
     setSaving(true);
     setError(null);
+    setNotice(null);
     try {
       const savedDoc = await putMethodology(id, {
         ...methodology,
@@ -208,8 +220,16 @@ export default function BuilderPage() {
         workflow: { stages: ordered.stages },
       });
       setMethodology(savedDoc);
+      // Resync stage data from the server-normalized document — the
+      // local map still holds minimal pre-save shapes for added nodes.
+      const map: Record<string, StageSpecLike> = {};
+      for (const s of (savedDoc.workflow?.stages ?? []) as StageSpecLike[]) {
+        map[s.id] = s;
+      }
+      setStageMap(map);
       setSaved(true);
     } catch (err) {
+      setSaved(false);
       setError(err instanceof Error ? err.message : "save failed");
     } finally {
       setSaving(false);
@@ -266,6 +286,12 @@ export default function BuilderPage() {
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
+      {notice && (
+        <Alert>
+          <AlertTitle>Heads up</AlertTitle>
+          <AlertDescription>{notice}</AlertDescription>
+        </Alert>
+      )}
 
       {methodology === null && !error ? (
         <div className="flex flex-col gap-2" aria-label="Loading">
@@ -293,6 +319,11 @@ export default function BuilderPage() {
               </TabsTrigger>
             </TabsList>
             <TabsContent value="workflow" className="relative min-h-[60vh] flex-1 rounded border">
+              <p className="px-3 pt-2 text-xs text-muted-foreground">
+                Sequential chain only — drag between handles to reconnect
+                (replaces the existing link). Loop-backs arrive in PBI-068.
+              </p>
+              <div className="h-[55vh]">
               <ReactFlow
                 nodes={nodes}
                 edges={edges}
@@ -306,8 +337,11 @@ export default function BuilderPage() {
                 fitView
               >
                 <Background />
+                {/* Viewport controls only (zoom/fit) — the methodology
+                    toolbar (Validate/Save/Set-Default) is PBI-070. */}
                 <Controls />
               </ReactFlow>
+              </div>
               <Button
                 size="icon"
                 aria-label="Add node"
@@ -328,6 +362,9 @@ export default function BuilderPage() {
 
       <NodePalette open={paletteOpen} onOpenChange={setPaletteOpen} onPick={addNode} />
 
+      {/* Inspector: PBI-067 owns content + resizable widening
+          (deferred here — plain Sheet until the inspector has content
+          worth widening for). */}
       <Sheet open={selected !== null} onOpenChange={(open) => !open && setSelectedId(null)}>
         <SheetContent>
           <SheetHeader>

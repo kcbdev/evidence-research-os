@@ -25,7 +25,11 @@ export interface StageNodeData extends Record<string, unknown> {
 
 export type StageNode = Node<StageNodeData, "stage">;
 
-/** Built-in stages, mirroring app/graph/registry.py NODE_REGISTRY. */
+/** Built-in stages, mirroring app/graph/registry.py NODE_REGISTRY.
+ * OWNERSHIP: unavoidable frontend/backend duplication (the browser
+ * cannot import .py). When the registry gains a stage, add it here —
+ * nothing fails automatically, so check this list when touching
+ * NODE_REGISTRY (PBI-067's palette sections depend on it too). */
 export const BUILT_IN_STAGES: { node: string; label: string }[] = [
   { node: "trigger_classifier", label: "Trigger Classifier" },
   { node: "plan", label: "Plan" },
@@ -98,6 +102,9 @@ export function orderStages(
   edges: Edge[],
   stageMap: Record<string, StageSpecLike>,
 ): { stages: StageSpecLike[] } | { error: string } {
+  if (nodes.length === 0) {
+    return { error: "Canvas is empty — add at least one stage from the palette." };
+  }
   const ids = new Set(nodes.map((n) => n.id));
   const out = new Map<string, string>();
   const incoming = new Map<string, number>();
@@ -140,4 +147,66 @@ export function orderStages(
     stages.push(s);
   }
   return { stages };
+}
+
+export interface HoverConnection {
+  source: string | null;
+  target: string | null;
+}
+
+/**
+ * Sequential-only connect (PBI-066): one chain, so a new connection
+ * replaces any existing edge out of the source or into the target.
+ * Pure — the page reports `replaced` to the user instead of dropping
+ * edges silently.
+ */
+export function connectConstrained(
+  edges: Edge[],
+  conn: HoverConnection,
+): { edges: Edge[]; replaced: boolean } {
+  if (conn.source === null || conn.target === null) return { edges, replaced: false };
+  const pruned = edges.filter(
+    (e) => e.source !== conn.source && e.target !== conn.target,
+  );
+  const next: Edge = {
+    id: `e-${conn.source}-${conn.target}`,
+    source: conn.source,
+    target: conn.target,
+  };
+  const exists = pruned.some(
+    (e) => e.source === next.source && e.target === next.target,
+  );
+  return { edges: exists ? pruned : [...pruned, next], replaced: pruned.length !== edges.length };
+}
+
+/**
+ * Re-link across a deletion batch (PBI-066): surviving entries into
+ * the removed closure connect straight to surviving exits. Covers
+ * single middle delete, head/tail delete (no bridge), and
+ * multi-select block delete with one rule — never silently fork or
+ * strand. Pure for the same reason as connectConstrained: jsdom never
+ * renders RF edges (EdgeWrapper needs measured handle bounds), so
+ * deletion topology is unit-tested here, not through the canvas.
+ */
+export function bridgeDeletions(edges: Edge[], removedIds: string[]): Edge[] {
+  if (removedIds.length === 0) return edges;
+  const gone = new Set(removedIds);
+  const entries = edges
+    .filter((e) => !gone.has(e.source) && gone.has(e.target))
+    .map((e) => e.source);
+  const exits = edges
+    .filter((e) => gone.has(e.source) && !gone.has(e.target))
+    .map((e) => e.target);
+  const kept = edges.filter((e) => !gone.has(e.source) && !gone.has(e.target));
+  if (entries.length === 1 && exits.length === 1 && entries[0] !== exits[0]) {
+    const bridge: Edge = {
+      id: `e-${entries[0]}-${exits[0]}`,
+      source: entries[0],
+      target: exits[0],
+    };
+    if (!kept.some((e) => e.source === bridge.source && e.target === bridge.target)) {
+      kept.push(bridge);
+    }
+  }
+  return kept;
 }

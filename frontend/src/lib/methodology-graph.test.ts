@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  bridgeDeletions,
+  connectConstrained,
   methodologyToFlow,
   nextStageId,
   orderStages,
@@ -92,5 +94,63 @@ describe("methodology-graph", () => {
   it("labels known stages, prettifies unknown ones", () => {
     expect(stageLabel("citation_audit")).toBe("Citation Audit");
     expect(stageLabel("my_custom_thing")).toBe("My Custom Thing");
+  });
+
+  it("refuses an empty canvas", () => {
+    expect(orderStages([], [], {})).toMatchObject({
+      error: expect.stringContaining("empty"),
+    });
+  });
+
+  it("connectConstrained prunes forks and reports replacement", () => {    const diamond = [
+      { id: "e-ab", source: "a", target: "b" },
+      { id: "e-ac", source: "a", target: "c" },
+    ];
+    const { edges, replaced } = connectConstrained(diamond, {
+      source: "b",
+      target: "c",
+    });
+    expect(replaced).toBe(true);
+    // A->C died (target taken), A->B survived, B->C added: one chain.
+    expect(edges.map((e) => [e.source, e.target])).toEqual([
+      ["a", "b"],
+      ["b", "c"],
+    ]);
+    const clean = connectConstrained([{ id: "e-ab", source: "a", target: "b" }], {
+      source: "b",
+      target: "c",
+    });
+    expect(clean.replaced).toBe(false);
+    expect(connectConstrained(diamond, { source: null, target: "c" }).replaced).toBe(false);
+  });
+
+  it("bridgeDeletions re-links middle, ends, and blocks", () => {
+    const chain = [
+      { id: "e-ab", source: "a", target: "b" },
+      { id: "e-bc", source: "b", target: "c" },
+      { id: "e-cd", source: "c", target: "d" },
+    ];
+    const pair = (es: { id: string; source: string; target: string }[]) =>
+      es.map((e) => [e.source, e.target]).sort();
+    // Single middle delete bridges across.
+    expect(pair(bridgeDeletions(chain, ["b"]))).toEqual([
+      ["a", "c"],
+      ["c", "d"],
+    ]);
+    // Head/tail delete just drops touching edges.
+    expect(pair(bridgeDeletions(chain, ["a"]))).toEqual([
+      ["b", "c"],
+      ["c", "d"],
+    ]);
+    expect(pair(bridgeDeletions(chain, ["d"]))).toEqual([
+      ["a", "b"],
+      ["b", "c"],
+    ]);
+    // Simultaneous block delete bridges the whole closure at once.
+    expect(pair(bridgeDeletions(chain, ["b", "c"]))).toEqual([["a", "d"]]);
+    // Forked entries never guess: no bridge, save names the fallout.
+    const fork = [...chain, { id: "e-xc", source: "x", target: "c" }];
+    expect(pair(bridgeDeletions(fork, ["b", "c"]))).toEqual([]);
+    expect(bridgeDeletions(chain, [])).toBe(chain);
   });
 });

@@ -399,18 +399,12 @@ export async function saveMethodology(
     throw new Error(`Invalid YAML: ${err instanceof Error ? err.message : err}`);
   }
   const isNew = id === null;
-  const res = await fetch(
-    isNew ? `${BASE}/api/v1/methodologies` : `${BASE}/api/v1/methodologies/${id}`,
-    {
-      method: isNew ? "POST" : "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(doc),
-    },
+  return writeMethodologyDoc(
+    isNew ? "POST" : "PUT",
+    isNew ? "/api/v1/methodologies" : `/api/v1/methodologies/${id}`,
+    doc,
+    "Save methodology",
   );
-  if (!res.ok) {
-    throw new Error(`Save methodology: ${res.status} — ${await res.text()}`);
-  }
-  return (await res.json()) as MethodologyDetail;
 }
 
 export async function setDefaultMethodology(
@@ -665,8 +659,30 @@ export function listTools(): Promise<ToolRow[]> {
 export function putMethodology(id: string, doc: unknown): Promise<MethodologyDetail> {
   // The builder works in JSON throughout (no YAML round-trip): full
   // methodology document, same validation as saveMethodology.
-  return putLibrary<MethodologyDetail>(
+  return writeMethodologyDoc(
+    "PUT",
     `/api/v1/methodologies/${encodeURIComponent(id)}`,
     doc,
+    "Save methodology",
   );
+}
+
+// Shared core for both methodology save paths (YAML editor + builder
+// canvas) — one place for method/headers/error shape. `label` keeps
+// each caller's historical error prefix stable.
+async function writeMethodologyDoc(
+  method: "POST" | "PUT",
+  path: string,
+  doc: unknown,
+  label: string,
+): Promise<MethodologyDetail> {
+  const res = await fetch(`${BASE}${path}`, {
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(doc),
+  });
+  if (!res.ok) {
+    throw new Error(`${label}: ${res.status} — ${await res.text()}`);
+  }
+  return (await res.json()) as MethodologyDetail;
 }
