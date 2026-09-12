@@ -99,7 +99,9 @@ the escape hatch (Export/Import), not the primary surface.
   Skills body editing: `@uiw/react-md-editor`; advanced expression
   editing: minimal CodeMirror 6 behind a collapsed toggle.
 - shadcn components to pull (not bulk): `dialog`, `sheet`,
-  `command`, `tabs`, `card`, `badge`, `dropdown-menu`, `form`,
+  `command`, `tabs`, `card`, `badge`, `dropdown-menu`, `field`
+  (the registry's `form` wrapper is unresolvable as of CLI 4.21 —
+  `field` + react-hook-form directly is its documented successor),
   `table`, `combobox` (composed `command`+`popover`), `accordion`,
   `scroll-area`, `resizable`, `tooltip`, `sonner`, `select`,
   `switch`, `input`, `textarea`, `separator`, plus `checkbox`,
