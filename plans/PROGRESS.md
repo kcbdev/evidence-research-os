@@ -556,3 +556,6 @@ are Phase-1 backlog, executable after release).
 - Gates: typecheck clean, 99/99 vitest (21 settings), build green with 20 routes (4 new, static — mount guard proven under prerender).
 - Sort rationale: gate-proven contracts per page, critic clean after fixes, internal admin pages following established app patterns (057/062 precedent), no product/security/production judgment → agentic, closed to Done. EVRSH-70 Done with evidence comment.
 - PBI-066 unblocked (libraries + deps live); carries its own PBI-067-owned ModelCombobox note — PBI-065 reused the ModelSelector component directly, which satisfies the "pattern" requirement.
+
+## 2026-09-12 - PBI-066 → Active (chain)
+- Pre-flight done: README Active, EVRSH-65 In Progress. Deps PBI-064 Done; sequenced after PBI-065 (shared api.ts) Done. Implementation (canvas shell) starts next: builder route + StageCard + NodePalette (stages-only) + methodology-graph.ts mapping + api.ts builder load/save appends.
