@@ -1,4 +1,5 @@
-# LESSONS.md — Evidence Research OS (chain PBI-034–061, 2026-09-10/11)
+# LESSONS.md — Evidence Research OS (chain PBI-034–061, 2026-09-10/11;
+PBI-063/064 appended 2026-09-12, human-approved)
 
 Persisted only after human approval. Each entry: what happened, what to do.
 
@@ -47,3 +48,20 @@ re-litigating. Do this for every deliberate DOCS deviation.
 ## 10. Edit tool success messages lie occasionally
 Several edits reported success without applying (or applied wrongly).
 Trust read-back and gate output, never the confirmation string.
+
+## 11. Stage files before committing, never `git add -A`
+`git add -A` swept planning artifacts + a pre-existing foreign edit
+into a PBI commit. Rule: `git status` first, `git add <paths>`, commit.
+Follow-up commits in the same run were scoped correctly.
+
+## 12. FastAPI mount order is routing logic
+An exact path (`/methodologies/condition-fields`) loses to an earlier
+`/{id}` catch (first-match-wins). New exact-path routes under a
+prefixed router must mount before any `/{param}` router on the same
+prefix — document the ordering constraint in a comment at the mount.
+
+## 13. shadcn registry drops components silently
+CLI 4.21.0 resolves bare `form` (and `@shadcn/form`) to nothing with
+no error. Verify each pull with a file-existence check immediately
+after `add`, and treat the already-vendored `field` family as the
+form primitive.
