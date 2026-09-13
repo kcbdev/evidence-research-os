@@ -1,9 +1,11 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { dumpMethodologyYaml, parseMethodologyYaml } from "../../../../../lib/api";
 import BuilderPage from "./page";
 
 vi.mock("next/navigation", () => ({
   useParams: () => ({ id: "m1" }),
+  useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
 }));
 // Canvas DOM shims (ResizeObserver, scrollIntoView) live in
 // src/test-setup.ts — shared with later builder suites.
@@ -76,9 +78,28 @@ function libraryFallback(url: string): unknown {
   return undefined;
 }
 
+function libraryFallbackWithValidate(url: string, init?: RequestInit): unknown {
+  // Handle new PBI-070 endpoints in test stubs
+  if (init?.method === "POST") {
+    if (url.includes("/api/v1/methodologies/") && url.endsWith("/validate")) {
+      return { valid: true, id: "m1" };
+    }
+    if (url === "/api/v1/methodologies") {
+      return { ...METHODOLOGY, id: "new-id" };
+    }
+    if (url.includes("/api/v1/methodologies/") && url.endsWith("/set-default")) {
+      return { default: "m1" };
+    }
+  }
+  if (init?.method === "PUT") {
+    return undefined; // Let test-specific handlers handle PUT
+  }
+  return libraryFallback(url);
+}
+
 describe("BuilderPage", () => {
   it("renders the loaded stages as canvas nodes", async () => {
-    stubFetch((url) => libraryFallback(url) ?? METHODOLOGY);
+    stubFetch((url, init) => libraryFallbackWithValidate(url, init) ?? METHODOLOGY);
     render(<BuilderPage />);
     expect(await screen.findByTestId("stage-card-plan")).toBeDefined();
     expect(screen.getByTestId("stage-card-synthesis")).toBeDefined();
@@ -92,13 +113,16 @@ describe("BuilderPage", () => {
         puts.push({ url, body: JSON.parse(String(init.body)) });
         return METHODOLOGY;
       }
-      return libraryFallback(url) ?? METHODOLOGY;
+      return libraryFallbackWithValidate(url, init) ?? METHODOLOGY;
     });
     render(<BuilderPage />);
     await screen.findByTestId("stage-card-plan");
     fireEvent.click(screen.getByRole("button", { name: "Add node" }));
     fireEvent.click(await screen.findByText("Citation Audit"));
     expect(await screen.findByTestId("stage-card-citation_audit")).toBeDefined();
+    // Validate first (Save is gated by validation)
+    fireEvent.click(screen.getByRole("button", { name: "Validate" }));
+    await vi.waitFor(() => expect(screen.getByRole("button", { name: "Save" })).toBeEnabled());
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await vi.waitFor(() => {
       expect(puts.length).toBe(1);
@@ -119,7 +143,7 @@ describe("BuilderPage", () => {
         puts.push({ url, body: JSON.parse(String(init.body)) });
         return METHODOLOGY;
       }
-      return libraryFallback(url) ?? METHODOLOGY;
+      return libraryFallbackWithValidate(url, init) ?? METHODOLOGY;
     });
     render(<BuilderPage />);
     await screen.findByTestId("stage-card-plan");
@@ -129,6 +153,9 @@ describe("BuilderPage", () => {
     await vi.waitFor(() => {
       expect(screen.queryByTestId("stage-card-synthesis")).toBeNull();
     });
+    // Validate first (Save is gated by validation)
+    fireEvent.click(screen.getByRole("button", { name: "Validate" }));
+    await vi.waitFor(() => expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled());
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await vi.waitFor(() => {
       expect(puts.length).toBe(1);
@@ -142,7 +169,7 @@ describe("BuilderPage", () => {
   });
 
   it("opens the palette with Cmd+K", async () => {
-    stubFetch((url) => libraryFallback(url) ?? METHODOLOGY);
+    stubFetch((url, init) => libraryFallbackWithValidate(url, init) ?? METHODOLOGY);
     render(<BuilderPage />);
     await screen.findByTestId("stage-card-plan");
     fireEvent.keyDown(document, { key: "k", metaKey: true });
@@ -158,6 +185,9 @@ describe("BuilderPage", () => {
     await vi.waitFor(() => {
       expect(screen.queryByTestId("stage-card-plan")).toBeNull();
     });
+    // Validate first (Save is gated by validation)
+    fireEvent.click(screen.getByRole("button", { name: "Validate" }));
+    await vi.waitFor(() => expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled());
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await vi.waitFor(() => {
       expect(puts.length).toBe(1);
@@ -182,7 +212,9 @@ describe("BuilderPage", () => {
         ).toBeNull();
       });
     }
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    // Validate first (Save is gated by validation) - empty canvas fails validation
+    fireEvent.click(screen.getByRole("button", { name: "Validate" }));
+    await vi.waitFor(() => expect(screen.getByRole("button", { name: "Save" })).toBeDisabled());
     expect(await screen.findByText(/Canvas is empty/)).toBeDefined();
     expect(puts.length).toBe(0);
   });
@@ -209,6 +241,9 @@ describe("BuilderPage", () => {
     );
     render(<BuilderPage />);
     await screen.findByTestId("stage-card-plan");
+    // Validate first (Save is gated by validation)
+    fireEvent.click(screen.getByRole("button", { name: "Validate" }));
+    await vi.waitFor(() => expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled());
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await vi.waitFor(() => {
       expect(puts.length).toBe(1);
@@ -260,6 +295,9 @@ describe("BuilderPage", () => {
       expect(screen.queryByTestId("stage-card-b")).toBeNull();
     });
     expect(screen.queryByTestId("stage-card-c")).toBeNull();
+    // Validate first (Save is gated by validation)
+    fireEvent.click(screen.getByRole("button", { name: "Validate" }));
+    await vi.waitFor(() => expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled());
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await vi.waitFor(() => {
       expect(puts.length).toBe(1);
@@ -329,6 +367,18 @@ function libraryStub(
       if (url.endsWith("/api/v1/methodologies/condition-fields")) return CONDITION_FIELDS;
       if (url.endsWith("/api/v1/methodologies")) return [];
     }
+    // PBI-070: new endpoints
+    if (init?.method === "POST") {
+      if (url.includes("/api/v1/methodologies/") && url.endsWith("/validate")) {
+        return { valid: true, id: "m1" };
+      }
+      if (url === "/api/v1/methodologies") {
+        return { ...METHODOLOGY, id: "new-id" };
+      }
+      if (url.includes("/api/v1/methodologies/") && url.endsWith("/set-default")) {
+        return { default: "m1" };
+      }
+    }
     if (init?.method === "PUT") {
       const body = JSON.parse(String(init.body)) as Record<string, unknown>;
       puts.push({ url, body });
@@ -366,6 +416,8 @@ describe("BuilderPage roles and code", () => {
     expect(await screen.findByTestId("role-card-red-team")).toBeDefined();
     expect(screen.getByText("m-test")).toBeDefined();
     expect(screen.getByText("1 tools")).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Validate" }));
+    await vi.waitFor(() => expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled());
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await vi.waitFor(() => {
       expect(puts.length).toBe(1);
@@ -394,6 +446,9 @@ describe("BuilderPage roles and code", () => {
     fireEvent.click(await screen.findByText("experiment_scorer.py"));
     expect(await screen.findByTestId("code-card-experiment_scorer")).toBeDefined();
     expect(screen.getByText("Authored in code")).toBeDefined();
+    // Validate first (Save is gated by validation)
+    fireEvent.click(screen.getByRole("button", { name: "Validate" }));
+    await vi.waitFor(() => expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled());
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await vi.waitFor(() => {
       expect(puts.length).toBe(1);
@@ -435,6 +490,9 @@ describe("BuilderPage roles and code", () => {
     });
     expect(posts[0].url.endsWith("/api/v1/roles")).toBe(true);
     expect(await screen.findByTestId("role-card-blue-team")).toBeDefined();
+    // Validate first (Save is gated by validation)
+    fireEvent.click(screen.getByRole("button", { name: "Validate" }));
+    await vi.waitFor(() => expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled());
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await vi.waitFor(() => {
       expect(puts.length).toBe(1);
@@ -462,6 +520,9 @@ describe("BuilderPage roles and code", () => {
     // The open Sheet inerts the background page (Base-UI modal) — close
     // it before reaching the header Save, like a user would.
     fireEvent.keyDown(sheet, { key: "Escape", code: "Escape" });
+    // Validate first (Save is gated by validation)
+    fireEvent.click(screen.getByRole("button", { name: "Validate" }));
+    await vi.waitFor(() => expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled());
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await vi.waitFor(() => {
       expect(puts.length).toBe(1);
@@ -482,6 +543,9 @@ describe("BuilderPage roles and code", () => {
     fireEvent.click(within(sheet).getByRole("switch", { name: "Pause here for approval" }));
     // Sheet overlay blocks page clicks in some drivers — close first.
     fireEvent.keyDown(sheet, { key: "Escape", code: "Escape" });
+    // Validate first (Save is gated by validation)
+    fireEvent.click(screen.getByRole("button", { name: "Validate" }));
+    await vi.waitFor(() => expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled());
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await vi.waitFor(() => {
       expect(puts.length).toBe(1);
@@ -531,6 +595,9 @@ describe("BuilderPage roles and code", () => {
     });
     fireEvent.click(toggle); // OFF reverts, never keeps stale values
     fireEvent.keyDown(sheet, { key: "Escape", code: "Escape" });
+    // Validate first (Save is gated by validation)
+    fireEvent.click(screen.getByRole("button", { name: "Validate" }));
+    await vi.waitFor(() => expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled());
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await vi.waitFor(() => {
       expect(puts.length).toBe(1);
@@ -570,6 +637,9 @@ describe("BuilderPage roles and code", () => {
     await vi.waitFor(() => {
       expect(screen.queryByTestId("role-card-red-team")).toBeNull();
     });
+    // Validate first (Save is gated by validation)
+    fireEvent.click(screen.getByRole("button", { name: "Validate" }));
+    await vi.waitFor(() => expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled());
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await vi.waitFor(() => {
       expect(puts.length).toBe(1);
@@ -607,6 +677,9 @@ describe("BuilderPage roles and code", () => {
     });
     expect(screen.getByTestId("role-card-red-team-2")).toBeDefined();
     fireEvent.keyDown(sheet, { key: "Escape", code: "Escape" });
+    // Validate first (Save is gated by validation)
+    fireEvent.click(screen.getByRole("button", { name: "Validate" }));
+    await vi.waitFor(() => expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled());
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await vi.waitFor(() => {
       expect(puts.length).toBe(1);
@@ -675,6 +748,9 @@ describe("BuilderPage conditions", () => {
     fireEvent.click(within(sheet).getByRole("button", { name: "+ AND" }));
     // The open Sheet inerts the background page — close it before Save.
     fireEvent.keyDown(sheet, { key: "Escape", code: "Escape" });
+    // Validate first (Save is gated by validation)
+    fireEvent.click(screen.getByRole("button", { name: "Validate" }));
+    await vi.waitFor(() => expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled());
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await vi.waitFor(() => {
       expect(puts.length).toBe(1);
@@ -750,10 +826,12 @@ describe("BuilderPage conditions", () => {
       (within(sheet).getByRole("button", { name: "+ AND" }) as HTMLButtonElement)
         .disabled,
     ).toBe(true);
-    // The conflict must also hold at save: no PUT, client names plan.
+    // The conflict must also hold at validate: named in the
+    // validation list, Save stays disabled, no PUT.
     fireEvent.keyDown(sheet, { key: "Escape", code: "Escape" });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Validate" }));
     expect(await screen.findByText(/both loop_while and loop_condition/)).toBeDefined();
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
     expect(puts.length).toBe(0);
   });
 
@@ -774,8 +852,11 @@ describe("BuilderPage conditions", () => {
     stubFetch(handler);
     render(<BuilderPage />);
     await screen.findByTestId("stage-card-plan");
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    // Validate first (Save is gated by validation): the dead target
+    // is named in the validation list, Save stays disabled, no PUT.
+    fireEvent.click(screen.getByRole("button", { name: "Validate" }));
     expect(await screen.findByText(/unknown stage ghost/)).toBeDefined();
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
     expect(puts.length).toBe(0);
   });
 
@@ -796,6 +877,11 @@ describe("BuilderPage conditions", () => {
     const sheet = await screen.findByRole("dialog", { name: "Plan" });
     expect(within(sheet).getByText(/Hand-authored loop_always/)).toBeDefined();
     fireEvent.keyDown(sheet, { key: "Escape", code: "Escape" });
+    // Validate first (Save is gated by validation)
+    fireEvent.click(screen.getByRole("button", { name: "Validate" }));
+    await vi.waitFor(() => {
+      expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled();
+    });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await vi.waitFor(() => {
       expect(puts.length).toBe(1);
@@ -842,6 +928,9 @@ describe("BuilderPage conditions", () => {
     // The loop cannot survive its target: keys cleared now with a
     // notice, or every later save would 422 on a dead target.
     expect(await screen.findByText(/Removed loop-backs/)).toBeDefined();
+    // Validate first (Save is gated by validation)
+    fireEvent.click(screen.getByRole("button", { name: "Validate" }));
+    await vi.waitFor(() => expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled());
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await vi.waitFor(() => {
       expect(puts.length).toBe(1);
@@ -892,6 +981,11 @@ describe("BuilderPage tabs", () => {
     await vi.waitFor(() => {
       expect(screen.queryByText("Overlaps judge")).toBeNull();
     });
+    // Validate first (Save is gated by validation)
+    fireEvent.click(screen.getByRole("button", { name: "Validate" }));
+    await vi.waitFor(() => {
+      expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled();
+    });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await vi.waitFor(() => {
       expect(puts.length).toBe(1);
@@ -921,6 +1015,11 @@ describe("BuilderPage tabs", () => {
     ).toBeDefined();
     expect(screen.getByText(/Kept on save.*search_web/)).toBeDefined();
     fireEvent.click(screen.getByRole("checkbox", { name: "grep_project" }));
+    // Validate first (Save is gated by validation)
+    fireEvent.click(screen.getByRole("button", { name: "Validate" }));
+    await vi.waitFor(() => {
+      expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled();
+    });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await vi.waitFor(() => {
       expect(puts.length).toBe(1);
@@ -960,6 +1059,11 @@ describe("BuilderPage tabs", () => {
     fireEvent.change(screen.getByLabelText("Max research rounds"), {
       target: { value: "2" },
     });
+    // Validate first (Save is gated by validation)
+    fireEvent.click(screen.getByRole("button", { name: "Validate" }));
+    await vi.waitFor(() => {
+      expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled();
+    });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await vi.waitFor(() => {
       expect(puts.length).toBe(1);
@@ -988,6 +1092,11 @@ describe("BuilderPage tabs", () => {
       target: { value: "New desc" },
     });
     fireEvent.click(screen.getByRole("checkbox", { name: "brainstorm" }));
+    // Validate first (Save is gated by validation)
+    fireEvent.click(screen.getByRole("button", { name: "Validate" }));
+    await vi.waitFor(() => {
+      expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled();
+    });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await vi.waitFor(() => {
       expect(puts.length).toBe(1);
@@ -1000,5 +1109,202 @@ describe("BuilderPage tabs", () => {
     expect(body.name).toBe("Renamed");
     expect(body.description).toBe("New desc");
     expect(body.compatible_modes).toEqual(["research", "brainstorm"]);
+  });
+});
+
+describe("BuilderPage toolbar", () => {
+  it("Save starts disabled until Validate passes", async () => {
+    // libraryStub (not the empty fallback): the tools registry holds
+    // grep_project, so the pass is warning-free and the clean copy shows.
+    const { handler } = libraryStub();
+    stubFetch(handler);
+    render(<BuilderPage />);
+    await screen.findByTestId("stage-card-plan");
+    const save = screen.getByRole("button", { name: "Save" });
+    expect(save).toBeDisabled();
+    expect(save).toHaveAttribute("title", "Run Validate first.");
+    expect(
+      screen.getByText("Not validated yet — run Validate to enable Save."),
+    ).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Validate" }));
+    await vi.waitFor(() => {
+      expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+    });
+    expect(
+      screen.getByText("Validation passed — canvas checks clean."),
+    ).toBeDefined();
+  });
+
+  it("failing validation keeps Save disabled and names the slot", async () => {
+    const overlap = {
+      ...METHODOLOGY,
+      models: { scientist: "dup", judge: "dup" },
+    };
+    stubFetch((url, init) => libraryFallbackWithValidate(url, init) ?? overlap);
+    render(<BuilderPage />);
+    await screen.findByTestId("stage-card-plan");
+    fireEvent.click(screen.getByRole("button", { name: "Validate" }));
+    expect(
+      await screen.findByText(
+        "Model overlap: role slot 'scientist' matches the judge — the server will refuse.",
+      ),
+    ).toBeDefined();
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+  });
+
+  it("a server 422 on save surfaces verbatim with no silent swallow", async () => {
+    // The shared stubFetch always answers ok:true, so this test owns
+    // its fetch shape: every PUT is a 422 with a field-naming body.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (init?.method === "PUT") {
+          return {
+            ok: false,
+            status: 422,
+            json: async () => ({ detail: "judge overlap: scientist" }),
+            text: async () => "judge overlap: scientist",
+          };
+        }
+        const out =
+          libraryFallbackWithValidate(url, init) ??
+          (METHODOLOGY as unknown as Record<string, unknown>);
+        return {
+          ok: true,
+          status: 200,
+          json: async () => out,
+          text: async () => "",
+        };
+      }),
+    );
+    render(<BuilderPage />);
+    await screen.findByTestId("stage-card-plan");
+    fireEvent.click(screen.getByRole("button", { name: "Validate" }));
+    await vi.waitFor(() => {
+      expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(
+      await screen.findByText("Save methodology: 422 — judge overlap: scientist"),
+    ).toBeDefined();
+  });
+
+  it("set-as-default confirms before posting", async () => {
+    const posts: string[] = [];
+    stubFetch((url, init) => {
+      if (init?.method === "POST") posts.push(url);
+      return libraryFallbackWithValidate(url, init) ?? METHODOLOGY;
+    });
+    render(<BuilderPage />);
+    await screen.findByTestId("stage-card-plan");
+    fireEvent.click(screen.getByRole("button", { name: "Set as default" }));
+    expect(await screen.findByText("Set as default?")).toBeDefined();
+    // The confirm dialog is the gate: nothing posts before it.
+    expect(posts.length).toBe(0);
+    fireEvent.click(screen.getByRole("button", { name: "Confirm default" }));
+    await vi.waitFor(() => {
+      expect(posts.length).toBe(1);
+    });
+    expect(posts[0].endsWith("/api/v1/methodologies/m1/set-default")).toBe(true);
+    // The notice Alert carries the confirmation (the sonner toast
+    // echoes the same copy — scope to the alert, not the toast).
+    const alert = await screen.findByRole("alert");
+    expect(within(alert).getByText("Set as the default methodology.")).toBeDefined();
+  });
+
+  it("duplicate posts an independent copy under the new id", async () => {
+    const posts: { url: string; body: Record<string, unknown> }[] = [];
+    stubFetch((url, init) => {
+      // Collection POST (Duplicate) — api.ts prefixes BASE, so match
+      // by suffix; validate/set-default POSTs fall through to the stub.
+      if (init?.method === "POST" && url.endsWith("/api/v1/methodologies")) {
+        const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+        posts.push({ url, body });
+        return { ...METHODOLOGY, id: "m1-copy" };
+      }
+      return libraryFallbackWithValidate(url, init) ?? METHODOLOGY;
+    });
+    render(<BuilderPage />);
+    await screen.findByTestId("stage-card-plan");
+    fireEvent.click(screen.getByRole("button", { name: "More actions" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Duplicate" }));
+    expect(await screen.findByText("Duplicate methodology")).toBeDefined();
+    expect((screen.getByLabelText("New id") as HTMLInputElement).value).toBe(
+      "m1-copy",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Create copy" }));
+    await vi.waitFor(() => {
+      expect(posts.length).toBe(1);
+    });
+    const body = posts[0].body;
+    expect(body.id).toBe("m1-copy");
+    expect(body.name).toBe("Pipe (copy)");
+    expect(body.is_default).toBe(false);
+    // Same content, own identity: editing the copy's refs can never
+    // alias the original (deep-copied through JSON at build time).
+    expect(body.workflow).toEqual(METHODOLOGY.workflow);
+    expect(body.models).toEqual(METHODOLOGY.models);
+    expect(body.tools).toEqual(METHODOLOGY.tools);
+    expect(body.budget_defaults).toEqual(METHODOLOGY.budget_defaults);
+  });
+
+  it("export YAML re-imports byte-identical", async () => {
+    const text = await dumpMethodologyYaml(METHODOLOGY);
+    expect(text).toContain("workflow:");
+    expect(await parseMethodologyYaml(text)).toEqual(METHODOLOGY);
+  });
+
+  it("import YAML replaces the canvas and forces re-validation", async () => {
+    const foreign = {
+      ...METHODOLOGY,
+      id: "foreign",
+      workflow: {
+        stages: [
+          ...METHODOLOGY.workflow.stages,
+          { id: "citation_audit", node: "citation_audit" },
+        ],
+      },
+    };
+    const text = await dumpMethodologyYaml(foreign);
+    const puts: { url: string; body: { workflow: { stages: { id: string }[] } } }[] =
+      [];
+    stubFetch((url, init) => {
+      if (init?.method === "PUT") {
+        puts.push({ url, body: JSON.parse(String(init.body)) });
+        return METHODOLOGY;
+      }
+      return libraryFallbackWithValidate(url, init) ?? METHODOLOGY;
+    });
+    render(<BuilderPage />);
+    await screen.findByTestId("stage-card-plan");
+    fireEvent.click(screen.getByRole("button", { name: "More actions" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Import YAML" }));
+    expect(await screen.findByText("Import YAML")).toBeDefined();
+    fireEvent.change(screen.getByLabelText("Methodology YAML to import"), {
+      target: { value: text },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Apply to canvas" }));
+    expect(
+      await screen.findByText(
+        "Imported 4 stages (document id 'foreign' ignored — saving into this methodology). Validate, then Save.",
+      ),
+    ).toBeDefined();
+    expect(await screen.findByTestId("stage-card-citation_audit")).toBeDefined();
+    // The import stales validation: Save is gated until re-validated.
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Validate" }));
+    await vi.waitFor(() => {
+      expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await vi.waitFor(() => {
+      expect(puts.length).toBe(1);
+    });
+    expect(puts[0].body.workflow.stages.map((s) => s.id)).toEqual([
+      "plan",
+      "synthesis",
+      "final_output",
+      "citation_audit",
+    ]);
   });
 });

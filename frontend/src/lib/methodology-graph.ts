@@ -650,3 +650,58 @@ export function findJudgeOverlaps(models: Record<string, string>): string[] {
     )
     .map(([slot]) => slot);
 }
+
+// --- Toolbar validation (PBI-070) ---
+
+/**
+ * Stages referencing a node the compiler cannot resolve (PBI-070,
+ * client Validate). Known = built-in stages + embedded custom-role
+ * ids + discovered custom-node ids. Returns {id, node} pairs for
+ * named-field errors (the server 422s these too — the tab names them
+ * before any PUT).
+ */
+export function findUnknownStageNodes(
+  stages: StageSpecLike[],
+  knownNodeIds: Set<string>,
+): { id: string; node: string }[] {
+  return stages
+    .filter((s) => !knownNodeIds.has(s.node))
+    .map((s) => ({ id: s.id, node: s.node }));
+}
+
+/**
+ * Amber warnings for hand-owned branch forms (PBI-070): stages the
+ * canvas draws no edge for and never rewrites. Informational only —
+ * never blocks save.
+ */
+export function handLoopWarnings(stages: StageSpecLike[]): string[] {
+  const out: string[] = [];
+  for (const s of stages) {
+    const forms = ["loop_while", "loop_always", "route"].filter(
+      (f) => (s as Record<string, unknown>)[f] != null,
+    );
+    if (forms.length > 0) {
+      out.push(
+        `Stage ${s.id} uses hand-authored ${forms.join(", ")} — the canvas leaves these keys untouched.`,
+      );
+    }
+  }
+  return out;
+}
+
+/**
+ * Amber warnings for methodology enables outside the tool registry
+ * (PBI-070): kept byte-identical on save, but no canvas control can
+ * remove them (Import/Export is the path).
+ */
+export function ghostToolWarnings(
+  enabled: string[],
+  registryNames: string[],
+): string[] {
+  const known = new Set(registryNames);
+  const ghosts = enabled.filter((n) => !known.has(n));
+  if (ghosts.length === 0) return [];
+  return [
+    `Tools not in the registry (kept on save): ${ghosts.join(", ")}.`,
+  ];
+}

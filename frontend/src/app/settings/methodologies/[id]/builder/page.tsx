@@ -13,13 +13,29 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { MoreVertical } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -57,6 +73,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { Toaster } from "@/components/ui/sonner";
 import ModelSelector from "@/components/ModelSelector";
 import ConditionBuilder from "@/components/builder/ConditionBuilder";
 import CustomCodeCard from "@/components/builder/CustomCodeCard";
@@ -64,7 +81,12 @@ import NodePalette from "@/components/builder/NodePalette";
 import RoleCard from "@/components/builder/RoleCard";
 import RoleEditorDialog from "@/components/builder/RoleEditorDialog";
 import StageCard from "@/components/builder/StageCard";
+import ValidationToastList, {
+  type ServerVerdict,
+} from "@/components/builder/ValidationToastList";
 import {
+  createMethodology,
+  dumpMethodologyYaml,
   getMethodology,
   listConditionFields,
   listCustomNodes,
@@ -72,7 +94,10 @@ import {
   listRoles,
   listSkills,
   listTools,
+  parseMethodologyYaml,
   putMethodology,
+  setDefaultMethodology,
+  validateMethodology,
   type ConditionField,
   type CustomNodeInfo,
   type LibraryRoleEntry,
@@ -84,10 +109,14 @@ import {
 import {
   applyLoopConnect,
   bridgeDeletions,
+  BUILT_IN_STAGES,
   chainTailId,
   connectConstrained,
   embedDiffers,
   findJudgeOverlaps,
+  findUnknownStageNodes,
+  ghostToolWarnings,
+  handLoopWarnings,
   isLoopEdge,
   LOOP_HANDLE_ID,
   methodologyToFlow,
@@ -99,6 +128,8 @@ import {
   NODE_W,
   ROW_H,
   type BuilderNodeKind,
+  type LibraryRoleLite,
+  type CustomNodeLite,
   type StageNode,
   type StageSpecLike,
 } from "@/lib/methodology-graph";
@@ -131,8 +162,117 @@ function toEmbedded(entry: LibraryRoleEntry): EmbeddedSpec {
   };
 }
 
+interface ToolbarInputs {
+  nodes: StageNode[];
+  edges: Edge[];
+  stageMap: Record<string, StageSpecLike>;
+  methodology: MethodologyDetail | null;
+  name: string;
+  description: string;
+  modes: string[];
+  models: Record<string, string>;
+  toolsEnabled: string[];
+  budget: { max_model_calls: number; max_research_rounds: number };
+  toolRows: ToolRow[];
+  customNodes: CustomNodeInfo[];
+}
+
+/** Canonical doc key (PBI-070): sorted-key stringify, so server key
+ * reordering across a save round-trip never reads as dirty. */
+export function docKeyFor(doc: unknown): string {
+  return stableKey(doc);
+}
+
+function stableKey(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableKey).join(",")}]`;
+  if (value !== null && typeof value === "object") {
+    const o = value as Record<string, unknown>;
+    return `{${Object.keys(o)
+      .sort()
+      .map((k) => `${JSON.stringify(k)}:${stableKey(o[k])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+}
+
+/**
+ * Full client validation over live canvas + tab state (PBI-070,
+ * shared by Validate and Save): chain walk, loop↔keys
+ * correspondence, unknown stage refs, judge overlap; plus amber
+ * warnings (hand-owned loops, off-registry enables) that never block.
+ */
+export function validateToolbarInputs(inp: ToolbarInputs): {
+  errors: string[];
+  warnings: string[];
+} {
+  const ordered = orderStages(inp.nodes, inp.edges, inp.stageMap);
+  if ("error" in ordered) return { errors: [ordered.error], warnings: [] };
+  const loopError = validateLoops(inp.nodes, inp.edges, inp.stageMap);
+  const errors: string[] = loopError !== null ? [loopError] : [];
+  const known = new Set([
+    ...BUILT_IN_STAGES.map((s) => s.node),
+    ...((inp.methodology?.custom_roles ?? []).map((r) => r.id)),
+    ...inp.customNodes
+      .filter((c) => c.node_id !== null && c.load_error === null)
+      .map((c) => c.node_id as string),
+  ]);
+  for (const u of findUnknownStageNodes(ordered.stages, known)) {
+    errors.push(
+      `Stage ${u.id} uses unknown node '${u.node}' — place it from the palette or fix the reference.`,
+    );
+  }
+  for (const slot of findJudgeOverlaps(inp.models)) {
+    errors.push(
+      `Model overlap: role slot '${slot}' matches the judge — the server will refuse.`,
+    );
+  }
+  const warnings = [
+    ...handLoopWarnings(ordered.stages),
+    ...ghostToolWarnings(
+      inp.toolsEnabled,
+      inp.toolRows.map((t) => t.name),
+    ),
+  ];
+  return { errors, warnings };
+}
+
+/**
+ * The single save-document constructor (PBI-070): canvas chain +
+ * tab states + pruned embeds. Validate, Save, Export, and Duplicate
+ * all build through here — no second save path.
+ */
+export function buildToolbarDoc(inp: ToolbarInputs): {
+  doc: Record<string, unknown>;
+  warnings: string[];
+} {
+  // validateToolbarInputs is the single error source (order → loops
+  // → refs → overlap); the walk below cannot fail after it passes.
+  const v = validateToolbarInputs(inp);
+  if (v.errors.length > 0) throw new Error(v.errors[0]);
+  const ordered = orderStages(inp.nodes, inp.edges, inp.stageMap);
+  if ("error" in ordered) throw new Error(ordered.error);
+  const usedRoles = new Set(ordered.stages.map((s) => s.node));
+  return {
+    doc: {
+      ...(inp.methodology ?? {}),
+      name: inp.name,
+      description: inp.description,
+      compatible_modes: inp.modes,
+      models: inp.models,
+      tools: { enabled: inp.toolsEnabled },
+      budget_defaults: inp.budget,
+      custom_roles: ((inp.methodology?.custom_roles ?? []) as EmbeddedSpec[]).filter(
+        (r) => usedRoles.has(r.id),
+      ),
+      workflow: { stages: ordered.stages },
+    },
+    warnings: v.warnings,
+  };
+}
+
 export default function BuilderPage() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
   const [methodology, setMethodology] = useState<MethodologyDetail | null>(null);
   const [nodes, setNodes] = useState<StageNode[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
@@ -145,6 +285,30 @@ export default function BuilderPage() {
   const [models, setModels] = useState<Record<string, string>>({});
   const [toolsEnabled, setToolsEnabled] = useState<string[]>([]);
   const [budget, setBudget] = useState({ max_model_calls: 50, max_research_rounds: 5 });
+  // Toolbar validation (PBI-070): explicit Validate runs client
+  // checks over the live canvas plus the server verdict on the STORED
+  // document. Save stays disabled until a client pass on the current
+  // key (any edit stales it — re-validate to re-enable).
+  const [lastValidation, setLastValidation] = useState<{
+    key: string;
+    errors: string[];
+    warnings: string[];
+  } | null>(null);
+  const [serverVerdict, setServerVerdict] = useState<ServerVerdict | null>(null);
+  const [validating, setValidating] = useState(false);
+  // Overflow dialogs.
+  const [defaultOpen, setDefaultOpen] = useState(false);
+  const [duplicateOpen, setDuplicateOpen] = useState(false);
+  const [duplicateId, setDuplicateId] = useState("");
+  const [duplicateError, setDuplicateError] = useState<string | null>(null);
+  const [duplicating, setDuplicating] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportText, setExportText] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [exportCopied, setExportCopied] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importText, setImportText] = useState("");
+  const [importError, setImportError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -184,6 +348,49 @@ export default function BuilderPage() {
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState<string | null>(null);
 
+  // Document → canvas state (PBI-070 extraction): the load effect
+  // and Import YAML share this. Defensive fallbacks keep a
+  // hand-shaped document loadable (save-time validation judges it).
+  function loadDocIntoState(
+    doc: MethodologyDetail,
+    roles: LibraryRoleLite[],
+    codes: CustomNodeLite[],
+  ) {
+    setMethodology(doc);
+    setName(doc.name);
+    setDescription(doc.description ?? "");
+    setModes(doc.compatible_modes ?? []);
+    setModels({ ...(doc.models ?? {}) });
+    setToolsEnabled([...(doc.tools?.enabled ?? [])]);
+    setBudget({
+      max_model_calls: doc.budget_defaults?.max_model_calls ?? 50,
+      max_research_rounds: doc.budget_defaults?.max_research_rounds ?? 5,
+    });
+    const map: Record<string, StageSpecLike> = {};
+    for (const s of (doc.workflow?.stages ?? []) as StageSpecLike[]) {
+      map[s.id] = s;
+    }
+    setStageMap(map);
+    const flow = methodologyToFlow(doc, roles, codes);
+    setNodes(flow.nodes);
+    setEdges(flow.edges);
+    return { map, flow };
+  }
+
+  function liteRoles(roles: LibraryRoleEntry[]): LibraryRoleLite[] {
+    return roles.map((r) => ({ id: r.id, name: r.name, model: r.model, tools: r.tools }));
+  }
+
+  function liteCodes(codes: CustomNodeInfo[]): CustomNodeLite[] {
+    return codes
+      .filter((c) => c.node_id !== null && c.load_error === null)
+      .map((c) => ({
+        node_id: c.node_id as string,
+        filename: c.filename,
+        description: c.description,
+      }));
+  }
+
   useEffect(() => {
     async function load() {
       try {
@@ -196,45 +403,24 @@ export default function BuilderPage() {
           listTools(),
           listConditionFields(),
         ]);
-        setMethodology(m);
-        setName(m.name);
-        setDescription(m.description ?? "");
-        setModes(m.compatible_modes);
-        setModels({ ...(m.models ?? {}) });
-        setToolsEnabled([...(m.tools?.enabled ?? [])]);
-        setBudget({
-          max_model_calls: m.budget_defaults?.max_model_calls ?? 50,
-          max_research_rounds: m.budget_defaults?.max_research_rounds ?? 5,
-        });
         setLibraryRoles(roles);
         setRolePrompts(pr);
         setRoleSkills(sk);
         setToolRows(to);
         setCustomNodes(codes);
         setConditionFields(cf);
-        const map: Record<string, StageSpecLike> = {};
-        for (const s of (m.workflow?.stages ?? []) as StageSpecLike[]) {
-          map[s.id] = s;
-        }
-        setStageMap(map);
-        const flow = methodologyToFlow(
-          m,
-          roles.map((r) => ({ id: r.id, name: r.name, model: r.model, tools: r.tools })),
-          codes
-            .filter((c) => c.node_id !== null && c.load_error === null)
-            .map((c) => ({
-              node_id: c.node_id as string,
-              filename: c.filename,
-              description: c.description,
-            })),
-        );
-        setNodes(flow.nodes);
-        setEdges(flow.edges);
+        loadDocIntoState(m, liteRoles(roles), liteCodes(codes));
+        // No fresh-load auto-validation: per the PBI directive Save
+        // stays disabled until an explicit Validate passes, even when
+        // the loaded doc would pass (the Validate click also fetches
+        // the server verdict on the stored doc — informational, but
+        // part of the ceremony). Any edit stales the key afterwards.
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : "failed to load");
       }
     }
     void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   useEffect(() => {
@@ -477,42 +663,99 @@ export default function BuilderPage() {
     setModes((ms) => (ms.includes(mode) ? ms.filter((m) => m !== mode) : [...ms, mode]));
   }
 
+  // Render-scope inputs for the single doc constructor below.
+  function toolbarInputs(): ToolbarInputs {
+    return {
+      nodes,
+      edges,
+      stageMap,
+      methodology,
+      name,
+      description,
+      modes,
+      models,
+      toolsEnabled,
+      budget,
+      toolRows,
+      customNodes,
+    };
+  }
+
+  // Current canvas validation, recomputed every render (pure walks
+  // over a small graph — cheaper than tracking dirty flags that miss
+  // a mutation path). Save reads freshness off this.
+  function currentValidation(): { key: string; errors: string[]; warnings: string[] } {
+    try {
+      const built = buildToolbarDoc(toolbarInputs());
+      return { key: docKeyFor(built.doc), errors: [], warnings: built.warnings };
+    } catch (err: unknown) {
+      const v = validateToolbarInputs(toolbarInputs());
+      return { key: "", errors: v.errors, warnings: v.warnings };
+    }
+  }
+
+  async function onValidate() {
+    if (methodology === null) return;
+    setValidating(true);
+    try {
+      const inp = toolbarInputs();
+      const v = validateToolbarInputs(inp);
+      if (v.errors.length > 0) {
+        // No key (unmatchable): Save stays disabled until fixed.
+        setLastValidation({ key: "", errors: v.errors, warnings: v.warnings });
+        toast.error(`Validation failed: ${v.errors.length} issue${v.errors.length === 1 ? "" : "s"}.`);
+      } else {
+        const built = buildToolbarDoc(inp);
+        setLastValidation({
+          key: docKeyFor(built.doc),
+          errors: [],
+          warnings: built.warnings,
+        });
+        if (built.warnings.length > 0) {
+          toast.warning(
+            `Validation passed with ${built.warnings.length} warning${built.warnings.length === 1 ? "" : "s"}.`,
+          );
+        } else {
+          toast.success("Validation passed.");
+        }
+      }
+      // Server verdict judges the STORED document, never unsaved
+      // canvas state — informational until the next save (whose 422s
+      // still surface verbatim).
+      try {
+        await validateMethodology(id);
+        setServerVerdict({ ok: true, detail: null });
+        toast.success("Server: saved document valid.");
+      } catch (err: unknown) {
+        const detail = err instanceof Error ? err.message : "validate failed";
+        setServerVerdict({ ok: false, detail });
+        toast.error(`Server validation failed: ${detail}`);
+      }
+    } finally {
+      setValidating(false);
+    }
+  }
+
   async function onSave() {
     if (methodology === null) return;
-    const ordered = orderStages(nodes, edges, stageMap);
-    if ("error" in ordered) {
+    // Client pre-checks (chain, loops, refs, overlap) fail loud
+    // naming the stage — the server 422 is the backstop, not the
+    // messenger. Prune orphan embeds (deleted/retargeted role nodes):
+    // the PUT carries only what the saved stages reference.
+    let built: { doc: Record<string, unknown>; warnings: string[] };
+    try {
+      built = buildToolbarDoc(toolbarInputs());
+    } catch (err: unknown) {
       setSaved(false);
-      setError(ordered.error);
+      setError(err instanceof Error ? err.message : "save failed");
       return;
     }
-    // Loop↔keys correspondence (edge without condition, keys without
-    // edge, unknown target) fails loud naming the stage — the server
-    // 422 is the backstop, not the messenger.
-    const loopError = validateLoops(nodes, edges, stageMap);
-    if (loopError !== null) {
-      setSaved(false);
-      setError(loopError);
-      return;
-    }
+    const key = docKeyFor(built.doc);
     setSaving(true);
     setError(null);
     setNotice(null);
     try {
-      // Prune orphan embeds (deleted/retargeted role nodes): the PUT
-      // carries only what the saved stages reference — stale snapshots
-      // never accumulate.
-      const usedRoles = new Set(ordered.stages.map((s) => s.node));
-      const savedDoc = await putMethodology(id, {
-        ...methodology,
-        name,
-        description,
-        compatible_modes: modes,
-        models,
-        tools: { enabled: toolsEnabled },
-        budget_defaults: budget,
-        custom_roles: (methodology.custom_roles ?? []).filter((r) => usedRoles.has(r.id)),
-        workflow: { stages: ordered.stages },
-      });
+      const savedDoc = await putMethodology(id, built.doc);
       setMethodology(savedDoc);
       // Resync stage data from the server-normalized document — the
       // local map still holds minimal pre-save shapes for added nodes.
@@ -520,16 +763,23 @@ export default function BuilderPage() {
       // the PUT carries them verbatim and the Saved-hygiene effect
       // above keys on their references — resyncing would mint fresh
       // objects and clobber the post-save Saved=true, exactly the
-      // methodology/stageMap hazard documented there.
+      // methodology/stageMap hazard documented there. The canonical
+      // doc key (sorted keys) survives the round-trip either way.
       const map: Record<string, StageSpecLike> = {};
       for (const s of (savedDoc.workflow?.stages ?? []) as StageSpecLike[]) {
         map[s.id] = s;
       }
       setStageMap(map);
       setSaved(true);
+      // Canvas now equals stored: validation is fresh without
+      // re-running (same canonical key the next render computes).
+      setLastValidation({ key, errors: [], warnings: built.warnings });
+      toast.success("Saved.");
     } catch (err) {
       setSaved(false);
-      setError(err instanceof Error ? err.message : "save failed");
+      const detail = err instanceof Error ? err.message : "save failed";
+      setError(detail);
+      toast.error(detail);
     } finally {
       setSaving(false);
     }
@@ -543,7 +793,8 @@ export default function BuilderPage() {
   const overlaps = findJudgeOverlaps(models);
   const extraEnables = toolsEnabled.filter(
     (n) => !toolRows.some((t) => t.name === n),
-  );  const selectedStage = selected !== null ? (stageMap[selected.id] ?? null) : null;
+  );
+  const selectedStage = selected !== null ? (stageMap[selected.id] ?? null) : null;
   const selectedEmbedded =
     selected !== null && selected.data.kind === "role"
       ? ((methodology?.custom_roles ?? []).find((r) => r.id === selected.data.node) ?? null)
@@ -641,7 +892,8 @@ export default function BuilderPage() {
     );
   }
 
-  function switchRoleEntry(roleId: string) {    const entry = libraryRoles.find((r) => r.id === roleId);
+  function switchRoleEntry(roleId: string) {
+    const entry = libraryRoles.find((r) => r.id === roleId);
     if (!entry || selected === null) return;
     if (entry.model.trim() === "") {
       setNotice(`Role ${entry.id} has no model set — set one in the Roles library before using it here.`);
@@ -692,7 +944,147 @@ export default function BuilderPage() {
     setNotice("Loop-back removed.");
   }
 
-  async function copyPath(text: string) {    setCopied(false);
+  // Save gating (PBI-070): Save stays disabled until a client pass on
+  // the exact current key. Edits stale the key; Validate refreshes it.
+  const current = currentValidation();
+  const saveBlockReason =
+    saving || validating
+      ? "Working…"
+      : methodology === null
+        ? "Loading…"
+        : lastValidation === null
+          ? "Run Validate first."
+          : lastValidation.key !== current.key
+            ? "Canvas changed since validation — re-run Validate."
+            : lastValidation.errors.length > 0
+              ? lastValidation.errors[0]
+              : null;
+  const saveBlocked = saveBlockReason !== null;
+
+  async function onConfirmDefault() {
+    setDefaultOpen(false);
+    setError(null);
+    try {
+      await setDefaultMethodology(id);
+      // Other methodologies sharing a mode lose the flag server-side;
+      // this page only ever shows one doc, so mark it directly.
+      setMethodology((m) => (m === null ? m : { ...m, is_default: true }));
+      setNotice("Set as the default methodology.");
+      toast.success("Set as the default methodology.");
+    } catch (err: unknown) {
+      const detail = err instanceof Error ? err.message : "set-default failed";
+      setError(detail);
+      toast.error(detail);
+    }
+  }
+
+  function openDuplicate() {
+    setDuplicateId(`${id}-copy`);
+    setDuplicateError(null);
+    setDuplicateOpen(true);
+  }
+
+  async function onConfirmDuplicate() {
+    const newId = duplicateId.trim();
+    if (newId === "") {
+      setDuplicateError("Give the copy an id.");
+      return;
+    }
+    let built: { doc: Record<string, unknown>; warnings: string[] };
+    try {
+      built = buildToolbarDoc(toolbarInputs());
+    } catch (err: unknown) {
+      // Duplicating a broken canvas just files a broken copy.
+      setDuplicateError(err instanceof Error ? err.message : "invalid canvas");
+      return;
+    }
+    // Deep copy through JSON (methodology docs are JSON-safe): later
+    // edits to the copy can never alias the original's refs.
+    const copy = JSON.parse(JSON.stringify(built.doc)) as Record<string, unknown>;
+    copy.id = newId;
+    copy.name = `${typeof copy.name === "string" && copy.name !== "" ? copy.name : newId} (copy)`;
+    copy.is_default = false;
+    setDuplicating(true);
+    setDuplicateError(null);
+    try {
+      const created = await createMethodology(copy);
+      setDuplicateOpen(false);
+      toast.success(`Duplicated as ${created.id}.`);
+      router.push(`/settings/methodologies/${created.id}/builder`);
+    } catch (err: unknown) {
+      // 409 (id taken) et al keep the dialog open for a retry.
+      setDuplicateError(err instanceof Error ? err.message : "duplicate failed");
+    } finally {
+      setDuplicating(false);
+    }
+  }
+
+  async function openExport() {
+    setExportCopied(false);
+    try {
+      const built = buildToolbarDoc(toolbarInputs());
+      setExportError(null);
+      setExportText(await dumpMethodologyYaml(built.doc));
+    } catch (err: unknown) {
+      // Read-only inspection stays available for broken canvases only
+      // as the error naming what to fix — YAML of an unsavable doc
+      // would be a trap, not an escape hatch.
+      setExportText(null);
+      setExportError(err instanceof Error ? err.message : "invalid canvas");
+    }
+    setExportOpen(true);
+  }
+
+  async function copyExport() {
+    if (exportText === null) return;
+    setExportCopied(false);
+    try {
+      await navigator.clipboard.writeText(exportText);
+      setExportCopied(true);
+    } catch {
+      setExportCopied(false);
+    }
+  }
+
+  async function onImportApply() {
+    setImportError(null);
+    let parsed: unknown;
+    try {
+      parsed = await parseMethodologyYaml(importText);
+    } catch (err: unknown) {
+      setImportError(err instanceof Error ? err.message : "parse failed");
+      return;
+    }
+    const doc = parsed as Record<string, unknown>;
+    const stages = (doc?.workflow as { stages?: unknown } | undefined)?.stages;
+    if (doc === null || typeof doc !== "object" || !Array.isArray(stages)) {
+      setImportError("Import needs a methodology document with workflow.stages.");
+      return;
+    }
+    const foreignId = typeof doc.id === "string" ? doc.id : null;
+    // The canvas always saves into THIS methodology: a foreign id
+    // cannot survive the PUT (body id must match path), so say so
+    // instead of silently keeping or dropping it.
+    const detail = doc as unknown as MethodologyDetail;
+    loadDocIntoState(
+      { ...detail, id },
+      liteRoles(libraryRoles),
+      liteCodes(customNodes),
+    );
+    setSelectedId(null);
+    setLastValidation(null);
+    setServerVerdict(null);
+    setImportOpen(false);
+    setImportText("");
+    setNotice(
+      foreignId !== null && foreignId !== id
+        ? `Imported ${stages.length} stages (document id '${foreignId}' ignored — saving into this methodology). Validate, then Save.`
+        : `Imported ${stages.length} stages — Validate, then Save.`,
+    );
+  }
+
+  async function copyPath(text: string) {
+    setCopied(false);
     setCopyError(null);
     try {
       await navigator.clipboard.writeText(text);
@@ -753,11 +1145,63 @@ export default function BuilderPage() {
             ))}
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {saved && <span className="text-sm text-muted-foreground">Saved.</span>}
-          <Button className="min-h-[44px]" disabled={saving || methodology === null} onClick={() => void onSave()}>
+          <Button
+            variant="outline"
+            className="min-h-[44px]"
+            disabled={validating || methodology === null}
+            onClick={() => void onValidate()}
+          >
+            {validating ? "Validating…" : "Validate"}
+          </Button>
+          <Button
+            className="min-h-[44px]"
+            disabled={saveBlocked}
+            title={saveBlockReason ?? undefined}
+            onClick={() => void onSave()}
+          >
             {saving ? "Saving…" : "Save"}
           </Button>
+          <Button
+            variant="outline"
+            className="min-h-[44px]"
+            disabled={methodology === null}
+            onClick={() => setDefaultOpen(true)}
+          >
+            Set as default
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  variant="outline"
+                  size="icon"
+                  aria-label="More actions"
+                  className="min-h-[44px] min-w-[44px]"
+                >
+                  <MoreVertical className="size-4" aria-hidden />
+                </Button>
+              }
+            />
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => openDuplicate()}>
+                Duplicate
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => void openExport()}>
+                Export YAML
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => {
+                  setImportText("");
+                  setImportError(null);
+                  setImportOpen(true);
+                }}
+              >
+                Import YAML
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
@@ -772,6 +1216,13 @@ export default function BuilderPage() {
           <AlertTitle>Heads up</AlertTitle>
           <AlertDescription>{notice}</AlertDescription>
         </Alert>
+      )}
+      {methodology !== null && (
+        <ValidationToastList
+          errors={lastValidation?.errors ?? null}
+          warnings={lastValidation?.warnings ?? []}
+          server={serverVerdict}
+        />
       )}
 
       {methodology === null && !error ? (
@@ -1383,6 +1834,147 @@ export default function BuilderPage() {
           )}
         </SheetContent>
       </Sheet>
+
+      <Dialog open={defaultOpen} onOpenChange={setDefaultOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Set as default?</DialogTitle>
+            <DialogDescription>
+              Future runs without an explicit methodology will use this.
+              This changes real run behavior.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              className="min-h-[44px]"
+              onClick={() => setDefaultOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button className="min-h-[44px]" onClick={() => void onConfirmDefault()}>
+              Confirm default
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={duplicateOpen} onOpenChange={setDuplicateOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Duplicate methodology</DialogTitle>
+            <DialogDescription>
+              Deep copy under a new id — editing the copy never touches
+              the original.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-1">
+            <label htmlFor="duplicate-id" className="text-sm font-medium">
+              New id
+            </label>
+            <Input
+              id="duplicate-id"
+              className="min-h-[44px] font-mono"
+              value={duplicateId}
+              onChange={(e) => setDuplicateId(e.target.value)}
+            />
+          </div>
+          {duplicateError && (
+            <p role="alert" className="text-sm text-destructive">
+              {duplicateError}
+            </p>
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              className="min-h-[44px]"
+              onClick={() => setDuplicateOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="min-h-[44px]"
+              disabled={duplicating}
+              onClick={() => void onConfirmDuplicate()}
+            >
+              {duplicating ? "Duplicating…" : "Create copy"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={exportOpen} onOpenChange={setExportOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Export YAML</DialogTitle>
+            <DialogDescription>
+              Canonical text of the current canvas — re-imports
+              byte-identical.
+            </DialogDescription>
+          </DialogHeader>
+          {exportError ? (
+            <p role="alert" className="text-sm text-destructive">
+              {exportError}
+            </p>
+          ) : (
+            <Textarea
+              aria-label="Exported methodology YAML"
+              className="min-h-[30vh] font-mono text-xs"
+              readOnly
+              value={exportText ?? ""}
+              spellCheck={false}
+            />
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              className="min-h-[44px]"
+              disabled={exportText === null}
+              onClick={() => void copyExport()}
+            >
+              {exportCopied ? "Copied." : "Copy YAML"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={importOpen} onOpenChange={setImportOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Import YAML</DialogTitle>
+            <DialogDescription>
+              Paste a methodology document — it replaces the canvas
+              (Validate, then Save to persist).
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            aria-label="Methodology YAML to import"
+            className="min-h-[30vh] font-mono text-xs"
+            value={importText}
+            onChange={(e) => setImportText(e.target.value)}
+            spellCheck={false}
+          />
+          {importError && (
+            <p role="alert" className="text-sm text-destructive">
+              {importError}
+            </p>
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              className="min-h-[44px]"
+              onClick={() => setImportOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button className="min-h-[44px]" onClick={() => void onImportApply()}>
+              Apply to canvas
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Toaster />
     </div>
   );
 }

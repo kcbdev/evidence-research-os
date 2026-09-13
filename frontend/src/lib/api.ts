@@ -717,3 +717,49 @@ export function listConditionFields(): Promise<ConditionField[]> {
   // LabProjectState fields loop conditions read at runtime.
   return get<ConditionField[]>("/api/v1/methodologies/condition-fields");
 }
+
+// --- Toolbar (PBI-070 appends validate/duplicate/export/import only) ---
+
+export interface ValidateResult {
+  valid: boolean;
+  id: string;
+}
+
+export function validateMethodology(id: string): Promise<ValidateResult> {
+  // Validation without saving — but note the endpoint judges the
+  // STORED document, not unsaved canvas state: the toolbar pairs it
+  // with client-side checks over the live canvas (server verdict is
+  // informational until the next save; save-time 422s still surface).
+  return postValidate<ValidateResult>(
+    `/api/v1/methodologies/${encodeURIComponent(id)}/validate`,
+  );
+}
+
+async function postValidate<T>(path: string): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, { method: "POST" });
+  if (!res.ok) {
+    throw new Error(`POST ${path}: ${res.status} — ${await res.text()}`);
+  }
+  return (await res.json()) as T;
+}
+
+export function createMethodology(doc: unknown): Promise<MethodologyDetail> {
+  // POST a full methodology document (Duplicate builds the copy
+  // client-side — deep-copied, re-identified — and creates it here).
+  return writeMethodologyDoc("POST", "/api/v1/methodologies", doc, "Duplicate methodology");
+}
+
+export async function dumpMethodologyYaml(doc: unknown): Promise<string> {
+  // Export: canonical YAML text of a canvas-built document (dynamic
+  // import keeps the yaml chunk off the initial bundle, same as the
+  // new/editor pages).
+  const { default: yaml } = await import("yaml");
+  return yaml.stringify(doc);
+}
+
+export async function parseMethodologyYaml(text: string): Promise<unknown> {
+  // Import: raw text back into a document object. Shape errors throw
+  // here (caught by the dialog — canvas state is never half-written).
+  const { default: yaml } = await import("yaml");
+  return yaml.parse(text);
+}
