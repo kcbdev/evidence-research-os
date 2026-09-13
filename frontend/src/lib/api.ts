@@ -370,7 +370,7 @@ export function listMethodologies(): Promise<MethodologySummary[]> {
 }
 
 export interface MethodologyDetail extends MethodologySummary {
-  workflow: { stages: { id: string; node: string; roles?: string[]; loop_while?: string | null; loop_condition?: string | null; loop_target?: string | null; route?: string | null; interrupt?: boolean }[] };
+  workflow: { stages: { id: string; node: string; roles?: string[]; loop_while?: string | null; loop_condition?: string | null; loop_target?: string | null; loop_always?: string | null; route?: string | null; interrupt?: boolean }[] };
   tools: { enabled: string[] };
   prompts: { set: string; overrides: Record<string, string> };
   skills: Record<string, string[]>;

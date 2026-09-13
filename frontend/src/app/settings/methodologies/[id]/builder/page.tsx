@@ -73,9 +73,10 @@ import {
   type ToolRow,
 } from "@/lib/api";
 import {
+  applyLoopConnect,
   bridgeDeletions,
+  chainTailId,
   connectConstrained,
-  connectLoop,
   embedDiffers,
   isLoopEdge,
   LOOP_HANDLE_ID,
@@ -231,6 +232,11 @@ export default function BuilderPage() {
   useEffect(() => {
     lastEdgesRef.current = edges;
   }, [edges]);
+  // Same staleness problem for stageMap in onConnect's loop branch.
+  const lastStageMapRef = useRef<Record<string, StageSpecLike>>({});
+  useEffect(() => {
+    lastStageMapRef.current = stageMap;
+  }, [stageMap]);
   // The Saved indicator is only true for the exact saved state.
   // nodes/edges/name/modes cover structural edits; embed and flag
   // mutations clear it explicitly at their call sites (a deps entry on
@@ -304,30 +310,19 @@ export default function BuilderPage() {
   // loop-back and open its Condition Builder.
   const onConnect = useCallback((conn: Connection) => {
     if (conn.sourceHandle === LOOP_HANDLE_ID) {
-      const { edges: next, replaced } = connectLoop(
-        // read current edges via ref to avoid stale closures
-        lastEdgesRef.current,
-        { source: conn.source, target: conn.target },
-      );
-      setEdges(next);
-      if (conn.source !== null && conn.target !== null) {
-        const sid = conn.source;
-        const target = conn.target;
-        setStageMap((m) => {
-          const cur = m[sid];
-          if (!cur) return m;
-          return { ...m, [sid]: { ...cur, loop_target: target } };
-        });
-        setSaved(false);
-        // A loop-back without a condition is meaningless: open the
-        // inspector straight at the Condition Builder.
-        setSelectedId(sid);
-      }
-      setNotice(
-        replaced
-          ? "Replaced the existing loop-back — one loop per stage."
-          : null,
-      );
+      // Pure transition (tested in methodology-graph.test.ts): the
+      // page only applies the returned state. A loop-back without a
+      // condition is meaningless, so the source inspector opens
+      // straight at the Condition Builder.
+      const r = applyLoopConnect(lastEdgesRef.current, lastStageMapRef.current, {
+        source: conn.source,
+        target: conn.target,
+      });
+      setEdges(r.edges);
+      setStageMap(r.stageMap);
+      setSaved(false);
+      if (r.selectId !== null) setSelectedId(r.selectId);
+      setNotice(r.notice);
       return;
     }
     const { edges: next, replaced } = connectConstrained(
@@ -376,11 +371,11 @@ export default function BuilderPage() {
     ]);
     // Appending extends the chain: a single tail connects straight to
     // the new node. Multiple tails (or none) leave the node floating —
-    // save validation names it instead of guessing.
-    const sources = new Set(edges.map((e) => e.source));
-    const tails = nodes.map((n) => n.id).filter((nid) => !sources.has(nid));
-    if (tails.length === 1) {
-      const tail = tails[0];
+    // save validation names it instead of guessing. Loop edges are not
+    // chain links (chainTailId ignores them): a looped tail still
+    // extends, or appended nodes strand after every loop is drawn.
+    const tail = chainTailId(nodes, edges);
+    if (tail !== null) {
       setEdges((es) => [...es, { id: `e-${tail}-${stageId}`, source: tail, target: stageId }]);
     }
   }

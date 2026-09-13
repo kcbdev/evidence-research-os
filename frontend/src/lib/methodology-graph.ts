@@ -529,6 +529,23 @@ export function validateLoops(
   for (const n of nodes) {
     const s = stageMap[n.id];
     if (s === undefined) continue;
+    // Two branch forms on one stage is a validation error (the
+    // compiler's mutual exclusivity, compile.py) — fail loud here
+    // naming the stage instead of attempting a PUT the server 422s.
+    const forms = [
+      s.loop_while != null ? "loop_while" : null,
+      typeof s.loop_condition === "string" && s.loop_condition.trim() !== ""
+        ? "loop_condition"
+        : null,
+      s.loop_always != null ? "loop_always" : null,
+      s.route != null ? "route" : null,
+    ].filter((f) => f !== null);
+    if (forms.length > 1) {
+      return (
+        `Stage ${n.id} sets both ${forms[0]} and ${forms[1]} — ` +
+        `loop_while, loop_condition, loop_always and route are mutually exclusive.`
+      );
+    }
     if (s.loop_while != null) continue; // registry-owned, exempt
     const cond =
       typeof s.loop_condition === "string" && s.loop_condition.trim() !== ""
@@ -554,4 +571,57 @@ export function validateLoops(
     }
   }
   return null;
+}
+
+/**
+ * Chain-tail lookup for palette placement (PBI-068 fix): appending
+ * extends the chain from the single tail (a node with no sequential
+ * edge out). Loop edges are conditional branches, not chain links —
+ * counting them as links strands appended nodes. Returns the tail id,
+ * or null when there isn't exactly one.
+ */
+export function chainTailId(nodes: StageNode[], edges: Edge[]): string | null {
+  const sources = new Set(
+    edges.filter((e) => !isLoopEdge(e)).map((e) => e.source),
+  );
+  const tails = nodes.map((n) => n.id).filter((nid) => !sources.has(nid));
+  return tails.length === 1 ? tails[0] : null;
+}
+
+export interface LoopConnectResult {
+  edges: Edge[];
+  stageMap: Record<string, StageSpecLike>;
+  /** Source stage to select (opens its inspector at the builder). */
+  selectId: string | null;
+  notice: string | null;
+}
+
+/**
+ * Loop-handle connect as a pure transition (PBI-068): one loop per
+ * source (replaced, said aloud), loop_target written onto the source
+ * stage, inspector opened at the Condition Builder. The page applies
+ * the returned state; jsdom-unreachable handle wiring stays this
+ * thin. No-op (all nulls, same references) on null endpoints.
+ */
+export function applyLoopConnect(
+  edges: Edge[],
+  stageMap: Record<string, StageSpecLike>,
+  conn: HoverConnection,
+): LoopConnectResult {
+  if (conn.source === null || conn.target === null) {
+    return { edges, stageMap, selectId: null, notice: null };
+  }
+  const looped = connectLoop(edges, conn);
+  const cur = stageMap[conn.source];
+  return {
+    edges: looped.edges,
+    stageMap:
+      cur === undefined
+        ? stageMap
+        : { ...stageMap, [conn.source]: { ...cur, loop_target: conn.target } },
+    selectId: conn.source,
+    notice: looped.replaced
+      ? "Replaced the existing loop-back — one loop per stage."
+      : null,
+  };
 }

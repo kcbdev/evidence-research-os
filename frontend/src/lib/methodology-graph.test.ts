@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  applyLoopConnect,
   bridgeDeletions,
+  chainTailId,
   compileCondition,
   connectConstrained,
   connectLoop,
@@ -376,5 +378,73 @@ describe("conditions and loop-backs", () => {
     const back = orderStages(nodes, edges, map);
     expect("stages" in back && back.stages[0]).toBe(map.a);
     expect("stages" in back && back.stages[0]).toMatchObject({ loop_always: "b" });
+  });
+
+  it("validateLoops rejects dual branch forms naming the stage", () => {
+    const nodes = flowNodes(["a", "b"]);
+    const edges = [{ id: `${LOOP_EDGE_PREFIX}b-a`, source: "b", target: "a" }];
+    const dual: Record<string, StageSpecLike> = {
+      a: { id: "a", node: "plan" },
+      b: {
+        id: "b",
+        node: "plan",
+        loop_while: "has_open",
+        loop_condition: "len(open_contradictions) > 0",
+        loop_target: "a",
+      },
+    };
+    expect(validateLoops(nodes, edges, dual)).toMatch(
+      /Stage b sets both loop_while and loop_condition/,
+    );
+    expect(validateLoops(nodes, edges, dual)).toMatch(/mutually exclusive/);
+  });
+
+  it("chainTailId ignores loop edges when finding the append point", () => {
+    const nodes = flowNodes(["a", "b"]);
+    const chain = [{ id: "e-ab", source: "a", target: "b" }];
+    expect(chainTailId(nodes, chain)).toBe("b");
+    // A loop-back out of the tail must not strand appends: the tail
+    // is still the tail.
+    expect(
+      chainTailId(nodes, [
+        ...chain,
+        { id: `${LOOP_EDGE_PREFIX}b-a`, source: "b", target: "a" },
+      ]),
+    ).toBe("b");
+    expect(chainTailId(nodes, [])).toBeNull();
+    expect(
+      chainTailId(flowNodes(["a", "b", "c"]), [
+        { id: "e-ab", source: "a", target: "b" },
+      ]),
+    ).toBeNull();
+  });
+
+  it("applyLoopConnect writes target, selects source, and says replacements aloud", () => {
+    const map: Record<string, StageSpecLike> = {
+      a: { id: "a", node: "plan" },
+      b: { id: "b", node: "plan" },
+    };
+    const first = applyLoopConnect([], map, { source: "b", target: "a" });
+    expect(first.edges.filter(isLoopEdge).map((e) => [e.source, e.target])).toEqual([
+      ["b", "a"],
+    ]);
+    expect(first.stageMap.b).toMatchObject({ loop_target: "a" });
+    expect(first.selectId).toBe("b");
+    expect(first.notice).toBeNull();
+    // Original map untouched (pure).
+    expect(map.b).not.toHaveProperty("loop_target");
+    const second = applyLoopConnect(first.edges, first.stageMap, {
+      source: "b",
+      target: "b",
+    });
+    expect(second.edges.filter(isLoopEdge).map((e) => [e.source, e.target])).toEqual([
+      ["b", "b"],
+    ]);
+    expect(second.notice).toMatch(/Replaced the existing loop-back/);
+    const noop = applyLoopConnect([], map, { source: null, target: "a" });
+    expect(noop.edges).toEqual([]);
+    expect(noop.stageMap).toBe(map);
+    expect(noop.selectId).toBeNull();
+    expect(noop.notice).toBeNull();
   });
 });

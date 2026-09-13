@@ -54,7 +54,6 @@ export default function ConditionBuilder({
   onRemoveLoop,
 }: ConditionBuilderProps) {
   const [advanced, setAdvanced] = useState(false);
-  const [draft, setDraft] = useState<string | null>(null);
 
   const conflict = loopWhile !== null;
   // Derived, never stored: rows always reflect the stored expression,
@@ -178,7 +177,10 @@ export default function ConditionBuilder({
                   value={typeof row.value === "number" ? row.value : 0}
                   onChange={(e) => {
                     const n = Number.parseInt(e.target.value, 10);
-                    updateRow(i, { value: Number.isNaN(n) ? 0 : n });
+                    // Counts are list lengths: clamp at zero (a
+                    // negative compiles but can never go false — an
+                    // always-true loop by typo).
+                    updateRow(i, { value: Number.isNaN(n) ? 0 : Math.max(0, n) });
                   }}
                 />
               ) : (
@@ -250,11 +252,7 @@ export default function ConditionBuilder({
           size="sm"
           className="min-h-[44px] justify-start px-0"
           aria-expanded={advanced}
-          onClick={() => {
-            if (!advanced) setDraft(expression ?? "");
-            else setDraft(null);
-            setAdvanced(!advanced);
-          }}
+          onClick={() => setAdvanced(!advanced)}
         >
           {advanced ? "▾" : "▸"} Advanced: edit as expression
         </Button>
@@ -265,10 +263,13 @@ export default function ConditionBuilder({
               className="font-mono text-sm"
               rows={3}
               spellCheck={false}
-              value={draft ?? ""}
+              // Bound straight to the stored expression (no draft
+              // copy): row edits and keystrokes share one source, so
+              // neither can clobber the other mid-edit.
+              value={expression ?? ""}
               onChange={(e) => {
-                setDraft(e.target.value);
-                onChange(e.target.value === "" ? null : e.target.value);
+                const v = e.target.value;
+                onChange(v.trim() === "" ? null : v);
               }}
             />
             <p className="text-xs text-muted-foreground">

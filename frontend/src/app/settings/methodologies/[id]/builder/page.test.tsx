@@ -705,6 +705,12 @@ describe("BuilderPage conditions", () => {
     expect(
       within(sheet).getByText(/too complex to edit visually/),
     ).toBeDefined();
+    // The rows must stay disabled: re-enabling edits would recompile
+    // and silently discard the `or` the rows cannot represent.
+    expect(
+      (within(sheet).getByRole("button", { name: "+ AND" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
     fireEvent.click(
       within(sheet).getByRole("button", { name: /Advanced: edit as expression/ }),
     );
@@ -740,6 +746,10 @@ describe("BuilderPage conditions", () => {
       (within(sheet).getByRole("button", { name: "+ AND" }) as HTMLButtonElement)
         .disabled,
     ).toBe(true);
+    // The conflict must also hold at save: no PUT, client names plan.
+    fireEvent.keyDown(sheet, { key: "Escape", code: "Escape" });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText(/both loop_while and loop_condition/)).toBeDefined();
     expect(puts.length).toBe(0);
   });
 
@@ -765,9 +775,10 @@ describe("BuilderPage conditions", () => {
     expect(puts.length).toBe(0);
   });
 
-  it("hand-authored loop_always round-trips untouched with an inspector note", async () => {    const doc = loopMethodology([
+  it("hand-authored loop_always round-trips untouched with an inspector note", async () => {
+    const doc = loopMethodology([
       { id: "plan", node: "plan", loop_always: "synthesis" },
-      { id: "synthesis", node: "synthesis" },
+      { id: "synthesis", node: "synthesis", route: "route_audit" },
       { id: "final_output", node: "final_output" },
     ]);
     const { puts, handler } = libraryStub((url, init) => {
@@ -788,9 +799,17 @@ describe("BuilderPage conditions", () => {
     const body = puts[0].body as {
       workflow: { stages: Record<string, unknown>[] };
     };
-    expect(body.workflow.stages[0]).toMatchObject({
+    // Exact shapes: the canvas must neither inject nor drop sibling
+    // keys on hand-owned stages (subset matching would hide both).
+    expect(body.workflow.stages[0]).toEqual({
       id: "plan",
+      node: "plan",
       loop_always: "synthesis",
+    });
+    expect(body.workflow.stages[1]).toEqual({
+      id: "synthesis",
+      node: "synthesis",
+      route: "route_audit",
     });
   });
 
