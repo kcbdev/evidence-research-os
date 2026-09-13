@@ -91,7 +91,7 @@ stays `In Progress` until the batch review sorts it).
 | PBI-062 | Done | | |
 | PBI-063 | Done (2026-09-12, agentic) | PBI-064 | Done (2026-09-12, agentic) |
 | PBI-065 | Done (2026-09-12, agentic) | PBI-066 | Done (2026-09-12, agentic) |
-| PBI-067 | Active (role/code nodes) | PBI-068 | Proposed (conditions) |
+| PBI-067 | Done (2026-09-13, agentic) | PBI-068 | Active (conditions) |
 | PBI-069 | Proposed (tabs + retire editor) | PBI-070 | Proposed (toolbar + witness) |
 
 Chain protocol (2026-09-10/11, user-directed, complete): PBIs executed
