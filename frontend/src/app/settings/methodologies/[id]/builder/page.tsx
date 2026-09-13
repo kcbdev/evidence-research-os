@@ -357,7 +357,7 @@ export default function BuilderPage() {
     codes: CustomNodeLite[],
   ) {
     setMethodology(doc);
-    setName(doc.name);
+    setName(doc.name ?? "");
     setDescription(doc.description ?? "");
     setModes(doc.compatible_modes ?? []);
     setModels({ ...(doc.models ?? {}) });
@@ -994,7 +994,7 @@ export default function BuilderPage() {
     try {
       built = buildToolbarDoc(toolbarInputs());
     } catch (err: unknown) {
-      // Duplicating a broken canvas just files a broken copy.
+      // Duplicating a broken canvas is refused (no broken copies filed).
       setDuplicateError(err instanceof Error ? err.message : "invalid canvas");
       return;
     }

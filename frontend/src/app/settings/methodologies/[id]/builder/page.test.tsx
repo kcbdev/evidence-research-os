@@ -1248,10 +1248,23 @@ describe("BuilderPage toolbar", () => {
     expect(body.budget_defaults).toEqual(METHODOLOGY.budget_defaults);
   });
 
-  it("export YAML re-imports byte-identical", async () => {
-    const text = await dumpMethodologyYaml(METHODOLOGY);
-    expect(text).toContain("workflow:");
-    expect(await parseMethodologyYaml(text)).toEqual(METHODOLOGY);
+  it("export YAML shows the canvas-built doc and re-imports identical", async () => {
+    stubFetch((url, init) => libraryFallbackWithValidate(url, init) ?? METHODOLOGY);
+    render(<BuilderPage />);
+    await screen.findByTestId("stage-card-plan");
+    fireEvent.click(screen.getByRole("button", { name: "More actions" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Export YAML" }));
+    const box = (await screen.findByLabelText(
+      "Exported methodology YAML",
+    )) as HTMLTextAreaElement;
+    expect(box.value).toContain("workflow:");
+    // The dialog text is the canvas-built doc (custom_roles: [] proves
+    // it went through buildToolbarDoc — a raw echo of the fixture has
+    // no such key), and it parses back losslessly.
+    expect(await parseMethodologyYaml(box.value)).toEqual({
+      ...METHODOLOGY,
+      custom_roles: [],
+    });
   });
 
   it("import YAML replaces the canvas and forces re-validation", async () => {
