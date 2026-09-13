@@ -802,21 +802,28 @@ export default function BuilderPage() {
                 </Select>
               </div>
               <div className="flex flex-col gap-1">
-              <label className="flex min-h-[44px] cursor-pointer items-center gap-2 text-sm">
-                <Switch
-                  checked={modelOverrideOn}
-                  onCheckedChange={(v) => {
-                    setModelOverrideOn(v);
-                    if (!v && selectedLibrary !== null) {
-                      // OFF reverts to the library snapshot (F1: hiding
-                      // the input must never keep stale values).
-                      setModelValue(selectedLibrary.model);
-                      applyRoleOverride({ model: selectedLibrary.model });
-                    }
-                  }}
-                />
-                Override model for this methodology
-              </label>
+                <label className="flex min-h-[44px] cursor-pointer items-center gap-2 text-sm">
+                  <Switch
+                    checked={modelOverrideOn}
+                    onCheckedChange={(v) => {
+                      setModelOverrideOn(v);
+                      if (!v) {
+                        if (selectedLibrary !== null && selectedLibrary.model.trim() !== "") {
+                          // OFF reverts to the library snapshot (F1: hiding
+                          // the input must never keep stale values).
+                          setModelValue(selectedLibrary.model);
+                          applyRoleOverride({ model: selectedLibrary.model });
+                        } else {
+                          // Library model itself empty: reverting would
+                          // just re-file the refused value — stay ON.
+                          setModelOverrideOn(true);
+                          setNotice("Role has no model in the library — override stays on.");
+                        }
+                      }
+                    }}
+                  />
+                  Override model for this methodology
+                </label>
                 {modelOverrideOn && (
                   <>
                     <ModelSelector
@@ -828,7 +835,8 @@ export default function BuilderPage() {
                       }}
                     />
                     <p className="text-xs text-muted-foreground">
-                      Empty means inherit from Settings → Models.
+                      Must be a real model id — empty is refused (nothing
+                      resolves an inherit marker at run time).
                     </p>
                   </>
                 )}

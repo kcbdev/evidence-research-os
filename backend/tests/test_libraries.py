@@ -211,3 +211,18 @@ def test_custom_nodes_annassign_and_unreadable(tmp_path, monkeypatch):
     assert by_file["annotated.py"]["description"] == "Annotated node."
     assert by_file["broken.py"]["node_id"] is None
     assert "does not parse" in by_file["broken.py"]["load_error"]
+
+
+def test_custom_nodes_undecodable_file_is_load_error(tmp_path, monkeypatch):
+    import app.graph.custom_nodes as custom_nodes_mod
+    d = tmp_path / "cn"
+    d.mkdir()
+    (d / "binary.py").write_bytes(b"\xff\xfe\x00not utf-8")
+    monkeypatch.setattr(custom_nodes_mod, "CUSTOM_NODES_DIR", d)
+    from fastapi.testclient import TestClient
+    from app.main import create_app
+    with TestClient(create_app(tmp_path)) as c:
+        rows = c.get("/api/v1/custom-nodes").json()
+    assert len(rows) == 1
+    assert rows[0]["node_id"] is None
+    assert "unreadable" in rows[0]["load_error"]

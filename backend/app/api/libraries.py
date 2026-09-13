@@ -262,7 +262,10 @@ def list_custom_nodes():
                 continue
             try:
                 text = f.read_text(encoding="utf-8")
-            except OSError as exc:
+            except (OSError, ValueError) as exc:
+                # ValueError covers UnicodeDecodeError (a subclass):
+                # undecodable files are load_error rows, never a
+                # listing-wide 500.
                 rows.append(CustomNodeInfo(
                     node_id=None, filename=f.name, description="",
                     load_error=f"{f.name} unreadable: {exc}"))
