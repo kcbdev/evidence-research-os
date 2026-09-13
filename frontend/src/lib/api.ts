@@ -704,3 +704,16 @@ async function writeMethodologyDoc(
   }
   return (await res.json()) as MethodologyDetail;
 }
+
+// --- Condition Builder (PBI-068 appends its fetch only) ---
+
+export interface ConditionField {
+  field: string;
+  type: "count" | "bool";
+}
+
+export function listConditionFields(): Promise<ConditionField[]> {
+  // Reference data for the ConditionBuilder Field dropdown: the
+  // LabProjectState fields loop conditions read at runtime.
+  return get<ConditionField[]>("/api/v1/methodologies/condition-fields");
+}

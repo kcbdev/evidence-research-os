@@ -1,12 +1,21 @@
 import { describe, expect, it } from "vitest";
 import {
   bridgeDeletions,
+  compileCondition,
   connectConstrained,
+  connectLoop,
+  defaultRowFor,
   embedDiffers,
+  isLoopEdge,
+  LOOP_EDGE_PREFIX,
   methodologyToFlow,
   nextStageId,
+  operatorsForFieldType,
   orderStages,
+  parseCondition,
   stageLabel,
+  validateLoops,
+  type ConditionFieldLite,
   type StageNode,
   type StageSpecLike,
 } from "./methodology-graph";
@@ -162,5 +171,210 @@ describe("methodology-graph", () => {
     expect(embedDiffers({ model: "m", tools: ["a"] }, lib)).toBe(true);
     expect(embedDiffers(undefined, lib)).toBe(true);
     expect(embedDiffers({ model: "m", tools: [] }, undefined)).toBe(true);
+  });
+});
+
+const FIELDS: ConditionFieldLite[] = [
+  { field: "open_contradictions", type: "count" },
+  { field: "pending_tasks", type: "count" },
+  { field: "audit_passed", type: "bool" },
+];
+
+function flowNodes(ids: string[]): StageNode[] {
+  return ids.map((id, i) => ({
+    id,
+    type: "stage",
+    position: { x: 0, y: i * 140 },
+    data: { stageId: id, node: "plan", label: id, kind: "stage" as const },
+  }));
+}
+
+describe("conditions and loop-backs", () => {
+  it("compiles rows to the backend Tier B expression form", () => {
+    expect(
+      compileCondition([
+        { field: "open_contradictions", op: ">", value: 0 },
+      ]),
+    ).toBe("len(open_contradictions) > 0");
+    expect(
+      compileCondition([{ field: "audit_passed", op: "is false", value: false }]),
+    ).toBe("audit_passed == False");
+    expect(
+      compileCondition([
+        { field: "open_contradictions", op: ">", value: 0 },
+        { field: "audit_passed", op: "is true", value: true },
+      ]),
+    ).toBe("len(open_contradictions) > 0 and audit_passed == True");
+    expect(compileCondition([])).toBeNull();
+  });
+
+  it("filters operators by field type (counts never offer contains)", () => {
+    expect(operatorsForFieldType("count")).toEqual([">", "<", "==", "!="]);
+    expect(operatorsForFieldType("count")).not.toContain("contains");
+    expect(operatorsForFieldType("bool")).toEqual(["is true", "is false"]);
+  });
+
+  it("round-trips simple single and AND-chained expressions", () => {
+    expect(parseCondition("len(open_contradictions) > 0", FIELDS)).toEqual([
+      { field: "open_contradictions", op: ">", value: 0 },
+    ]);
+    expect(
+      parseCondition(
+        "len(pending_tasks) != 2 and audit_passed == True",
+        FIELDS,
+      ),
+    ).toEqual([
+      { field: "pending_tasks", op: "!=", value: 2 },
+      { field: "audit_passed", op: "is true", value: true },
+    ]);
+  });
+
+  it("refuses complex, unknown, or type-mismatched expressions instead of rewriting", () => {
+    expect(
+      parseCondition("len(open_contradictions) > 0 or audit_passed == True", FIELDS),
+    ).toBeNull();
+    expect(parseCondition("not audit_passed", FIELDS)).toBeNull();
+    expect(parseCondition("len(mystery_list) > 0", FIELDS)).toBeNull();
+    expect(parseCondition("len(audit_passed) > 0", FIELDS)).toBeNull();
+    expect(parseCondition("open_contradictions == True", FIELDS)).toBeNull();
+    expect(parseCondition("definitely not an expression ((((", FIELDS)).toBeNull();
+    expect(parseCondition("", FIELDS)).toBeNull();
+  });
+
+  it("connectLoop tags one dashed loop per source and never touches the chain", () => {
+    const chain = [{ id: "e-ab", source: "a", target: "b" }];
+    const first = connectLoop(chain, { source: "b", target: "a" });
+    expect(first.replaced).toBe(false);
+    expect(first.edges).toHaveLength(2);
+    const loop = first.edges.find((e) => e.source === "b");
+    expect(loop?.id.startsWith(LOOP_EDGE_PREFIX)).toBe(true);
+    expect(isLoopEdge(loop!)).toBe(true);
+    expect(isLoopEdge(chain[0])).toBe(false);
+    expect(loop?.style).toMatchObject({ strokeDasharray: expect.stringContaining("6") });
+    // A second loop from the same stage replaces, keeping the chain.
+    const second = connectLoop(first.edges, { source: "b", target: "b" });
+    expect(second.replaced).toBe(true);
+    expect(second.edges.filter(isLoopEdge)).toHaveLength(1);
+    expect(second.edges.map((e) => [e.source, e.target])).toContainEqual(["a", "b"]);
+    expect(connectLoop(chain, { source: null, target: "a" }).edges).toBe(chain);
+  });
+
+  it("connectConstrained and bridgeDeletions ignore loop edges", () => {
+    const edges = [
+      { id: "e-ab", source: "a", target: "b" },
+      { id: `${LOOP_EDGE_PREFIX}b-a`, source: "b", target: "a" },
+    ];
+    // Sequential rewire prunes the chain link, keeps the loop.
+    const { edges: rewired, replaced } = connectConstrained(edges, {
+      source: "a",
+      target: "c",
+    });
+    expect(replaced).toBe(true);
+    expect(rewired.filter(isLoopEdge)).toHaveLength(1);
+    expect(rewired.filter((e) => !isLoopEdge(e)).map((e) => [e.source, e.target])).toEqual([
+      ["a", "c"],
+    ]);
+    // Deleting across a loop drops it instead of re-hanging it.
+    const dropped = bridgeDeletions(
+      [...edges, { id: "e-bc", source: "b", target: "c" }],
+      ["b"],
+    );
+    expect(dropped.some(isLoopEdge)).toBe(false);
+  });
+
+  it("orderStages walks past backward loops instead of crying cycle", () => {
+    const nodes = flowNodes(["a", "b", "c"]);
+    const edges = [
+      { id: "e-ab", source: "a", target: "b" },
+      { id: "e-bc", source: "b", target: "c" },
+      { id: `${LOOP_EDGE_PREFIX}b-a`, source: "b", target: "a" },
+    ];
+    const map: Record<string, StageSpecLike> = {
+      a: { id: "a", node: "plan" },
+      b: {
+        id: "b",
+        node: "plan",
+        loop_condition: "len(open_contradictions) > 0",
+        loop_target: "a",
+      },
+      c: { id: "c", node: "plan" },
+    };
+    const back = orderStages(nodes, edges, map);
+    expect("stages" in back && back.stages.map((s) => s.id)).toEqual(["a", "b", "c"]);
+  });
+
+  it("methodologyToFlow draws canvas-owned loops and skips hand-owned forms", () => {
+    const m = methodology(["a", "b", "c"]);
+    m.workflow.stages = [
+      { id: "a", node: "plan" },
+      {
+        id: "b",
+        node: "plan",
+        loop_condition: "len(open_contradictions) > 0",
+        loop_target: "a",
+      } as unknown as { id: string; node: string },
+      { id: "c", node: "plan", loop_while: "has_open", loop_target: "a" } as unknown as {
+        id: string;
+        node: string;
+      },
+    ];
+    const { edges } = methodologyToFlow(m);
+    const loops = edges.filter(isLoopEdge);
+    expect(loops.map((e) => [e.source, e.target])).toEqual([["b", "a"]]);
+    expect(loops[0].style).toMatchObject({ stroke: "#f59e0b" });
+  });
+
+  it("validateLoops fails loud on every split-brain shape, passes the happy path", () => {
+    const nodes = flowNodes(["a", "b"]);
+    const good: Record<string, StageSpecLike> = {
+      a: { id: "a", node: "plan" },
+      b: {
+        id: "b",
+        node: "plan",
+        loop_condition: "len(open_contradictions) > 0",
+        loop_target: "a",
+      },
+    };
+    const goodEdges = [{ id: `${LOOP_EDGE_PREFIX}b-a`, source: "b", target: "a" }];
+    expect(validateLoops(nodes, goodEdges, good)).toBeNull();
+    // Edge without condition.
+    expect(
+      validateLoops(nodes, goodEdges, {
+        a: good.a,
+        b: { id: "b", node: "plan", loop_target: "a" },
+      }),
+    ).toMatch(/no condition/);
+    // Keys without edge.
+    expect(validateLoops(nodes, [], good)).toMatch(/no canvas edge/);
+    // Unknown target.
+    expect(
+      validateLoops(nodes, [], {
+        a: good.a,
+        b: {
+          id: "b",
+          node: "plan",
+          loop_condition: "len(open_contradictions) > 0",
+          loop_target: "ghost",
+        },
+      }),
+    ).toMatch(/unknown stage ghost/);
+    // Registry-owned stages are exempt.
+    expect(
+      validateLoops(nodes, [], {
+        a: good.a,
+        b: { id: "b", node: "plan", loop_while: "has_open", loop_target: "a" },
+      }),
+    ).toBeNull();
+  });
+
+  it("orderStages passes hand-owned keys through by reference", () => {
+    const { nodes, edges } = methodologyToFlow(methodology(["a", "b"]));
+    const map: Record<string, StageSpecLike> = {
+      a: { id: "a", node: "plan", loop_always: "b" },
+      b: { id: "b", node: "plan" },
+    };
+    const back = orderStages(nodes, edges, map);
+    expect("stages" in back && back.stages[0]).toBe(map.a);
+    expect("stages" in back && back.stages[0]).toMatchObject({ loop_always: "b" });
   });
 });

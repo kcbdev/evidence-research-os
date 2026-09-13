@@ -56,6 +56,14 @@ function stubFetch(handler: (url: string, init?: RequestInit) => unknown) {
 // Library endpoints the builder page loads alongside the methodology.
 // Old stubs answering METHODOLOGY for every URL would crash the page's
 // .map calls — route them to honest empty shapes instead.
+const CONDITION_FIELDS = [
+  { field: "open_contradictions", type: "count" },
+  { field: "pending_tasks", type: "count" },
+  { field: "audit_passed", type: "bool" },
+  { field: "escalate", type: "bool" },
+  { field: "needs_human_approval", type: "bool" },
+];
+
 function libraryFallback(url: string): unknown {
   if (url.includes("openrouter.ai")) return { data: [] };
   if (url.endsWith("/api/v1/roles")) return [];
@@ -63,6 +71,7 @@ function libraryFallback(url: string): unknown {
   if (url.endsWith("/api/v1/skills")) return [];
   if (url.endsWith("/api/v1/tools")) return [];
   if (url.endsWith("/api/v1/custom-nodes")) return [];
+  if (url.endsWith("/api/v1/methodologies/condition-fields")) return CONDITION_FIELDS;
   if (url.endsWith("/api/v1/methodologies")) return [];
   return undefined;
 }
@@ -313,6 +322,7 @@ function libraryStub(
         return [{ name: "grep_project", description: "g", source: "backend-local" }];
       }
       if (url.endsWith("/api/v1/custom-nodes")) return [CODE_NODE];
+      if (url.endsWith("/api/v1/methodologies/condition-fields")) return CONDITION_FIELDS;
       if (url.endsWith("/api/v1/methodologies")) return [];
     }
     if (init?.method === "PUT") {
@@ -625,5 +635,205 @@ describe("BuilderPage roles and code", () => {
     } finally {
       delete (navigator as unknown as Record<string, unknown>).clipboard;
     }
+  });
+});
+
+function loopMethodology(stages: Record<string, unknown>[]) {
+  return {
+    ...METHODOLOGY,
+    workflow: { stages },
+  };
+}
+
+describe("BuilderPage conditions", () => {
+  it("inspector shows condition rows and + AND extends the saved expression", async () => {
+    const doc = loopMethodology([
+      {
+        id: "plan",
+        node: "plan",
+        loop_condition: "len(open_contradictions) > 0",
+        loop_target: "synthesis",
+      },
+      { id: "synthesis", node: "synthesis" },
+      { id: "final_output", node: "final_output" },
+    ]);
+    const { puts, handler } = libraryStub((url, init) => {
+      if (!init?.method && url.endsWith("/api/v1/methodologies/m1")) return doc;
+      return undefined;
+    });
+    stubFetch(handler);
+    render(<BuilderPage />);
+    await screen.findByTestId("stage-card-plan");
+    fireEvent.click(screen.getByTestId("stage-card-plan"));
+    const sheet = await screen.findByRole("dialog", { name: "Plan" });
+    expect(within(sheet).getByText("Repeat this stage while:")).toBeDefined();
+    expect(within(sheet).getByText("→ synthesis")).toBeDefined();
+    fireEvent.click(within(sheet).getByRole("button", { name: "+ AND" }));
+    // The open Sheet inerts the background page — close it before Save.
+    fireEvent.keyDown(sheet, { key: "Escape", code: "Escape" });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await vi.waitFor(() => {
+      expect(puts.length).toBe(1);
+    });
+    const body = puts[0].body as {
+      workflow: { stages: { id: string; loop_condition?: string }[] };
+    };
+    expect(
+      body.workflow.stages.find((s) => s.id === "plan")?.loop_condition,
+    ).toBe("len(open_contradictions) > 0 and len(open_contradictions) > 0");
+  });
+
+  it("complex expressions disable the rows with the note, editable in advanced mode", async () => {
+    const doc = loopMethodology([
+      {
+        id: "plan",
+        node: "plan",
+        loop_condition: "len(open_contradictions) > 0 or audit_passed == True",
+        loop_target: "synthesis",
+      },
+      { id: "synthesis", node: "synthesis" },
+    ]);
+    const { handler } = libraryStub((url, init) => {
+      if (!init?.method && url.endsWith("/api/v1/methodologies/m1")) return doc;
+      return undefined;
+    });
+    stubFetch(handler);
+    render(<BuilderPage />);
+    await screen.findByTestId("stage-card-plan");
+    fireEvent.click(screen.getByTestId("stage-card-plan"));
+    const sheet = await screen.findByRole("dialog", { name: "Plan" });
+    expect(
+      within(sheet).getByText(/too complex to edit visually/),
+    ).toBeDefined();
+    fireEvent.click(
+      within(sheet).getByRole("button", { name: /Advanced: edit as expression/ }),
+    );
+    const box = within(sheet).getByLabelText("Loop condition expression");
+    expect((box as HTMLTextAreaElement).value).toContain(" or ");
+  });
+
+  it("registry loop_while conflicts with the builder instead of double-setting", async () => {
+    // Both branch forms set (hand-YAML): the canvas draws the
+    // condition edge and the builder shows the conflict instead of
+    // letting a second form accumulate.
+    const doc = loopMethodology([
+      {
+        id: "plan",
+        node: "plan",
+        loop_while: "has_open_contradictions",
+        loop_condition: "len(open_contradictions) > 0",
+        loop_target: "synthesis",
+      },
+      { id: "synthesis", node: "synthesis" },
+    ]);
+    const { puts, handler } = libraryStub((url, init) => {
+      if (!init?.method && url.endsWith("/api/v1/methodologies/m1")) return doc;
+      return undefined;
+    });
+    stubFetch(handler);
+    render(<BuilderPage />);
+    await screen.findByTestId("stage-card-plan");
+    fireEvent.click(screen.getByTestId("stage-card-plan"));
+    const sheet = await screen.findByRole("dialog", { name: "Plan" });
+    expect(within(sheet).getByText(/mutually exclusive/)).toBeDefined();
+    expect(
+      (within(sheet).getByRole("button", { name: "+ AND" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    expect(puts.length).toBe(0);
+  });
+
+  it("a loop pointing nowhere fails loud with no PUT", async () => {
+    const doc = loopMethodology([
+      {
+        id: "plan",
+        node: "plan",
+        loop_condition: "len(open_contradictions) > 0",
+        loop_target: "ghost",
+      },
+      { id: "synthesis", node: "synthesis" },
+    ]);
+    const { puts, handler } = libraryStub((url, init) => {
+      if (!init?.method && url.endsWith("/api/v1/methodologies/m1")) return doc;
+      return undefined;
+    });
+    stubFetch(handler);
+    render(<BuilderPage />);
+    await screen.findByTestId("stage-card-plan");
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText(/unknown stage ghost/)).toBeDefined();
+    expect(puts.length).toBe(0);
+  });
+
+  it("hand-authored loop_always round-trips untouched with an inspector note", async () => {    const doc = loopMethodology([
+      { id: "plan", node: "plan", loop_always: "synthesis" },
+      { id: "synthesis", node: "synthesis" },
+      { id: "final_output", node: "final_output" },
+    ]);
+    const { puts, handler } = libraryStub((url, init) => {
+      if (!init?.method && url.endsWith("/api/v1/methodologies/m1")) return doc;
+      return undefined;
+    });
+    stubFetch(handler);
+    render(<BuilderPage />);
+    await screen.findByTestId("stage-card-plan");
+    fireEvent.click(screen.getByTestId("stage-card-plan"));
+    const sheet = await screen.findByRole("dialog", { name: "Plan" });
+    expect(within(sheet).getByText(/Hand-authored loop_always/)).toBeDefined();
+    fireEvent.keyDown(sheet, { key: "Escape", code: "Escape" });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await vi.waitFor(() => {
+      expect(puts.length).toBe(1);
+    });
+    const body = puts[0].body as {
+      workflow: { stages: Record<string, unknown>[] };
+    };
+    expect(body.workflow.stages[0]).toMatchObject({
+      id: "plan",
+      loop_always: "synthesis",
+    });
+  });
+
+  it("deleting a loop target clears the loop keys with a notice", async () => {
+    const doc = loopMethodology([
+      {
+        id: "plan",
+        node: "plan",
+        loop_condition: "len(open_contradictions) > 0",
+        loop_target: "synthesis",
+      },
+      { id: "synthesis", node: "synthesis" },
+      { id: "final_output", node: "final_output" },
+    ]);
+    const { puts, handler } = libraryStub((url, init) => {
+      if (!init?.method && url.endsWith("/api/v1/methodologies/m1")) return doc;
+      return undefined;
+    });
+    stubFetch(handler);
+    render(<BuilderPage />);
+    await screen.findByTestId("stage-card-plan");
+    fireEvent.click(screen.getByRole("button", { name: "Delete Synthesis" }));
+    await vi.waitFor(() => {
+      expect(screen.queryByTestId("stage-card-synthesis")).toBeNull();
+    });
+    // The loop cannot survive its target: keys cleared now with a
+    // notice, or every later save would 422 on a dead target.
+    expect(await screen.findByText(/Removed loop-backs/)).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await vi.waitFor(() => {
+      expect(puts.length).toBe(1);
+    });
+    const body = puts[0].body as {
+      workflow: {
+        stages: {
+          id: string;
+          loop_condition?: string;
+          loop_target?: string;
+        }[];
+      };
+    };
+    const plan = body.workflow.stages.find((s) => s.id === "plan");
+    expect(plan?.loop_condition).toBeUndefined();
+    expect(plan?.loop_target).toBeUndefined();
   });
 });

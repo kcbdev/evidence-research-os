@@ -49,6 +49,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import ModelSelector from "@/components/ModelSelector";
+import ConditionBuilder from "@/components/builder/ConditionBuilder";
 import CustomCodeCard from "@/components/builder/CustomCodeCard";
 import NodePalette from "@/components/builder/NodePalette";
 import RoleCard from "@/components/builder/RoleCard";
@@ -56,12 +57,14 @@ import RoleEditorDialog from "@/components/builder/RoleEditorDialog";
 import StageCard from "@/components/builder/StageCard";
 import {
   getMethodology,
+  listConditionFields,
   listCustomNodes,
   listPrompts,
   listRoles,
   listSkills,
   listTools,
   putMethodology,
+  type ConditionField,
   type CustomNodeInfo,
   type LibraryRoleEntry,
   type MethodologyDetail,
@@ -72,11 +75,15 @@ import {
 import {
   bridgeDeletions,
   connectConstrained,
+  connectLoop,
   embedDiffers,
+  isLoopEdge,
+  LOOP_HANDLE_ID,
   methodologyToFlow,
   nextStageId,
   orderStages,
   stageLabel,
+  validateLoops,
   NODE_H,
   NODE_W,
   ROW_H,
@@ -136,6 +143,8 @@ export default function BuilderPage() {
   const [roleSkills, setRoleSkills] = useState<SkillEntry[]>([]);
   const [toolRows, setToolRows] = useState<ToolRow[]>([]);
   const [customNodes, setCustomNodes] = useState<CustomNodeInfo[]>([]);
+  // Condition-field reference data for the Condition Builder (PBI-068).
+  const [conditionFields, setConditionFields] = useState<ConditionField[]>([]);
 
   // Role editor dialog (canvas create flow + library edit flow).
   const [roleDialog, setRoleDialog] = useState<{
@@ -162,13 +171,14 @@ export default function BuilderPage() {
   useEffect(() => {
     async function load() {
       try {
-        const [m, roles, codes, pr, sk, to] = await Promise.all([
+        const [m, roles, codes, pr, sk, to, cf] = await Promise.all([
           getMethodology(id),
           listRoles(),
           listCustomNodes(),
           listPrompts(),
           listSkills(),
           listTools(),
+          listConditionFields(),
         ]);
         setMethodology(m);
         setName(m.name);
@@ -178,6 +188,7 @@ export default function BuilderPage() {
         setRoleSkills(sk);
         setToolRows(to);
         setCustomNodes(codes);
+        setConditionFields(cf);
         const map: Record<string, StageSpecLike> = {};
         for (const s of (m.workflow?.stages ?? []) as StageSpecLike[]) {
           map[s.id] = s;
@@ -247,13 +258,39 @@ export default function BuilderPage() {
         setStageMap((m) => {
           const next = { ...m };
           for (const rid of removed) delete next[rid];
+          // Loops into a deleted stage cannot survive (their target is
+          // gone): clear the keys now with a notice, or every later
+          // save 422s on an unrecoverable target.
+          for (const [sid, s] of Object.entries(next)) {
+            if (
+              typeof s.loop_target === "string" &&
+              removed.includes(s.loop_target)
+            ) {
+              const cleared = { ...s };
+              delete cleared.loop_target;
+              delete cleared.loop_condition;
+              next[sid] = cleared;
+            }
+          }
           return next;
         });
+        // Render-scope stageMap for the notice (same pre-removal image).
+        const beheaded = Object.values(stageMap).filter(
+          (s) =>
+            !removed.includes(s.id) &&
+            typeof s.loop_target === "string" &&
+            removed.includes(s.loop_target),
+        );
+        if (beheaded.length > 0) {
+          setNotice(
+            `Removed loop-backs pointing at deleted stages (${beheaded.map((s) => s.id).join(", ")}).`,
+          );
+        }
         const gone = new Set(removed);
         setSelectedId((sel) => (sel !== null && gone.has(sel) ? null : sel));
       }
     },
-    [edges],
+    [edges, stageMap],
   );
 
   const onEdgesChange = useCallback((changes: EdgeChange[]) => {
@@ -262,8 +299,37 @@ export default function BuilderPage() {
 
   // Sequential-only canvas: one chain. A new connection replaces any
   // existing edge out of the source or into the target, and says so —
-  // edges must never vanish magically (loops arrive in PBI-068).
+  // edges must never vanish magically. Drags from the amber loop
+  // handle (PBI-068) instead create/replace the stage's dashed
+  // loop-back and open its Condition Builder.
   const onConnect = useCallback((conn: Connection) => {
+    if (conn.sourceHandle === LOOP_HANDLE_ID) {
+      const { edges: next, replaced } = connectLoop(
+        // read current edges via ref to avoid stale closures
+        lastEdgesRef.current,
+        { source: conn.source, target: conn.target },
+      );
+      setEdges(next);
+      if (conn.source !== null && conn.target !== null) {
+        const sid = conn.source;
+        const target = conn.target;
+        setStageMap((m) => {
+          const cur = m[sid];
+          if (!cur) return m;
+          return { ...m, [sid]: { ...cur, loop_target: target } };
+        });
+        setSaved(false);
+        // A loop-back without a condition is meaningless: open the
+        // inspector straight at the Condition Builder.
+        setSelectedId(sid);
+      }
+      setNotice(
+        replaced
+          ? "Replaced the existing loop-back — one loop per stage."
+          : null,
+      );
+      return;
+    }
     const { edges: next, replaced } = connectConstrained(
       // read current edges via setState updater to avoid stale closures
       lastEdgesRef.current,
@@ -272,9 +338,15 @@ export default function BuilderPage() {
     setEdges(next);
     setNotice(
       replaced
-        ? "Replaced the existing link — this canvas is sequential-only; loop-backs arrive in PBI-068."
+        ? "Replaced the existing link — normal handles stay sequential; loop-backs start at the amber handle."
         : null,
     );
+  }, []);
+
+  // Selecting a dashed loop-back opens its source stage's inspector
+  // (the Condition Builder lives there).
+  const onEdgeClick = useCallback((_: React.MouseEvent, edge: Edge) => {
+    if (isLoopEdge(edge)) setSelectedId(edge.source);
   }, []);
 
   function addNode(node: string) {
@@ -395,6 +467,15 @@ export default function BuilderPage() {
       setError(ordered.error);
       return;
     }
+    // Loop↔keys correspondence (edge without condition, keys without
+    // edge, unknown target) fails loud naming the stage — the server
+    // 422 is the backstop, not the messenger.
+    const loopError = validateLoops(nodes, edges, stageMap);
+    if (loopError !== null) {
+      setSaved(false);
+      setError(loopError);
+      return;
+    }
     setSaving(true);
     setError(null);
     setNotice(null);
@@ -442,6 +523,37 @@ export default function BuilderPage() {
     selected !== null && selected.data.kind === "code"
       ? (customNodes.find((c) => c.node_id === selected.data.node) ?? null)
       : null;
+  // Loop state (PBI-068): the Condition Builder shows when the stage
+  // owns a dashed loop edge or a loop_condition; registry
+  // (loop_while), unconditional (loop_always), and router (route)
+  // stages are hand-owned (note, never drawn, never rewritten).
+  const selectedLoopEdge =
+    selected !== null
+      ? edges.find((e) => isLoopEdge(e) && e.source === selected.id)
+      : undefined;
+  const selectedLoopCondition =
+    selectedStage !== null &&
+    typeof selectedStage.loop_condition === "string" &&
+    selectedStage.loop_condition.trim() !== ""
+      ? selectedStage.loop_condition
+      : null;
+  const selectedLoopWhile =
+    selectedStage !== null && typeof selectedStage.loop_while === "string"
+      ? selectedStage.loop_while
+      : null;
+  const selectedLoopTarget =
+    selectedLoopEdge?.target ??
+    (selectedStage !== null && typeof selectedStage.loop_target === "string"
+      ? selectedStage.loop_target
+      : null);
+  const handLoopForms =
+    selectedStage !== null &&
+    selectedLoopCondition === null &&
+    selectedLoopEdge === undefined
+      ? (["loop_while", "loop_always", "route"] as const).filter(
+          (f) => selectedStage[f] != null,
+        )
+      : [];
   const isCustomized =
     selected !== null &&
     selected.data.kind === "role" &&
@@ -496,8 +608,7 @@ export default function BuilderPage() {
     );
   }
 
-  function switchRoleEntry(roleId: string) {
-    const entry = libraryRoles.find((r) => r.id === roleId);
+  function switchRoleEntry(roleId: string) {    const entry = libraryRoles.find((r) => r.id === roleId);
     if (!entry || selected === null) return;
     if (entry.model.trim() === "") {
       setNotice(`Role ${entry.id} has no model set — set one in the Roles library before using it here.`);
@@ -516,8 +627,39 @@ export default function BuilderPage() {
     setToolsValue([...entry.tools]);
   }
 
-  async function copyPath(text: string) {
-    setCopied(false);
+  function updateLoopCondition(stageId: string, expr: string | null) {
+    // Writes the compiled simpleeval string straight onto the stage:
+    // the Condition Builder is a thin view over loop_condition.
+    setSaved(false);
+    setStageMap((m) => {
+      const cur = m[stageId];
+      if (!cur) return m;
+      const next = { ...cur };
+      if (expr === null) delete next.loop_condition;
+      else next.loop_condition = expr;
+      return { ...m, [stageId]: next };
+    });
+  }
+
+  function removeLoop(stageId: string) {
+    // One gesture clears keys AND the canvas edge together: keys
+    // without their edge would be an invisible loop, an edge without
+    // keys a meaningless one. Save-time validateLoops guards any other
+    // path that splits them.
+    setSaved(false);
+    setStageMap((m) => {
+      const cur = m[stageId];
+      if (!cur) return m;
+      const next = { ...cur };
+      delete next.loop_condition;
+      delete next.loop_target;
+      return { ...m, [stageId]: next };
+    });
+    setEdges((es) => es.filter((e) => !(isLoopEdge(e) && e.source === stageId)));
+    setNotice("Loop-back removed.");
+  }
+
+  async function copyPath(text: string) {    setCopied(false);
     setCopyError(null);
     try {
       await navigator.clipboard.writeText(text);
@@ -626,8 +768,9 @@ export default function BuilderPage() {
             </TabsList>
             <TabsContent value="workflow" className="relative min-h-[60vh] flex-1 rounded border">
               <p className="px-3 pt-2 text-xs text-muted-foreground">
-                Sequential chain only — drag between handles to reconnect
-                (replaces the existing link). Loop-backs arrive in PBI-068.
+                Chain plus loop-backs — drag between handles to reconnect
+                (replaces the existing link); drag from the amber loop
+                handle to add a conditional loop-back.
               </p>
               <div className="h-[55vh]">
               <ReactFlow
@@ -638,6 +781,7 @@ export default function BuilderPage() {
                 onEdgesChange={onEdgesChange}
                 onConnect={onConnect}
                 onNodeClick={(_, node) => setSelectedId(node.id)}
+                onEdgeClick={onEdgeClick}
                 deleteKeyCode={["Backspace", "Delete"]}
                 colorMode="dark"
                 fitView
@@ -966,6 +1110,32 @@ export default function BuilderPage() {
                   )}
                 </CardContent>
               </Card>
+            </div>
+          )}
+          {selected !== null && selectedStage !== null && (
+            <div className="flex flex-col gap-1 px-4">
+              <span className="text-sm font-medium">Loop</span>
+              {selectedLoopEdge !== undefined || selectedLoopCondition !== null ? (
+                <ConditionBuilder
+                  key={selected.id}
+                  fields={conditionFields}
+                  expression={selectedLoopCondition}
+                  loopWhile={selectedLoopWhile}
+                  loopTarget={selectedLoopTarget}
+                  onChange={(expr) => updateLoopCondition(selected.id, expr)}
+                  onRemoveLoop={() => removeLoop(selected.id)}
+                />
+              ) : handLoopForms.length > 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  Hand-authored {handLoopForms.join(", ")} — edit via
+                  Import/Export; the canvas leaves these keys untouched.
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  No loop — drag from the amber loop handle onto a stage
+                  to repeat while a condition holds.
+                </p>
+              )}
             </div>
           )}
         </SheetContent>

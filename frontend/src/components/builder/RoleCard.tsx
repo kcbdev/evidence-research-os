@@ -5,7 +5,7 @@ import { UserRound, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { cn } from "cn";
-import type { StageNode } from "@/lib/methodology-graph";
+import { LOOP_HANDLE_ID, type StageNode } from "@/lib/methodology-graph";
 
 export default function RoleCard({ id, data, selected }: NodeProps<StageNode>) {
   const { deleteElements } = useReactFlow();
@@ -41,6 +41,16 @@ export default function RoleCard({ id, data, selected }: NodeProps<StageNode>) {
         </button>
       </div>
       <Handle type="source" position={Position.Bottom} />
+      {/* Loop-back handle (PBI-068): offset so it never overlaps the chain handle. */}
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        id={LOOP_HANDLE_ID}
+        className="!bg-amber-500"
+        style={{ left: "auto", right: 12 }}
+        title="Loop-back: drag onto a stage to repeat while a condition holds"
+        aria-label="Loop-back handle: drag onto a stage to repeat while a condition holds"
+      />
     </Card>
   );
 }
