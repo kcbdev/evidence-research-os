@@ -110,6 +110,9 @@ const ALL_MODES = ["research", "brainstorm", "academic"] as const;
 const JUDGE_OVERLAP_TIP =
   "Overlaps the judge model — the server refuses judge/council overlap at save and run time (self-preference bias). Pick a different model for this slot.";
 
+const AUDITOR_OVERLAP_TIP =
+  "Overlaps the judge model — the server refuses it at save time even though the auditor sits outside the council rotation. Pick a different model for this slot.";
+
 interface EmbeddedSpec {
   id: string;
   system_prompt: string;
@@ -836,10 +839,15 @@ export default function BuilderPage() {
                 {t === "roles" && (
                   <div className="flex flex-col gap-2">
                     <p className="text-sm text-muted-foreground">
-                      Model per role slot. Council slots matching the
-                      judge are refused by the server (self-preference
-                      bias) — fix them here before saving.
+                      Model per role slot. Slots matching the judge are
+                      refused by the server (self-preference bias) — fix
+                      them here before saving.
                     </p>
+                    {!("judge" in models) && (
+                      <p className="text-xs text-muted-foreground">
+                        No judge slot — the compiler requires one.
+                      </p>
+                    )}
                     {Object.keys(models).length === 0 ? (
                       <p className="text-sm text-muted-foreground">
                         No model slots in this methodology.
@@ -880,19 +888,28 @@ export default function BuilderPage() {
                                 </TableCell>
                                 <TableCell>
                                   {overlapped ? (
-                                    <Tooltip>
-                                      <TooltipTrigger
-                                        render={
-                                          <span
-                                            tabIndex={0}
-                                            className="inline-flex cursor-help items-center rounded-md bg-destructive px-2 py-1 text-xs font-medium text-destructive-foreground"
-                                          >
-                                            Overlaps judge
-                                          </span>
-                                        }
-                                      />
-                                      <TooltipContent>{JUDGE_OVERLAP_TIP}</TooltipContent>
-                                    </Tooltip>
+                                    <div className="flex items-center gap-1">
+                                      <Badge variant="destructive">
+                                        Overlaps judge
+                                      </Badge>
+                                      <Tooltip>
+                                        <TooltipTrigger
+                                          render={
+                                            <button
+                                              type="button"
+                                              className="min-h-[44px] px-2 text-sm underline"
+                                            >
+                                              Why?
+                                            </button>
+                                          }
+                                        />
+                                        <TooltipContent>
+                                          {slot === "auditor"
+                                            ? AUDITOR_OVERLAP_TIP
+                                            : JUDGE_OVERLAP_TIP}
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </div>
                                   ) : (
                                     <span className="text-xs text-muted-foreground">—</span>
                                   )}
@@ -931,9 +948,9 @@ export default function BuilderPage() {
                         </label>
                       ))}
                     </div>
-                    {extraEnables.length > 0 && (
+                    {toolRows.length > 0 && extraEnables.length > 0 && (
                       <p className="text-xs text-muted-foreground">
-                        {`Kept on save (not in the registry): ${extraEnables.join(", ")}`}
+                        {`Kept on save (not in the registry): ${extraEnables.join(", ")} — remove names via Import/Export (PBI-070).`}
                       </p>
                     )}
                   </div>
@@ -950,11 +967,16 @@ export default function BuilderPage() {
                       <Input
                         id="budget-calls"
                         type="number"
+                        min={1}
                         className="min-h-[44px]"
                         value={budget.max_model_calls}
                         onChange={(e) => {
                           const n = Number.parseInt(e.target.value, 10);
-                          if (!Number.isNaN(n)) {
+                          // Budgets are positive ints (positive by the
+                          // settings-budget contract; the methodology
+                          // schema itself is bare ints, so the tab holds
+                          // the floor instead of persisting nonsense).
+                          if (!Number.isNaN(n) && n >= 1) {
                             setBudget((b) => ({ ...b, max_model_calls: n }));
                           }
                         }}
@@ -967,11 +989,12 @@ export default function BuilderPage() {
                       <Input
                         id="budget-rounds"
                         type="number"
+                        min={1}
                         className="min-h-[44px]"
                         value={budget.max_research_rounds}
                         onChange={(e) => {
                           const n = Number.parseInt(e.target.value, 10);
-                          if (!Number.isNaN(n)) {
+                          if (!Number.isNaN(n) && n >= 1) {
                             setBudget((b) => ({ ...b, max_research_rounds: n }));
                           }
                         }}

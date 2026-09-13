@@ -448,15 +448,16 @@ describe("conditions and loop-backs", () => {
     expect(noop.notice).toBeNull();
   });
 
-  it("findJudgeOverlaps mirrors the compiler council rule", () => {
+  it("findJudgeOverlaps mirrors the save/run gates (auditor included, blanks quiet)", () => {
     expect(
       findJudgeOverlaps({ scientist: "m", judge: "m", ideator: "x" }),
     ).toEqual(["scientist"]);
-    // Auditor is explicitly not council; judge never flags itself.
+    // The save/run gates check every slot but judge — the auditor's
+    // rotation exemption does not survive the PUT.
     expect(
       findJudgeOverlaps({ scientist: "s", judge: "m", auditor: "m" }),
-    ).toEqual([]);
-    // Blanks never highlight — the server stays authoritative.
+    ).toEqual(["auditor"]);
+    // Blanks never highlight — the save gate skips blank judges.
     expect(findJudgeOverlaps({ scientist: "", judge: "" })).toEqual([]);
     expect(findJudgeOverlaps({ scientist: "m" })).toEqual([]);
   });

@@ -319,7 +319,11 @@ function libraryStub(
       if (url.endsWith("/api/v1/prompts")) return [];
       if (url.endsWith("/api/v1/skills")) return [];
       if (url.endsWith("/api/v1/tools")) {
-        return [{ name: "grep_project", description: "g", source: "backend-local" }];
+        return [
+          { name: "grep_project", description: "g", source: "backend-local" },
+          { name: "keyword_search", description: "k", source: "backend-local" },
+          { name: "semantic_search", description: "s", source: "backend-local" },
+        ];
       }
       if (url.endsWith("/api/v1/custom-nodes")) return [CODE_NODE];
       if (url.endsWith("/api/v1/methodologies/condition-fields")) return CONDITION_FIELDS;
@@ -876,12 +880,14 @@ describe("BuilderPage tabs", () => {
     render(<BuilderPage />);
     await screen.findByTestId("stage-card-plan");
     fireEvent.click(screen.getByRole("tab", { name: "Roles" }));
-    // Scientist overlaps the judge (red badge); the auditor is
-    // explicitly not council and stays quiet on the same model.
-    expect(await screen.findByText("Overlaps judge")).toBeDefined();
-    expect(screen.getAllByText("Overlaps judge")).toHaveLength(1);
+    // Scientist AND auditor overlap the judge (the save gate checks
+    // every slot but judge) — two red badges.
+    expect(await screen.findAllByText("Overlaps judge")).toHaveLength(2);
     fireEvent.change(screen.getByLabelText("Model for scientist"), {
       target: { value: "fixed" },
+    });
+    fireEvent.change(screen.getByLabelText("Model for auditor"), {
+      target: { value: "fixed2" },
     });
     await vi.waitFor(() => {
       expect(screen.queryByText("Overlaps judge")).toBeNull();
@@ -891,7 +897,7 @@ describe("BuilderPage tabs", () => {
       expect(puts.length).toBe(1);
     });
     const body = puts[0].body as { models: Record<string, string> };
-    expect(body.models).toEqual({ scientist: "fixed", judge: "dup", auditor: "dup" });
+    expect(body.models).toEqual({ scientist: "fixed", judge: "dup", auditor: "fixed2" });
   });
 
   it("tools tab toggles enables and keeps non-registry names", async () => {
@@ -924,15 +930,32 @@ describe("BuilderPage tabs", () => {
   });
 
   it("budget tab prefills from the document and saves", async () => {
-    const { puts, handler } = libraryStub();
+    const doc = loopMethodology([
+      { id: "plan", node: "plan" },
+      { id: "final_output", node: "final_output" },
+    ]);
+    (doc as { budget_defaults: { max_model_calls: number; max_research_rounds: number } }).budget_defaults =
+      { max_model_calls: 99, max_research_rounds: 9 };
+    const { puts, handler } = libraryStub((url, init) => {
+      if (!init?.method && url.endsWith("/api/v1/methodologies/m1")) return doc;
+      return undefined;
+    });
     stubFetch(handler);
     render(<BuilderPage />);
     await screen.findByTestId("stage-card-plan");
     fireEvent.click(screen.getByRole("tab", { name: "Budget" }));
+    // Non-default fixture: proves the prefill reads the document
+    // instead of the useState fallbacks (which are 50/5).
     const calls = (await screen.findByLabelText(
       "Max model calls",
     )) as HTMLInputElement;
-    expect(calls.value).toBe("50");
+    expect(calls.value).toBe("99");
+    expect(
+      (screen.getByLabelText("Max research rounds") as HTMLInputElement).value,
+    ).toBe("9");
+    // Negatives are refused, never committed.
+    fireEvent.change(calls, { target: { value: "-10" } });
+    expect(calls.value).toBe("99");
     fireEvent.change(calls, { target: { value: "10" } });
     fireEvent.change(screen.getByLabelText("Max research rounds"), {
       target: { value: "2" },
@@ -953,12 +976,14 @@ describe("BuilderPage tabs", () => {
     render(<BuilderPage />);
     await screen.findByTestId("stage-card-plan");
     fireEvent.click(screen.getByRole("tab", { name: "Metadata" }));
-    const nameBox = (await screen.findByLabelText(
-      "Methodology name",
-    )) as HTMLInputElement;
-    // Header and tab share one state: the header value shows through.
-    expect(nameBox.value).toBe("Pipe");
-    fireEvent.change(nameBox, { target: { value: "Renamed" } });
+    // Drive the TAB's Name input (not the header box sharing its
+    // label family): the header must reflect it through shared state.
+    fireEvent.change(await screen.findByLabelText("Name"), {
+      target: { value: "Renamed" },
+    });
+    expect(
+      (screen.getByLabelText("Methodology name") as HTMLInputElement).value,
+    ).toBe("Renamed");
     fireEvent.change(screen.getByLabelText("Description"), {
       target: { value: "New desc" },
     });
