@@ -574,8 +574,7 @@ export function validateLoops(
 }
 
 /**
- * Chain-tail lookup for palette placement (PBI-068 fix): appending
- * extends the chain from the single tail (a node with no sequential
+ * Chain-tail lookup for palette placement (PBI-068 fix): appending * extends the chain from the single tail (a node with no sequential
  * edge out). Loop edges are conditional branches, not chain links —
  * counting them as links strands appended nodes. Returns the tail id,
  * or null when there isn't exactly one.
@@ -595,7 +594,6 @@ export interface LoopConnectResult {
   selectId: string | null;
   notice: string | null;
 }
-
 /**
  * Loop-handle connect as a pure transition (PBI-068): one loop per
  * source (replaced, said aloud), loop_target written onto the source
@@ -624,4 +622,29 @@ export function applyLoopConnect(
       ? "Replaced the existing loop-back — one loop per stage."
       : null,
   };
+}
+
+// --- Builder tabs (PBI-069) ---
+
+/**
+ * Council slots whose model overlaps the judge (PBI-069, Roles tab).
+ * Mirrors the compiler exactly (compile.py): council is every model
+ * slot except judge and auditor (auditor is explicitly not council),
+ * and any equality refuses at save/run time
+ * (validate_model_assignment). Empty strings never highlight — the
+ * server stays authoritative on blanks; the tab hints at real
+ * overlaps only (defense in depth: client hint, server verdict).
+ */
+export function findJudgeOverlaps(models: Record<string, string>): string[] {
+  const judge = models.judge ?? "";
+  if (judge === "") return [];
+  return Object.entries(models)
+    .filter(
+      ([slot, model]) =>
+        slot !== "judge" &&
+        slot !== "auditor" &&
+        model !== "" &&
+        model === judge,
+    )
+    .map(([slot]) => slot);
 }

@@ -94,7 +94,7 @@ export default function MethodologiesPage() {
             <Card key={m.id}>
               <CardHeader>
                 <CardTitle className="text-base flex flex-wrap items-center gap-2">
-                  <Link href={`/settings/methodologies/${m.id}`} className="underline">
+                  <Link href={`/settings/methodologies/${m.id}/builder`} className="underline">
                     {m.name}
                   </Link>
                   {m.is_default && <Badge variant="default">default</Badge>}

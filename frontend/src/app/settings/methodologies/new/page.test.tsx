@@ -30,7 +30,9 @@ describe("NewMethodologyPage", () => {
     expect(screen.getByText(/human_checkpoint/)).toBeDefined();
     fireEvent.click(screen.getByRole("button", { name: "Create methodology" }));
     await vi.waitFor(() => {
-      expect(push).toHaveBeenCalledWith("/settings/methodologies/my-methodology-v1");
+      expect(push).toHaveBeenCalledWith(
+        "/settings/methodologies/my-methodology-v1/builder",
+      );
     });
     const [, init] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
     expect((init as { method: string }).method).toBe("POST");

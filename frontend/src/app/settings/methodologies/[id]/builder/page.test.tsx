@@ -856,3 +856,124 @@ describe("BuilderPage conditions", () => {
     expect(plan?.loop_target).toBeUndefined();
   });
 });
+
+describe("BuilderPage tabs", () => {
+  it("roles tab highlights judge overlap live and saves models", async () => {
+    const doc = loopMethodology([
+      { id: "plan", node: "plan" },
+      { id: "final_output", node: "final_output" },
+    ]);
+    (doc as { models: Record<string, string> }).models = {
+      scientist: "dup",
+      judge: "dup",
+      auditor: "dup",
+    };
+    const { puts, handler } = libraryStub((url, init) => {
+      if (!init?.method && url.endsWith("/api/v1/methodologies/m1")) return doc;
+      return undefined;
+    });
+    stubFetch(handler);
+    render(<BuilderPage />);
+    await screen.findByTestId("stage-card-plan");
+    fireEvent.click(screen.getByRole("tab", { name: "Roles" }));
+    // Scientist overlaps the judge (red badge); the auditor is
+    // explicitly not council and stays quiet on the same model.
+    expect(await screen.findByText("Overlaps judge")).toBeDefined();
+    expect(screen.getAllByText("Overlaps judge")).toHaveLength(1);
+    fireEvent.change(screen.getByLabelText("Model for scientist"), {
+      target: { value: "fixed" },
+    });
+    await vi.waitFor(() => {
+      expect(screen.queryByText("Overlaps judge")).toBeNull();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await vi.waitFor(() => {
+      expect(puts.length).toBe(1);
+    });
+    const body = puts[0].body as { models: Record<string, string> };
+    expect(body.models).toEqual({ scientist: "fixed", judge: "dup", auditor: "dup" });
+  });
+
+  it("tools tab toggles enables and keeps non-registry names", async () => {
+    const doc = loopMethodology([
+      { id: "plan", node: "plan" },
+      { id: "final_output", node: "final_output" },
+    ]);
+    (doc as { tools: { enabled: string[] } }).tools = {
+      enabled: ["grep_project", "search_web"],
+    };
+    const { puts, handler } = libraryStub((url, init) => {
+      if (!init?.method && url.endsWith("/api/v1/methodologies/m1")) return doc;
+      return undefined;
+    });
+    stubFetch(handler);
+    render(<BuilderPage />);
+    await screen.findByTestId("stage-card-plan");
+    fireEvent.click(screen.getByRole("tab", { name: "Tools" }));
+    expect(
+      await screen.findByText(/Role nodes may restrict but never expand/),
+    ).toBeDefined();
+    expect(screen.getByText(/Kept on save.*search_web/)).toBeDefined();
+    fireEvent.click(screen.getByRole("checkbox", { name: "grep_project" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await vi.waitFor(() => {
+      expect(puts.length).toBe(1);
+    });
+    const body = puts[0].body as { tools: { enabled: string[] } };
+    expect(body.tools.enabled).toEqual(["search_web"]);
+  });
+
+  it("budget tab prefills from the document and saves", async () => {
+    const { puts, handler } = libraryStub();
+    stubFetch(handler);
+    render(<BuilderPage />);
+    await screen.findByTestId("stage-card-plan");
+    fireEvent.click(screen.getByRole("tab", { name: "Budget" }));
+    const calls = (await screen.findByLabelText(
+      "Max model calls",
+    )) as HTMLInputElement;
+    expect(calls.value).toBe("50");
+    fireEvent.change(calls, { target: { value: "10" } });
+    fireEvent.change(screen.getByLabelText("Max research rounds"), {
+      target: { value: "2" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await vi.waitFor(() => {
+      expect(puts.length).toBe(1);
+    });
+    const body = puts[0].body as {
+      budget_defaults: { max_model_calls: number; max_research_rounds: number };
+    };
+    expect(body.budget_defaults).toEqual({ max_model_calls: 10, max_research_rounds: 2 });
+  });
+
+  it("metadata tab edits name, description, and modes through one save", async () => {
+    const { puts, handler } = libraryStub();
+    stubFetch(handler);
+    render(<BuilderPage />);
+    await screen.findByTestId("stage-card-plan");
+    fireEvent.click(screen.getByRole("tab", { name: "Metadata" }));
+    const nameBox = (await screen.findByLabelText(
+      "Methodology name",
+    )) as HTMLInputElement;
+    // Header and tab share one state: the header value shows through.
+    expect(nameBox.value).toBe("Pipe");
+    fireEvent.change(nameBox, { target: { value: "Renamed" } });
+    fireEvent.change(screen.getByLabelText("Description"), {
+      target: { value: "New desc" },
+    });
+    fireEvent.click(screen.getByRole("checkbox", { name: "brainstorm" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await vi.waitFor(() => {
+      expect(puts.length).toBe(1);
+    });
+    const body = puts[0].body as {
+      name: string;
+      description: string;
+      compatible_modes: string[];
+    };
+    expect(body.name).toBe("Renamed");
+    expect(body.description).toBe("New desc");
+    expect(body.compatible_modes).toEqual(["research", "brainstorm"]);
+  });
+});

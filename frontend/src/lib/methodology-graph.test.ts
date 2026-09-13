@@ -8,6 +8,7 @@ import {
   connectLoop,
   defaultRowFor,
   embedDiffers,
+  findJudgeOverlaps,
   isLoopEdge,
   LOOP_EDGE_PREFIX,
   methodologyToFlow,
@@ -419,8 +420,7 @@ describe("conditions and loop-backs", () => {
     ).toBeNull();
   });
 
-  it("applyLoopConnect writes target, selects source, and says replacements aloud", () => {
-    const map: Record<string, StageSpecLike> = {
+  it("applyLoopConnect writes target, selects source, and says replacements aloud", () => {    const map: Record<string, StageSpecLike> = {
       a: { id: "a", node: "plan" },
       b: { id: "b", node: "plan" },
     };
@@ -446,5 +446,18 @@ describe("conditions and loop-backs", () => {
     expect(noop.stageMap).toBe(map);
     expect(noop.selectId).toBeNull();
     expect(noop.notice).toBeNull();
+  });
+
+  it("findJudgeOverlaps mirrors the compiler council rule", () => {
+    expect(
+      findJudgeOverlaps({ scientist: "m", judge: "m", ideator: "x" }),
+    ).toEqual(["scientist"]);
+    // Auditor is explicitly not council; judge never flags itself.
+    expect(
+      findJudgeOverlaps({ scientist: "s", judge: "m", auditor: "m" }),
+    ).toEqual([]);
+    // Blanks never highlight — the server stays authoritative.
+    expect(findJudgeOverlaps({ scientist: "", judge: "" })).toEqual([]);
+    expect(findJudgeOverlaps({ scientist: "m" })).toEqual([]);
   });
 });

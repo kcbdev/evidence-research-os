@@ -49,8 +49,16 @@ describe("MethodologiesPage", () => {
     });
   });
 
-  it("surfaces load errors", async () => {
-    vi.stubGlobal(
+  it("title links open the builder directly (raw editor retired)", async () => {
+    stubFetch(() => ITEMS);
+    render(<MethodologiesPage />);
+    const link = await screen.findByRole("link", { name: "Deep Research Council" });
+    expect(link.getAttribute("href")).toBe(
+      "/settings/methodologies/deep-research-council-v1/builder",
+    );
+  });
+
+  it("surfaces load errors", async () => {    vi.stubGlobal(
       "fetch",
       vi.fn(async () => {
         throw new Error("down");

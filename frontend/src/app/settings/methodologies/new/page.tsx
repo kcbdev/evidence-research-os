@@ -63,7 +63,9 @@ export default function NewMethodologyPage() {
     setError(null);
     try {
       const created = await saveMethodology(null, yamlText);
-      router.push(`/settings/methodologies/${created.id}`);
+      // Land on the builder (PBI-069): the raw editor is retired, the
+      // builder is the single edit surface from here on.
+      router.push(`/settings/methodologies/${created.id}/builder`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "create failed");
     } finally {

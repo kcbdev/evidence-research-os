@@ -44,6 +44,15 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs";
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
+import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
@@ -78,6 +87,7 @@ import {
   chainTailId,
   connectConstrained,
   embedDiffers,
+  findJudgeOverlaps,
   isLoopEdge,
   LOOP_HANDLE_ID,
   methodologyToFlow,
@@ -97,12 +107,8 @@ const nodeTypes = { stage: StageCard, role: RoleCard, code: CustomCodeCard };
 
 const ALL_MODES = ["research", "brainstorm", "academic"] as const;
 
-const PLACEHOLDERS: Record<string, string> = {
-  roles: "Role assignment editing arrives in PBI-069.",
-  tools: "Tool enablement editing arrives in PBI-069.",
-  budget: "Budget default editing arrives in PBI-069.",
-  metadata: "Full metadata editing arrives in PBI-069.",
-};
+const JUDGE_OVERLAP_TIP =
+  "Overlaps the judge model — the server refuses judge/council overlap at save and run time (self-preference bias). Pick a different model for this slot.";
 
 interface EmbeddedSpec {
   id: string;
@@ -129,7 +135,13 @@ export default function BuilderPage() {
   const [edges, setEdges] = useState<Edge[]>([]);
   const [stageMap, setStageMap] = useState<Record<string, StageSpecLike>>({});
   const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
   const [modes, setModes] = useState<string[]>([]);
+  // Tab state (PBI-069): Roles/Tools/Budget tabs read and write these;
+  // Save carries them in the same PUT as the canvas (no second path).
+  const [models, setModels] = useState<Record<string, string>>({});
+  const [toolsEnabled, setToolsEnabled] = useState<string[]>([]);
+  const [budget, setBudget] = useState({ max_model_calls: 50, max_research_rounds: 5 });
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -183,7 +195,14 @@ export default function BuilderPage() {
         ]);
         setMethodology(m);
         setName(m.name);
+        setDescription(m.description ?? "");
         setModes(m.compatible_modes);
+        setModels({ ...(m.models ?? {}) });
+        setToolsEnabled([...(m.tools?.enabled ?? [])]);
+        setBudget({
+          max_model_calls: m.budget_defaults?.max_model_calls ?? 50,
+          max_research_rounds: m.budget_defaults?.max_research_rounds ?? 5,
+        });
         setLibraryRoles(roles);
         setRolePrompts(pr);
         setRoleSkills(sk);
@@ -242,9 +261,10 @@ export default function BuilderPage() {
   // mutations clear it explicitly at their call sites (a deps entry on
   // methodology/stageMap would clobber the post-save Saved=true, since
   // save itself resyncs both). PBI-070's Validate-gating builds on this.
+  // Tab edits (description/models/tools/budget) join the same contract.
   useEffect(() => {
     setSaved(false);
-  }, [nodes, edges, name, modes]);
+  }, [nodes, edges, name, description, modes, models, toolsEnabled, budget]);
 
   const onNodesChange = useCallback(
     (changes: NodeChange<StageNode>[]) => {
@@ -482,13 +502,22 @@ export default function BuilderPage() {
       const savedDoc = await putMethodology(id, {
         ...methodology,
         name,
+        description,
         compatible_modes: modes,
+        models,
+        tools: { enabled: toolsEnabled },
+        budget_defaults: budget,
         custom_roles: (methodology.custom_roles ?? []).filter((r) => usedRoles.has(r.id)),
         workflow: { stages: ordered.stages },
       });
       setMethodology(savedDoc);
       // Resync stage data from the server-normalized document — the
       // local map still holds minimal pre-save shapes for added nodes.
+      // Tab states (description/models/tools/budget) are NOT resynced:
+      // the PUT carries them verbatim and the Saved-hygiene effect
+      // above keys on their references — resyncing would mint fresh
+      // objects and clobber the post-save Saved=true, exactly the
+      // methodology/stageMap hazard documented there.
       const map: Record<string, StageSpecLike> = {};
       for (const s of (savedDoc.workflow?.stages ?? []) as StageSpecLike[]) {
         map[s.id] = s;
@@ -505,7 +534,13 @@ export default function BuilderPage() {
 
   const selected =
     selectedId !== null ? (nodes.find((n) => n.id === selectedId) ?? null) : null;
-  const selectedStage = selected !== null ? (stageMap[selected.id] ?? null) : null;
+  // Tab derivations (PBI-069): council slots overlapping the judge
+  // (red rows; the server still refuses at save — defense in depth)
+  // and enables outside the tool registry (kept, shown muted).
+  const overlaps = findJudgeOverlaps(models);
+  const extraEnables = toolsEnabled.filter(
+    (n) => !toolRows.some((t) => t.name === n),
+  );  const selectedStage = selected !== null ? (stageMap[selected.id] ?? null) : null;
   const selectedEmbedded =
     selected !== null && selected.data.kind === "role"
       ? ((methodology?.custom_roles ?? []).find((r) => r.id === selected.data.node) ?? null)
@@ -798,7 +833,197 @@ export default function BuilderPage() {
             </TabsContent>
             {(["roles", "tools", "budget", "metadata"] as const).map((t) => (
               <TabsContent key={t} value={t} className="flex-1">
-                <p className="text-sm text-muted-foreground">{PLACEHOLDERS[t]}</p>
+                {t === "roles" && (
+                  <div className="flex flex-col gap-2">
+                    <p className="text-sm text-muted-foreground">
+                      Model per role slot. Council slots matching the
+                      judge are refused by the server (self-preference
+                      bias) — fix them here before saving.
+                    </p>
+                    {Object.keys(models).length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        No model slots in this methodology.
+                      </p>
+                    ) : (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Slot</TableHead>
+                            <TableHead>Model</TableHead>
+                            <TableHead>Status</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {Object.entries(models).map(([slot, current]) => {
+                            const overlapped = overlaps.includes(slot);
+                            return (
+                              <TableRow
+                                key={slot}
+                                className={overlapped ? "bg-destructive/10" : undefined}
+                              >
+                                <TableCell className="font-mono">
+                                  {slot}
+                                  {slot === "auditor" && (
+                                    <span className="ml-2 text-xs text-muted-foreground">
+                                      not council
+                                    </span>
+                                  )}
+                                </TableCell>
+                                <TableCell>
+                                  <ModelSelector
+                                    label={`Model for ${slot}`}
+                                    value={current}
+                                    onChange={(v) =>
+                                      setModels((ms) => ({ ...ms, [slot]: v }))
+                                    }
+                                  />
+                                </TableCell>
+                                <TableCell>
+                                  {overlapped ? (
+                                    <Tooltip>
+                                      <TooltipTrigger
+                                        render={
+                                          <span
+                                            tabIndex={0}
+                                            className="inline-flex cursor-help items-center rounded-md bg-destructive px-2 py-1 text-xs font-medium text-destructive-foreground"
+                                          >
+                                            Overlaps judge
+                                          </span>
+                                        }
+                                      />
+                                      <TooltipContent>{JUDGE_OVERLAP_TIP}</TooltipContent>
+                                    </Tooltip>
+                                  ) : (
+                                    <span className="text-xs text-muted-foreground">—</span>
+                                  )}
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    )}
+                  </div>
+                )}
+                {t === "tools" && (
+                  <div className="flex flex-col gap-2">
+                    <p className="text-sm text-muted-foreground">
+                      Methodology-global enables. Role nodes may restrict
+                      but never expand this set.
+                    </p>
+                    <div className="grid gap-2 md:grid-cols-2">
+                      {toolRows.map((tool) => (
+                        <label
+                          key={tool.name}
+                          className="flex min-h-[44px] cursor-pointer items-center gap-2 rounded border px-2 text-sm"
+                        >
+                          <Checkbox
+                            checked={toolsEnabled.includes(tool.name)}
+                            onCheckedChange={() => {
+                              setToolsEnabled((es) =>
+                                es.includes(tool.name)
+                                  ? es.filter((x) => x !== tool.name)
+                                  : [...es, tool.name],
+                              );
+                            }}
+                          />
+                          <span className="font-mono">{tool.name}</span>
+                        </label>
+                      ))}
+                    </div>
+                    {extraEnables.length > 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        {`Kept on save (not in the registry): ${extraEnables.join(", ")}`}
+                      </p>
+                    )}
+                  </div>
+                )}
+                {t === "budget" && (
+                  <form
+                    className="flex max-w-md flex-col gap-3"
+                    onSubmit={(e) => e.preventDefault()}
+                  >
+                    <div className="flex flex-col gap-1">
+                      <label htmlFor="budget-calls" className="text-sm font-medium">
+                        Max model calls
+                      </label>
+                      <Input
+                        id="budget-calls"
+                        type="number"
+                        className="min-h-[44px]"
+                        value={budget.max_model_calls}
+                        onChange={(e) => {
+                          const n = Number.parseInt(e.target.value, 10);
+                          if (!Number.isNaN(n)) {
+                            setBudget((b) => ({ ...b, max_model_calls: n }));
+                          }
+                        }}
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label htmlFor="budget-rounds" className="text-sm font-medium">
+                        Max research rounds
+                      </label>
+                      <Input
+                        id="budget-rounds"
+                        type="number"
+                        className="min-h-[44px]"
+                        value={budget.max_research_rounds}
+                        onChange={(e) => {
+                          const n = Number.parseInt(e.target.value, 10);
+                          if (!Number.isNaN(n)) {
+                            setBudget((b) => ({ ...b, max_research_rounds: n }));
+                          }
+                        }}
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Per-run source caps live in per-project Settings,
+                      not in the methodology.
+                    </p>
+                  </form>
+                )}
+                {t === "metadata" && (
+                  <div className="flex max-w-md flex-col gap-3">
+                    <div className="flex flex-col gap-1">
+                      <label htmlFor="meta-name" className="text-sm font-medium">
+                        Name
+                      </label>
+                      <Input
+                        id="meta-name"
+                        className="min-h-[44px]"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label htmlFor="meta-description" className="text-sm font-medium">
+                        Description
+                      </label>
+                      <Textarea
+                        id="meta-description"
+                        className="min-h-[44px]"
+                        value={description}
+                        onChange={(e) => setDescription(e.target.value)}
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-sm font-medium">Compatible modes</span>
+                      {ALL_MODES.map((m) => (
+                        <label
+                          key={m}
+                          className="flex min-h-[44px] cursor-pointer items-center gap-2 text-sm"
+                        >
+                          <Checkbox
+                            checked={modes.includes(m)}
+                            onCheckedChange={() => toggleMode(m)}
+                          />
+                          {m}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </TabsContent>
             ))}
           </Tabs>
