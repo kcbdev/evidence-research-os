@@ -126,6 +126,7 @@ acceptance scenario.
   `prompts/scientist_planning_addendum.md`, loadable and test-pinned, with
   activation deferred to a plan-realization PBI. C4's "visibly multi-angle
   plan" is therefore presence-pinned, not live-witnessed, until then.
+  (ACCEPTED by operator 2026-09-14 — deferral stands, PBI-074 closed.)
 
 ## Tooling
 
