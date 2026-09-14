@@ -623,3 +623,31 @@ are Phase-1 backlog, executable after release).
 - Critic CHANGES-REQUESTED → must-fix applied in da20962: export test was helper-only (never touched the dialog — would pass with the dialog deleted); now UI-driven (⋮ → Export YAML → dialog text parses to `{...METHODOLOGY, custom_roles: []}`, pinning the constructor path). Nits applied: duplicate refusal comment corrected, `setName(doc.name ?? "")` import guard. Declined with rationale: raw-422 verbatim display (shared-helper precedent), postValidate prefix style, 409/server-invalid unpinned paths (inspected-correct).
 - Sort rationale: code deterministic-green + critic-clean, BUT the directive's witness clause (compose in builder → scratch-project default → run → custom stage in log + loop per condition → human confirms) is a human gate by design → manual, stays In Review until witnessed. EVRSH-64 needs manual Plane move to In Review + resolution comment (no Plane MCP in this env — text in chat).
 - Chain PAUSED here by design (manual sort). PBI-070 closes to Done only on explicit human witness sign-off; production default untouched until the human says otherwise.
+
+## 2026-09-14 - Phase-6 planned (PBI-071–083) + D3 resolved + PBI-071 Done
+
+- Plan: `specs/phase-6-analog-enhancements/spec.md` (C1–C11, D1–D6) +
+  13 cards + README sequencing (commits 16cb0b7 DOCS inputs, 5f9dc30 plan).
+  Push-created 13 × Todo (map 071→71, 072→81, 073→83, 074→75, 075→73,
+  076→80, 077→82, 078→76, 079→79, 080→77, 081→74, 082→78, 083→72).
+- D3 RESOLVED: operator supplied `Feature-Extraction-v1.md`; row-by-row
+  diff found 3 guide gaps → PBI-081 (pass-rate metric), PBI-082 (source
+  viewer), PBI-083 (structure editor). Capability correction: `skills` CLI
+  exists (prior "absent" records wrong); no new skills/packages adopted.
+- PBI-071 Done (agentic, commits 6471592 + 17d089b, EVRSH-71 Done):
+  ThreadPoolExecutor dispatch, workers read-only + model call, debate
+  writes post-join in order, charging unchanged. Critic caught a REAL race
+  (concurrent lazy index rebuild — tantivy writer / lancedb delete+add) →
+  fixed with single-threaded warm-up + real-index regression test
+  (test_targeted_warms_stale_index_before_pool); overlap proven by
+  Barrier rendezvous (no wall-clock asserts). Nits taken (worker cap 32,
+  top-level import, 10s barrier).
+- Harness note (do not repeat this investigation): API half crashed 6×
+  today at the known teardown race (clear_graph_cache vs live _pump +
+  langgraph checkpointer puts, zero product frames every time). Proven
+  inert to this PBI: all API mocks return empty findings → zero pending
+  tasks → pool path untaken in that file. Green evidence WITH the change:
+  units 223 + API 25 full-file + 6+19 split. Adjacent work (not this
+  chain): harden the fixture (join _pump threads before
+  clear_graph_cache) — file as future PBI, do not sneak into a feature.
+- Chained: PBI-072 → Active.
