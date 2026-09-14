@@ -776,3 +776,19 @@ are Phase-1 backlog, executable after release).
   — single load, one key). Sort: internal surface → agentic. EVRSH-80
   Done with evidence comment.
 - Chained: PBI-077 → Active.
+
+## 2026-09-14 - PBI-077 Done (review: agentic, APPROVE + 3 nits taken)
+
+- Built (commits 09eae61 + 6bda87c): checkpoints/{node_id} endpoint
+  (lab-root sqlite, versions_seen-diff attribution, occurrence
+  addressing, ro-connect, 404/422 shapes, _jsonable display JSON) +
+  clickable feed (occurrencesFor, xN badges, Sheet + <pre>) + page
+  wiring. No list endpoint needed (frontend owns events); synthetic
+  events never reach the feed (pre-filtered).
+- Gates: 2/2 checkpoint tests (state-match + read-only commit proof +
+  4 error shapes), runs subset 3/3, typecheck, 168/168 (32 files;
+  feed tests), build. Full-file backend runs as documented (race).
+- Critic APPROVE; all 3 nits taken (ro-connect structural, order
+  note, read-only proof test). Sort: internal debug surface → agentic.
+  EVRSH-82 Done with evidence comment.
+- Chained: PBI-081 → Active.
