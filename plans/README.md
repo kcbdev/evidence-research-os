@@ -99,7 +99,7 @@ stays `In Progress` until the batch review sorts it).
 | PBI-077 | Done (2026-09-14, agentic) | PBI-078 | Proposed (manual: live validation) |
 | PBI-079 | Proposed (manual: contract witness) | PBI-080 | Blocked (needs search provider) |
 | PBI-081 | Done (2026-09-14, agentic) | PBI-082 | Done (2026-09-14, agentic) |
-| PBI-083 | Active | | |
+| PBI-083 | Done (2026-09-14, agentic) | | |
 
 Chain protocol (2026-09-10/11, user-directed, complete): PBIs executed
 back-to-back on deterministic gates; adversarial reviews batched at the

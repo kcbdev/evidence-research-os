@@ -836,3 +836,32 @@ are Phase-1 backlog, executable after release).
   honest). Sort: internal operator surface → agentic. EVRSH-78 Done
   with evidence comment.
 - Chained: PBI-083 → Active.
+
+## 2026-09-14 - PBI-083 Done (review: agentic, via CHANGES-REQUESTED)
+
+- Built (commit 1b44e59): store `write/read/clear_report_structure`
+  (`output/structure.yaml`, ids + titles only, one write = one commit)
+  + synthesis honors the recorded order verbatim (shared block
+  renderer; unlisted adjudicated claims append under "Additional
+  claims", never dropped — critic-upheld) + GET/PUT structure
+  endpoints (unknown/duplicate ids, blank/multiline/reserved titles
+  422; PUT [] = committed clear restoring legacy) + `StructureEditor`
+  on the Output view (sections add/rename/move/remove, claim
+  assign/unassign/reorder, save + revert; statements read-only) +
+  api.ts `ReportSection`/`get+putReportStructure`.
+- Critic CHANGES-REQUESTED → all 5 must-fixes applied: corrupted-YAML
+  never breaks a run (broad catch + GET None + pins both sides);
+  stable section keys + focus-retention pin (keystroke remount was a
+  REAL near-untypable bug); duplicate ids 422 (silent-rewrite class);
+  PUT [] clear + Revert button (one-way-door fix); strip/newline/
+  reserved-title guards. Nits taken: golden legacy byte-exact test,
+  section-move/unassign/assign pins, load-error surfacing. Declined:
+  none outstanding (N7 folded into single-pass lists).
+- Gates: backend 44 (structure 7 + review + api_claims + store),
+  frontend 181/181 (33 files; 8 editor incl. focus/assign/revert),
+  typecheck, build. Full-file heat excluded per standing race
+  precedent (Popen handle warning only, zero failures).
+- Sort: internal operator surface, gate-proven, critic-clean after
+  fixes → agentic. EVRSH-72 Done with evidence comment.
+- Chained: Phase-6 code complete — PBI-078/079 staged for human live
+  validation (need deploy + OPENROUTER_API_KEY).
