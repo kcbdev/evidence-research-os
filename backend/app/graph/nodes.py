@@ -1051,11 +1051,14 @@ def make_final_output(lab_project_path: Path):
                  f"{state['budget'].max_research_rounds}"),
             timestamp=datetime.now(timezone.utc)))
         # PBI-043: post-run dedup hook — source-independence clustering
-        # stays out of the hot path. Non-fatal by design: a clustering
-        # failure is recorded as a decision (visible, auditable), never
-        # allowed to flip a completed run to failed after the fact.
+        # stays out of the hot path. PBI-075 extends it to claim/idea
+        # reports (same cadence, same non-fatal contract). Non-fatal by
+        # design: a clustering failure is recorded as a decision
+        # (visible, auditable), never allowed to flip a completed run
+        # to failed after the fact.
         try:
             _cluster_sources(store)
+            _cluster_claims_ideas(store)
         except Exception as exc:
             store.write_decision(Decision(
                 id=f"D-dedup-{session}",
@@ -1086,3 +1089,29 @@ def _cluster_sources(store: LabProjectStore):
         if canonical is not None and src.independence_cluster != canonical:
             src.independence_cluster = canonical
             store.write_source(src)
+
+
+def _cluster_claims_ideas(store: LabProjectStore):
+    """Cluster claims by statement and ideas by statement (PBI-075),
+    writing one duplicates/<kind>.yaml report per kind with multi-member
+    clusters only. Claim/idea restatement is looser than source
+    mirroring, hence the lower threshold (see CLAIM_IDEA_THRESHOLD).
+    Reports only: schemas untouched, nothing relinked."""
+    from app.tools.dedup import CLAIM_IDEA_THRESHOLD, cluster_objects
+    for kind, items in (
+            ("claims", [(c.id, c.statement)
+                        for c in store.list_claims()]),
+            ("ideas", [(i.id, i.statement)
+                       for i in store.list_ideas()])):
+        if len(items) < 2:
+            continue  # nothing to cluster against
+        mapping = cluster_objects(items, threshold=CLAIM_IDEA_THRESHOLD)
+        groups: dict[str, list[str]] = {}
+        for oid, canonical in mapping.items():
+            groups.setdefault(canonical, []).append(oid)
+        multi = {canon: sorted(members)
+                 for canon, members in groups.items() if len(members) > 1}
+        if multi:
+            # No-duplicates is the default state, not an event: an empty
+            # report would commit noise every run.
+            store.write_duplicate_report(kind, multi)

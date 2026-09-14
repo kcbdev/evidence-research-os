@@ -1,12 +1,17 @@
 """PBI-043 gate: union-find clustering + final_output hook.
+PBI-075: generalized objects clustering (lower claim/idea threshold) +
+duplicate reports for claims/ideas.
 
 Embeddings are injected fakes (deterministic); the hook test drives the
 real final_output node with the seam mocked (no download).
 """
+import math
 from app.graph import nodes
-from app.models.evidence import (BudgetState, ProjectMeta, Source)
+from app.models.evidence import (BudgetState, Claim, Idea, ProjectMeta,
+                                 Source)
 from app.store.lab_project import LabProjectStore
-from app.tools.dedup import DEDUP_THRESHOLD, cluster_sources
+from app.tools.dedup import (CLAIM_IDEA_THRESHOLD, DEDUP_THRESHOLD,
+                             cluster_objects, cluster_sources)
 
 TS = "2026-09-05T10:00:00Z"
 COUNCIL = {"scientist": "m-sci", "investigator": "m-inv", "skeptic": "m-ske"}
@@ -42,6 +47,20 @@ def test_empty_and_singleton():
 
 def test_threshold_pinned():
     assert DEDUP_THRESHOLD == 0.92
+    assert CLAIM_IDEA_THRESHOLD == 0.90
+
+
+def test_objects_threshold_sits_below_sources():
+    # PBI-075 rationale, pinned exactly: cosine 0.91 merges claims/ideas
+    # but still splits sources (0.01 margin either side — no fp edge).
+    vecs = {"a": [1.0, 0.0],
+            "b": [0.91, math.sqrt(1.0 - 0.91 ** 2)]}
+    pairs = [("X-1", "a"), ("X-2", "b")]
+    by_text = lambda text: vecs[text]  # noqa: E731 -- test fake
+    merged = cluster_objects(pairs, embed_fn=by_text)
+    assert merged == {"X-1": "X-1", "X-2": "X-1"}
+    split = cluster_sources(pairs, embed_fn=by_text)
+    assert split == {"X-1": "X-1", "X-2": "X-2"}
 
 
 def _seed(tmp_path, monkeypatch):
@@ -110,3 +129,36 @@ def test_no_event_log_stage_added(tmp_path, monkeypatch):
     graph = default_graph(tmp_path, "research", COUNCIL, JUDGE)
     assert "dedup" not in set(graph.get_graph().nodes)
     assert not any("cluster" in n for n in graph.get_graph().nodes)
+
+
+def test_claims_ideas_reports_from_hook(tmp_path, monkeypatch):
+    # PBI-075: near-duplicate claims/ideas from (simulated) separate runs
+    # land in the same reported cluster; singletons stay unreported.
+    from app.models.evidence import Idea
+    store = _seed(tmp_path, monkeypatch)
+    store.write_claim(Claim(id="C-1", statement="microbe supports bones"))
+    store.write_claim(Claim(id="C-2",
+                            statement="microbe supports bones replicated"))
+    store.write_claim(Claim(id="C-3", statement="quantum forbids all"))
+    store.write_idea(Idea(id="I-001", statement="microbe trial idea"))
+    store.write_idea(Idea(id="I-002",
+                          statement="microbe trial idea extended"))
+    nodes.make_final_output(tmp_path)(_state())
+    assert store.read_duplicate_report("claims")["clusters"] == {
+        "C-1": ["C-1", "C-2"]}
+    assert store.read_duplicate_report("ideas")["clusters"] == {
+        "I-001": ["I-001", "I-002"]}
+    # Terminal record still written; no dedup-failure decision.
+    assert store.read_decision("D-terminal-s-d").what == "Run ended: completed"
+    assert [d.id for d in store.list_decisions()
+            if d.id.startswith("D-dedup-")] == []
+
+
+def test_no_report_without_duplicates(tmp_path, monkeypatch):
+    # PBI-075: no-duplicates is the default state, not an event — the
+    # hook writes no report file (and commits no noise) for it.
+    store = _seed(tmp_path, monkeypatch)
+    store.write_claim(Claim(id="C-1", statement="microbe supports bones"))
+    nodes.make_final_output(tmp_path)(_state())
+    assert not (store.path / "duplicates" / "claims.yaml").exists()
+    assert not (store.path / "duplicates" / "ideas.yaml").exists()

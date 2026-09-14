@@ -19,6 +19,7 @@ LAYOUT_SUBDIRS = [
     "sources", "claims", "ideas", "evidence", "contradictions",
     "experiments", "tasks", "decisions", "debates",
     "audits", "product", "output", "tool_outputs",
+    "duplicates",  # PBI-075: post-run duplicate-cluster reports
 ]
 # NOTE: "ideas" is absent from guide §1.2 but required by spec §4.1
 # (ideas/*.yaml). The dir ships empty until Phase 2 populates it.
@@ -181,6 +182,26 @@ class LabProjectStore:
 
     def list_audit_runs(self) -> list[AuditRun]:
         return self._list("audits", AuditRun)
+
+    def write_duplicate_report(self, kind: str,
+                               clusters: dict[str, list[str]]):
+        """Duplicate-cluster report (PBI-075): {canonical_id: [member
+        ids]} for one object kind ("claims"/"ideas"), multi-member
+        clusters only — singletons are not duplicates. Plain YAML (not
+        a model: Claim/Idea schemas stay untouched by design), one
+        write = one commit like every other object write."""
+        from datetime import datetime, timezone
+        p = self.path / "duplicates" / f"{kind}.yaml"
+        p.write_text(yaml.safe_dump(
+            {"kind": kind, "clusters": clusters,
+             "generated_at": datetime.now(timezone.utc).isoformat()},
+            sort_keys=False), encoding="utf-8")
+        self._commit(p.relative_to(self.path),
+                     f"duplicates: {kind} ({len(clusters)} clusters)")
+
+    def read_duplicate_report(self, kind: str) -> dict:
+        p = self.path / "duplicates" / f"{kind}.yaml"
+        return yaml.safe_load(p.read_text(encoding="utf-8"))
 
     def write_product_note(self, note: ProductNote):
         self._write("product", note.id, note, f"product note: {note.id}")
