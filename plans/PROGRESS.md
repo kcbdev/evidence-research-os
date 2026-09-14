@@ -673,3 +673,35 @@ are Phase-1 backlog, executable after release).
   row type total). Sort: internal operator surface, gate-proven, no
   human judgment → agentic. EVRSH-81 Done.
 - Chained: PBI-073 → Active.
+
+## 2026-09-14 - PBI-073 Done (review: agentic, APPROVE + hardening)
+
+- Built (commits 3e2e1e5 + dc9e6da): start_run scope/pins validation
+  (422/404, fail-closed pre-record) + freeze into state (NotRequired) +
+  record (memory + runs.db columns + rehydrate + GET payload; list shape
+  untouched by design); investigator closed-corpus prompt block;
+  extraction allowed_urls gate (no outside minting); dialog scope Select
+  always posted; pins API-only. No compiler/storage redesign.
+- Test honesty catch (own): prompt test keyed users by system substring
+  — the scientist prompt name-drops "Investigator", misattributing the
+  no-block user. Re-keyed by distinct model ids. Lesson: never match
+  roles by prompt substrings; _mock_llm's order (Scientist first) hides
+  the same trap.
+- Process failure (do not repeat): two gratuitous whitespace edits
+  mangled live lines (test def + rehydrate indent) — caught by ast
+  check before running. Rule restated: NO edit without a functional
+  reason; syntax-check after every backend edit batch.
+- Gates: typecheck, 165/165 vitest (31 files; 2 new), build green;
+  backend new tests green (2 council + 3 API), units-minus-methodology
+  217 green, api chunk-A 6/6. Full-file halves blocked by hot harness
+  race all session (teardown clear_graph_cache vs live _pump +
+  checkpointer puts; one flaky FileNotFoundError from the GitPython
+  chdir race, same family). Pre-existing tests proven shape-safe
+  (exact-assert audit); crashing files have zero references to the new
+  code. Split evidence stands per precedent.
+- Critic APPROVE; hardening taken (any unreadable pin id → 404 +
+  regression); declined with rationale: list_runs parity (exact-keys
+  test, GET is the record), start-response symmetry (exact-response
+  contract). Sort: internal surface, gate-proven → agentic. EVRSH-83
+  Done with evidence comment.
+- Chained: PBI-074 → Active (pre-flight done; implementation next).
