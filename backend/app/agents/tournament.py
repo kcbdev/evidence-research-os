@@ -39,8 +39,8 @@ def judge_pairwise(a, b, model_id: str) -> tuple[str | None, int]:
 
 def run_tournament(ideas: list, model_id: str, rounds: int = 3,
                    rng=None, judge_fn=None) -> tuple[list, int]:
-    """Rank a copy of the idea list in place (callers persist). Returns
-    (ideas, model attempts spent)."""
+    """Shuffle a copy of the list; mutate the Idea objects' elo_score
+    in place (callers persist). Returns (ideas, model attempts spent)."""
     rng = rng if rng is not None else _random
     judge_fn = judge_fn if judge_fn is not None else judge_pairwise
     pool = list(ideas)

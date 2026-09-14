@@ -62,8 +62,8 @@ function IdeaCard({ idea, onOpen }: { idea: Idea; onOpen: (idea: Idea) => void }
       <CardContent className="p-3">
         <div className="flex items-start justify-between gap-2 mb-2">
           <StatusBadge status={idea.status} />
-          <Badge variant="outline" className="text-xs tabular-nums" aria-label={`Elo score ${Math.round(idea.elo_score)}`}>
-            Elo {Math.round(idea.elo_score)}
+          <Badge variant="outline" className="text-xs tabular-nums" aria-label={`Elo score ${Math.round(idea.elo_score ?? 1200)}`}>
+            Elo {Math.round(idea.elo_score ?? 1200)}
           </Badge>
         </div>
         <p className="text-sm text-foreground line-clamp-2">{truncate(idea.statement, 120)}</p>
@@ -168,7 +168,9 @@ export default function IdeasPage() {
     return ideas.filter((i) => i.status === status);
   }
 
-  const ranked = [...ideas].sort((a, b) => b.elo_score - a.elo_score);
+  // ?? 1200: stale cached payloads predate the field (server always
+  // sends it — Pydantic default fills); never NaN the sort.
+  const ranked = [...ideas].sort((a, b) => (b.elo_score ?? 1200) - (a.elo_score ?? 1200));
 
   if (loading) {
     return (
