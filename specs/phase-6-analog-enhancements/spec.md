@@ -46,7 +46,8 @@ acceptance scenario.
   coverage-check task feeding back into `targeted_research`; a deliberately
   incoherent draft is caught by Meta-Reviewer before citation audit (loop back
   to synthesis); judge-exclusion validation also rejects Meta-Reviewer/council
-  model overlap; perspective-guided planning visibly multi-angles decompositions.
+  model overlap; perspective addendum ships verbatim and presence-pinned,
+  with live multi-angle decomposition deferred to plan realization (D7).
 - C5 (dedup): near-duplicate ideas from separate Brainstorm runs land in the
   same duplicate cluster; claims cluster the same way; both write duplicate
   reports without touching the Claim/Idea schemas.
@@ -119,6 +120,12 @@ acceptance scenario.
 - D6 (Elo determinism): tournament shuffles with an injectable RNG seam so
   tests pin ordering without real model calls; live stability is witnessed,
   not unit-asserted.
+- D7 (plan-stub divergence, flagged for human veto): guide Task 59 assumes
+  a `plan`-node Scientist call that was never built (as-built plan is a
+  stub). The perspective addendum ships verbatim as
+  `prompts/scientist_planning_addendum.md`, loadable and test-pinned, with
+  activation deferred to a plan-realization PBI. C4's "visibly multi-angle
+  plan" is therefore presence-pinned, not live-witnessed, until then.
 
 ## Tooling
 

@@ -676,7 +676,9 @@ def make_evidence_adjudication(lab_project_path: Path):
         from app.agents.config import validate_model_assignment
         store = LabProjectStore(lab_project_path, state["lab_project_id"])
         council, judge = _models(state, store)
-        validate_model_assignment(council, judge)
+        validate_model_assignment(
+            {k: v for k, v in council.items() if k != "meta_reviewer"},
+            judge, council.get("meta_reviewer"))
         by_claim: dict[str, list] = {}
         for ev in store.list_evidence():
             for cid in ev.supports:
@@ -850,6 +852,76 @@ def make_reproducibility_audit(lab_project_path: Path):
         return {}
 
     return reproducibility_audit
+
+
+def make_coverage_check(lab_project_path: Path):
+    """Unused-evidence sweep (PBI-074, guide Task 50).
+
+    CORRECTED vs the guide sketch: the sketch compares claim
+    supporting/opposing SOURCE ids against EVIDENCE ids (always unequal
+    — everything would look unused). Unused here means evidence whose
+    SOURCE is cited by no claim. One deterministic task id
+    ("R-coverage-check", overwritten each pass — the queue never grows);
+    the route sends non-empty pending back into targeted_research.
+    Termination is budget-bounded like the contradiction loop: every
+    pass through targeted consumes a round, and the route only fires
+    while pending is non-empty."""
+
+    def coverage_check(state) -> dict:
+        store = LabProjectStore(lab_project_path, state["lab_project_id"])
+        cited_sources = {sid for claim in store.list_claims()
+                         for sid in claim.supporting_sources
+                         + claim.opposing_sources}
+        unused = [e.id for e in store.list_evidence()
+                  if e.source_id not in cited_sources]
+        if not unused:
+            return {}
+        task = Task(
+            id="R-coverage-check",
+            question=f"Evidence {unused} was retrieved but unused — "
+                     "new claim, or does it reveal a gap the plan missed?",
+            reason="coverage_check", required_sources=[],
+            assigned_agent="scientist")
+        store.write_task(task)
+        pending = [t for t in (state.get("pending_tasks") or [])
+                   if (t.id if isinstance(t, Task) else t["id"]) != task.id]
+        return {"pending_tasks": [*pending, task]}
+
+    return coverage_check
+
+
+def make_meta_review(lab_project_path: Path):
+    """Whole-report coherence review (PBI-074, guide Task 51). Reads the
+    synthesis draft (fail-loud when absent — synthesis always writes it),
+    asks the meta-reviewer model, loops back on MAJOR_GAP. Each pass
+    consumes calls + a round (the termination argument); the route
+    short-circuits to citation_audit on exhaustion."""
+
+    def meta_review(state) -> dict:
+        store = LabProjectStore(lab_project_path, state["lab_project_id"])
+        models, judge = _models(state, store)
+        report_file = Path(lab_project_path) / state["lab_project_id"] \
+            / "output" / "report.md"
+        if not report_file.is_file():
+            raise FileNotFoundError(
+                f"meta_review: no synthesis draft at {report_file}")
+        meta_model = models.get("meta_reviewer") or judge
+        text, attempts = call_model_resilient(
+            meta_model, load_prompt("meta_reviewer"),
+            report_file.read_text(encoding="utf-8"))
+        passed = "MAJOR_GAP" not in text
+        if not passed:
+            store.write_decision(Decision(
+                id=f"D-meta-{state['session_id']}",
+                what="Meta-review flagged issues",
+                why=text[:500],
+                timestamp=datetime.now(timezone.utc)))
+        tmp = {"budget": state["budget"].model_copy()}
+        consume_calls(tmp, attempts)
+        consume_round(tmp)
+        return {"meta_review_passed": passed, "budget": tmp["budget"]}
+
+    return meta_review
 
 
 def make_synthesis(lab_project_path: Path):

@@ -31,6 +31,8 @@ NODE_REGISTRY = {
     "targeted_research": nodes.make_targeted_research,
     "adversarial_review": nodes.make_adversarial_review,
     "evidence_adjudication": nodes.make_evidence_adjudication,
+    "coverage_check": nodes.make_coverage_check,  # PBI-074
+    "meta_review": nodes.make_meta_review,  # PBI-074
     "methodology_analysis": nodes.make_methodology_analysis,
     "reproducibility_audit": nodes.make_reproducibility_audit,
     "synthesis": nodes.make_synthesis,
@@ -58,11 +60,28 @@ def route_audit(s):
     return "human_checkpoint" if s["audit_passed"] else "targeted_repair"
 
 
+def route_coverage(s):
+    """PBI-074: coverage findings re-enter research; a clean sweep
+    proceeds to synthesis. Reads pending (the node appends there)."""
+    return "targeted_research" if s.get("pending_tasks") else "synthesis"
+
+
+def route_meta(s):
+    """PBI-074: incoherent drafts loop back to synthesis; exhaustion
+    short-circuits forward (never loop without budget)."""
+    if is_exhausted(s):
+        return "citation_audit"
+    return "synthesis" if not s.get("meta_review_passed", True) \
+        else "citation_audit"
+
+
 CONDITION_REGISTRY = {
     # routers (PBI-053 `route` form)
     "route_classifier": route_classifier,
     "route_conflict": route_conflict,
     "route_audit": route_audit,
+    "route_coverage": route_coverage,  # PBI-074
+    "route_meta": route_meta,  # PBI-074
     # loop predicates (guide `loop_while` form)
     "has_open_contradictions": lambda s: bool(s["open_contradictions"]),
     "audit_failed": lambda s: not s["audit_passed"],

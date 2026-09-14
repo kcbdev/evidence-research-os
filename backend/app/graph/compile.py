@@ -39,8 +39,9 @@ def build_graph_from_methodology(methodology: Methodology,
     # and must additionally stay outside the rotation, enforced at
     # audit time by resolve_auditor).
     council_models = {k: v for k, v in models.items()
-                      if k not in ("judge", "auditor")}
-    validate_model_assignment(council_models, models["judge"])
+                      if k not in ("judge", "auditor", "meta_reviewer")}
+    validate_model_assignment(council_models, models["judge"],
+                              models.get("meta_reviewer"))
     stages = methodology.workflow.stages
     if not stages:
         raise ValueError(f"methodology {mid}: no stages")

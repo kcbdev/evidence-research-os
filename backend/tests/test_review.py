@@ -7,8 +7,9 @@ judge by its system prompt.
 """
 import pytest
 from app.graph import nodes
+from app.graph.registry import route_coverage, route_meta
 from app.models.evidence import (BudgetState, Claim, Confidence, Evidence,
-                                 ProjectMeta, Source)
+                                 ProjectMeta, Source, Task)
 from app.store.lab_project import LabProjectStore
 
 TS = "2026-09-05T10:00:00Z"
@@ -205,3 +206,107 @@ def test_synthesis_segregates_pending_claims(tmp_path, monkeypatch):
     adjudicated, _, pending = report.partition("## Pending review")
     assert "C-done — SUPPORTED" in adjudicated
     assert "C-wait" not in adjudicated and "C-wait" in pending
+
+
+def _seed_coverage_gap(store):
+    # S-1 cited by C-ok (used); S-2 retrieved with evidence E-2 but cited
+    # by no claim (the gap). NOTE the guide sketch compares source ids to
+    # evidence ids (always unequal); the node compares source linkage.
+    for sid in ("S-1", "S-2"):
+        store.write_source(Source(id=sid, kind="primary_paper",
+                                  url=f"https://e.org/{sid}", title=sid,
+                                  retrieved_at=TS, quality_tier=2))
+    store.write_claim(Claim(id="C-ok", statement="cited",
+                            supporting_sources=["S-1"]))
+    store.write_evidence(Evidence(id="E-1", source_id="S-1",
+                                  location={"section": "R"},
+                                  text_reference="used excerpt here",
+                                  supports=["C-ok"],
+                                  evidence_type="empirical",
+                                  strength="high"))
+    store.write_evidence(Evidence(id="E-2", source_id="S-2",
+                                  location={"section": "R"},
+                                  text_reference="orphan excerpt here",
+                                  supports=[],
+                                  evidence_type="empirical",
+                                  strength="high"))
+
+
+def test_coverage_check_tasks_the_gap(tmp_path, monkeypatch):
+    _mock(monkeypatch)
+    store = _seed(tmp_path)
+    _seed_coverage_gap(store)
+    out = nodes.make_coverage_check(tmp_path)(_state())
+    assert [t.id for t in out["pending_tasks"]] == ["R-coverage-check"]
+    task = store.read_task("R-coverage-check")
+    assert "E-2" in task.question and task.reason == "coverage_check"
+    assert task.assigned_agent == "scientist"
+    assert route_coverage(out) == "targeted_research"
+
+
+def test_coverage_check_clean_sweep_passes_through(tmp_path, monkeypatch):
+    _mock(monkeypatch)
+    store = _seed(tmp_path)
+    _seed_evidenced_claim(store)
+    out = nodes.make_coverage_check(tmp_path)(_state())
+    assert out == {}
+    assert store.list_tasks() == []
+    assert route_coverage({"pending_tasks": []}) == "synthesis"
+
+
+def test_meta_review_pass_and_fail(tmp_path, monkeypatch):
+    _mock(monkeypatch)
+    store = _seed(tmp_path)
+    report = store.path / "output" / "report.md"
+    report.parent.mkdir(parents=True, exist_ok=True)
+    report.write_text("# Draft\n\nCoherent summary.", encoding="utf-8")
+    budget = BudgetState(max_model_calls=100, max_research_rounds=5)
+    out = nodes.make_meta_review(tmp_path)(_state(budget=budget))
+    assert out["meta_review_passed"] is True
+    assert (out["budget"].calls_used, out["budget"].rounds_used) == (1, 1)
+    assert store.list_decisions() == []
+    assert route_meta(out) == "citation_audit"
+
+    def _gap(model, system, user):
+        return "MAJOR_GAP: the draft ignores the question", 2
+
+    monkeypatch.setattr("app.graph.nodes.call_model_resilient", _gap)
+    out = nodes.make_meta_review(tmp_path)(_state(budget=budget))
+    assert out["meta_review_passed"] is False
+    assert (out["budget"].calls_used, out["budget"].rounds_used) == (2, 1)
+    decisions = store.list_decisions()
+    assert [d.id for d in decisions] == ["D-meta-s-1"]
+    assert route_meta(out) == "synthesis"
+
+
+def test_meta_review_missing_draft_is_loud(tmp_path, monkeypatch):
+    _mock(monkeypatch)
+    _seed(tmp_path)
+    with pytest.raises(FileNotFoundError, match="no synthesis draft"):
+        nodes.make_meta_review(tmp_path)(_state())
+
+
+def test_route_meta_exhausted_short_circuits():
+    spent = BudgetState(max_model_calls=2, max_research_rounds=5,
+                        calls_used=2)
+    assert route_meta({"meta_review_passed": False,
+                       "budget": spent}) == "citation_audit"
+
+
+def test_meta_overlap_refused():
+    from app.agents.config import validate_model_assignment
+    council = {"scientist": "m-sci", "investigator": "m-inv"}
+    validate_model_assignment(council, "m-judge",
+                              meta_reviewer_model="m-meta")  # fine
+    validate_model_assignment(council, "m-judge",
+                              meta_reviewer_model=None)  # legacy: fine
+    with pytest.raises(ValueError, match="Meta-reviewer"):
+        validate_model_assignment(council, "m-judge",
+                                  meta_reviewer_model="m-sci")
+
+
+def test_prompts_load_meta_and_addendum():
+    from app.agents.prompts import load_prompt
+    assert len(load_prompt("meta_reviewer")) > 50
+    assert "MAJOR_GAP" in load_prompt("meta_reviewer")
+    assert "perspectives" in load_prompt("scientist-planning-addendum")

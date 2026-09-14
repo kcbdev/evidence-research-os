@@ -125,7 +125,14 @@ def get_graph(root: Path, project_id: str, mode: str,
     if mode == "brainstorm" and "ideator" not in council:
         raise ValueError(
             "brainstorm mode needs an 'ideator' model in council_models")
-    validate_model_assignment(council, judge)
+    # PBI-074: the effective map carries non-council roles (ideator,
+    # meta_reviewer). meta_reviewer==judge is sanctioned (report reviewer,
+    # not claim adjudicator — see D5), so it is excluded from the council
+    # side and checked explicitly instead. ideator stays IN the check
+    # (pre-existing strictness: promoted ideas meet the judge).
+    validate_model_assignment(
+        {k: v for k, v in council.items() if k != "meta_reviewer"},
+        judge, council.get("meta_reviewer"))
     effective = methodology.model_copy(
         update={"models": {**council, "judge": judge}})
     key = (str(Path(root) / project_id) + f":{methodology.id}:"
@@ -435,6 +442,7 @@ def start_run(project_id: str, payload: dict, request: Request):
         "first_pass": {},
         "search_scope": search_scope,
         "pinned_sources": list(pinned_sources),
+        "meta_review_passed": True,
     }
     with _lock:
         _runs[run_id] = {"run_id": run_id, "project_id": project_id,

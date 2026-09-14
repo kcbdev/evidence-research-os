@@ -29,8 +29,14 @@ workflow:
     node: adversarial_review
   - id: evidence_adjudication
     node: evidence_adjudication
+  - id: coverage_check
+    node: coverage_check
+    route: route_coverage
   - id: synthesis
     node: synthesis
+  - id: meta_review
+    node: meta_review
+    route: route_meta
   - id: citation_audit
     node: citation_audit
     route: route_audit
@@ -72,6 +78,7 @@ models:
   skeptic: deepseek/deepseek-v4-flash-0731
   ideator: deepseek/deepseek-v4-flash-0731
   judge: meta-llama/llama-3.3-70b-instruct
+  meta_reviewer: meta-llama/llama-3.3-70b-instruct
 budget_defaults:
   max_model_calls: 50
   max_research_rounds: 5

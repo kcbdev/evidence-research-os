@@ -74,8 +74,9 @@ def _check_names(m: Methodology):
         from app.agents.config import validate_model_assignment
         try:
             validate_model_assignment(
-                {k: v for k, v in m.models.items() if k != "judge"},
-                m.models["judge"])
+                {k: v for k, v in m.models.items()
+                 if k not in ("judge", "meta_reviewer")},
+                m.models["judge"], m.models.get("meta_reviewer"))
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc))
 

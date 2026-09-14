@@ -12,6 +12,12 @@ _ROLE_FILES = {
     "judge": "judge.md",
     "ideator": "ideator.md",  # PBI-034: brainstorm fourth chair
     "skeptic-brainstorm": "skeptic-brainstorm.md",  # PBI-035: brainstorm rubric
+    "meta_reviewer": "meta_reviewer.md",  # PBI-074: whole-report reviewer
+    # PBI-074 (STORED, NOT ACTIVE): the as-built plan node is a stub with
+    # no Scientist call, so guide Task 59 has no call site yet. The text
+    # is kept verbatim for the plan-realization PBI — never silently
+    # dropped, never pasted nowhere.
+    "scientist-planning-addendum": "scientist_planning_addendum.md",
 }
 
 _SKEPTIC_RUBRICS = {

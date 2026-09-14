@@ -25,3 +25,6 @@ class LabProjectState(TypedDict):
     # (closed-corpus extraction). Absent in ad-hoc states.
     search_scope: NotRequired[str]
     pinned_sources: NotRequired[list[str]]
+    # PBI-074: meta-review verdict, set by the meta_review node. Absent
+    # in ad-hoc states — routers default it to passed (no loop).
+    meta_review_passed: NotRequired[bool]

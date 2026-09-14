@@ -43,7 +43,11 @@ RESEARCH_STAGES = [
            loop_always="conflict_detection"),
     _stage("adversarial_review", "adversarial_review"),
     _stage("evidence_adjudication", "evidence_adjudication"),
+    _stage("coverage_check", "coverage_check",
+           route="route_coverage"),  # PBI-074
     _stage("synthesis", "synthesis"),
+    _stage("meta_review", "meta_review",
+           route="route_meta"),  # PBI-074
     _stage("citation_audit", "citation_audit", route="route_audit"),
     _stage("targeted_repair", "targeted_repair",
            loop_always="citation_audit"),
@@ -81,7 +85,11 @@ ACADEMIC_STAGES = [
     _stage("evidence_adjudication", "evidence_adjudication"),
     _stage("methodology_analysis", "methodology_analysis"),
     _stage("reproducibility_audit", "reproducibility_audit"),
+    _stage("coverage_check", "coverage_check",
+           route="route_coverage"),  # PBI-074
     _stage("synthesis", "synthesis"),
+    _stage("meta_review", "meta_review",
+           route="route_meta"),  # PBI-074
     _stage("citation_audit", "citation_audit", route="route_audit"),
     _stage("targeted_repair", "targeted_repair",
            loop_always="citation_audit"),
@@ -300,6 +308,26 @@ def test_judge_overlap_refused(tmp_path):
     m.models = overlap
     with pytest.raises(ValueError, match="overlap"):
         build_graph_from_methodology(m, tmp_path)
+
+
+def test_meta_overlap_refused(tmp_path):
+    m = _methodology("m", ["research"], RESEARCH_STAGES)
+    m.models = {**MODELS, "meta_reviewer": "m-sci"}
+    with pytest.raises(ValueError, match="Meta-reviewer"):
+        build_graph_from_methodology(m, tmp_path)
+    m.models = {**MODELS, "meta_reviewer": JUDGE}  # judge value: not council
+    build_graph_from_methodology(m, tmp_path)  # must not raise
+
+
+def test_shipped_research_default_carries_new_stages(tmp_path):
+    # PBI-074: the research default wires coverage_check (route) after
+    # adjudication and meta_review (route) after synthesis. Read-only
+    # over the shipped registry — never mutated here.
+    from app.store.methodology import MethodologyStore
+    m = MethodologyStore().get("deep-research-council-v1")
+    graph = build_graph_from_methodology(m, tmp_path / "proj")
+    names = set(graph.get_graph().nodes)
+    assert {"coverage_check", "meta_review"} <= names
 
 
 def test_canvas_emitted_shapes_compile_and_run(tmp_path, monkeypatch):

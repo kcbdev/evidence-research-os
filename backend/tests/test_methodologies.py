@@ -51,7 +51,7 @@ def test_seeded_registry_lists_captured_three(tmp_path):
             "deep-research-council-v1"} <= set(ids)
     one = c.get("/api/v1/methodologies/deep-research-council-v1").json()
     assert one["is_default"] is True
-    assert len(one["workflow"]["stages"]) == 13
+    assert len(one["workflow"]["stages"]) == 15  # PBI-074 adds 2
     assert c.get("/api/v1/methodologies/nope").status_code == 404
 
 
