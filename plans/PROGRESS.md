@@ -757,3 +757,22 @@ are Phase-1 backlog, executable after release).
   backend-only, gate-proven, no human judgment → agentic. EVRSH-73
   Done with evidence comment.
 - Chained: PBI-076 → Active.
+
+## 2026-09-14 - PBI-076 Done (review: agentic, APPROVE x2)
+
+- Built (commits dec0d32 + 51a8e1d + f75e243): tournament.py (Elo k=32,
+  WINNER: protocol, fail-safe skip-but-charge, injected rng/judge_fn)
+  + prompt file; ranking node (judge model, <2 passthrough, write-back,
+  call charging) in brainstorm post-novelty; ideas ?sort=elo (422
+  otherwise); single IdeaCard + toggle + badge.
+- Real defect caught by gates mid-flight: tournament bound the model
+  call in its own namespace → every existing brainstorm mock missed it
+  (3 failures incl. live-key RuntimeError). Fixed via parse/call split
+  with nodes-namespace routing; re-reviewed APPROVE. Lesson: new modules
+  must reuse the house mock point, never mint a parallel binding.
+- Gates: typecheck, 166/166 (31 files; toggle test), build; backend
+  62+164+15+10+6+22 green (splits on the race). Critic nits: 2 taken
+  (docstring, stale-cache fallback), 1 declined (client vs server sort
+  — single load, one key). Sort: internal surface → agentic. EVRSH-80
+  Done with evidence comment.
+- Chained: PBI-077 → Active.
