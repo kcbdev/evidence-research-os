@@ -903,3 +903,11 @@ are Phase-1 backlog, executable after release).
   in the Coolify UI (secret discipline: never via chat), then the
   PBI-078 7-row table + PBI-079 contract/§6 witnesses can run.
   No code changes in this entry.
+
+## 2026-09-14 - Plane sync: Phase-6 close-outs propagated
+
+- EVRSH-82 was already Done (completed 12:14Z); evidence comment
+  added. EVRSH-74/78/72 moved Todo → Done with agentic resolution
+  comments (PBI, branch, commits, gates + adversarial outcomes).
+  EVRSH-76 moved Todo → In Progress with manual staging comment
+  (key + deploy state + how-to-review). Local cards and Plane agree.
