@@ -535,7 +535,10 @@ def get_checkpoint_state(project_id: str, run_id: str, node_id: str,
     if not db_path.is_file():
         raise HTTPException(status_code=404,
                             detail="no checkpoints for this run")
-    conn = sqlite3.connect(str(db_path), check_same_thread=False)
+    # URI mode=ro: read-only is structural (never creates, never
+    # writes), not just by-inspection.
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True,
+                           check_same_thread=False)
     try:
         saver = SqliteSaver(conn)
         tuples = list(saver.list(
@@ -550,6 +553,8 @@ def get_checkpoint_state(project_id: str, run_id: str, node_id: str,
     hits = []
     for tup in ordered:
         seen = tup.checkpoint.get("versions_seen") or {}
+        # Linear as-built graphs run one node per step; sorted() keeps
+        # multi-runner order deterministic if that ever changes.
         ran = sorted(k for k, v in seen.items() if prev_seen.get(k) != v)
         prev_seen = seen
         for node in ran:

@@ -55,7 +55,7 @@ def _paused_run(client):
     return pid, rid
 
 
-def test_checkpoint_state_matches_run(client):
+def test_checkpoint_state_matches_run(client, tmp_path):
     pid, rid = _paused_run(client)
     body = client.get(
         f"/api/v1/lab-projects/{pid}/runs/{rid}/checkpoints/plan",
@@ -66,6 +66,11 @@ def test_checkpoint_state_matches_run(client):
     assert state["session_id"] == rid
     assert state["mode"] == "research"
     assert isinstance(state["budget"]["calls_used"], int)
+    # Read-only proof: no new commits from any number of reads.
+    from app.store.lab_project import LabProjectStore
+    before = LabProjectStore(tmp_path, pid).repo.head.commit.hexsha
+    client.get(f"/api/v1/lab-projects/{pid}/runs/{rid}/checkpoints/plan")
+    assert LabProjectStore(tmp_path, pid).repo.head.commit.hexsha == before
 
 
 def test_checkpoint_404_shapes(client):
