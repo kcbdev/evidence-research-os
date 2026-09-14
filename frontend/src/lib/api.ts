@@ -506,6 +506,18 @@ export function getAuditLatest(
   );
 }
 
+export interface AuditSummary {
+  audit_run_id: string | null;
+  total_checks: number;
+  pass_rate: number | null;
+  by_stage: Record<string, { PASS: number; WARNING: number; FAIL: number; total: number }>;
+  by_status: { PASS: number; WARNING: number; FAIL: number };
+}
+
+export function getAuditSummary(projectId: string): Promise<AuditSummary> {
+  return get<AuditSummary>(`/api/v1/lab-projects/${projectId}/audits/summary`);
+}
+
 export async function rerunAudit(
   projectId: string,
   claimId?: string,

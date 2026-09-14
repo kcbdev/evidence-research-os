@@ -19,10 +19,27 @@ function stubFetch(handler: (url: string, init?: RequestInit) => unknown) {
     vi.fn(async (url: string, init?: RequestInit) => ({
       ok: true,
       status: 200,
-      json: async () => handler(url, init),
+      json: async () => handler(url.toString(), init),
       text: async () => "",
     })),
   );
+}
+
+const SUMMARY = {
+  audit_run_id: "A-001",
+  total_checks: 3,
+  pass_rate: 1 / 3,
+  by_stage: {
+    existence: { PASS: 1, WARNING: 0, FAIL: 0, total: 1 },
+    pincite: { PASS: 0, WARNING: 1, FAIL: 0, total: 1 },
+    support_match: { PASS: 0, WARNING: 0, FAIL: 1, total: 1 },
+  },
+  by_status: { PASS: 1, WARNING: 1, FAIL: 1 },
+};
+
+function rowsThenSummary(url: string, fallback: unknown) {
+  if (url.includes("/audits/summary")) return SUMMARY;
+  return fallback;
 }
 
 beforeEach(() => {
@@ -31,7 +48,9 @@ beforeEach(() => {
 
 describe("AuditPage", () => {
   it("renders rows with stage badges and expands reasoning", async () => {
-    stubFetch(() => ({ audit_run_id: "A-001", results: ROWS }));
+    stubFetch((url) =>
+      rowsThenSummary(url, { audit_run_id: "A-001", results: ROWS }),
+    );
     render(<AuditPage />);
     expect(await screen.findByText("A-001")).toBeDefined();
     fireEvent.click(screen.getByRole("button", { name: /Show reasoning for C-1 support_match/ }));
@@ -39,9 +58,21 @@ describe("AuditPage", () => {
   });
 
   it("shows the empty state before any run", async () => {
-    stubFetch(() => ({ audit_run_id: null, results: [] }));
+    stubFetch((url) => {
+      if (url.includes("/audits/summary")) {
+        return {
+          audit_run_id: null,
+          total_checks: 0,
+          pass_rate: null,
+          by_stage: {},
+          by_status: { PASS: 0, WARNING: 0, FAIL: 0 },
+        };
+      }
+      return { audit_run_id: null, results: [] };
+    });
     render(<AuditPage />);
     expect(await screen.findByText("No audit results")).toBeDefined();
+    expect(screen.queryByTestId("audit-pass-rate")).toBeNull();
   });
 
   it("re-runs and reloads", async () => {
@@ -51,6 +82,7 @@ describe("AuditPage", () => {
         calls += 1;
         return { audit_run_id: "A-002", rows: 3, failed: true };
       }
+      if (url.includes("/audits/summary")) return SUMMARY;
       return { audit_run_id: calls > 0 ? "A-002" : "A-001", results: ROWS };
     });
     render(<AuditPage />);
@@ -71,5 +103,15 @@ describe("AuditPage", () => {
     );
     render(<AuditPage />);
     expect(await screen.findByText("Something went wrong")).toBeDefined();
+  });
+
+  it("renders the pass-rate quality summary with per-stage counts", async () => {
+    stubFetch((url) =>
+      rowsThenSummary(url, { audit_run_id: "A-001", results: ROWS }),
+    );
+    render(<AuditPage />);
+    expect(await screen.findByTestId("audit-pass-rate")).toBeDefined();
+    expect(await screen.findByText("33% pass rate")).toBeDefined();
+    expect(await screen.findByText("existence: 1/1 passed")).toBeDefined();
   });
 });

@@ -47,6 +47,47 @@ def latest_audit(project_id: str, request: Request,
     return {"audit_run_id": latest.id, "results": out}
 
 
+def _summarize_run(latest):
+    """Pure derivation over stored AuditRun rows (PBI-081, C9).
+
+    Counts by stage and status plus the overall pass rate. No schema
+    change, no new write path — the quality signal is computed, never
+    stored. pass_rate is None when no checks exist.
+    """
+    by_stage: dict[str, dict[str, int]] = {}
+    by_status: dict[str, int] = {s: 0 for s in STATUSES}
+    total = 0
+    for row in latest.results:
+        for check in row.checks:
+            total += 1
+            by_status[check.status] = by_status.get(check.status, 0) + 1
+            cell = by_stage.setdefault(
+                check.stage, {"PASS": 0, "WARNING": 0, "FAIL": 0,
+                              "total": 0})
+            cell[check.status] = cell.get(check.status, 0) + 1
+            cell["total"] += 1
+    rate = (by_status["PASS"] / total) if total else None
+    return {"audit_run_id": latest.id, "total_checks": total,
+            "pass_rate": rate, "by_stage": by_stage,
+            "by_status": by_status}
+
+
+@router.get("/{project_id}/audits/summary")
+def audit_summary(project_id: str, request: Request):
+    """Per-run quality summary for the latest audit (PBI-081, C9).
+
+    Empty store → zeroed shape with a null pass rate (never 0/0).
+    """
+    store = _store(_root(request), project_id)
+    runs = store.list_audit_runs()
+    if not runs:
+        return {"audit_run_id": None, "total_checks": 0,
+                "pass_rate": None, "by_stage": {},
+                "by_status": {s: 0 for s in STATUSES}}
+    latest = max(runs, key=lambda r: (r.created_at, r.id))
+    return _summarize_run(latest)
+
+
 @router.post("/{project_id}/audits/rerun")
 def rerun_audit(project_id: str, request: Request,
                 payload: dict | None = None):

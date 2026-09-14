@@ -112,6 +112,28 @@ def test_rerun_scoped_to_claim(client, tmp_path, monkeypatch):
     assert missing.status_code == 404
 
 
+def test_summary_exact_counts_and_rate(client, tmp_path, monkeypatch):
+    pid = _create(client)
+    empty = client.get(f"/api/v1/lab-projects/{pid}/audits/summary").json()
+    assert empty == {"audit_run_id": None, "total_checks": 0,
+                     "pass_rate": None, "by_stage": {},
+                     "by_status": {"PASS": 0, "WARNING": 0, "FAIL": 0}}
+    _seed_pair(tmp_path, pid)
+    _mock_verify(monkeypatch)
+    rerun = client.post(f"/api/v1/lab-projects/{pid}/audits/rerun",
+                        json={}).json()
+    body = client.get(f"/api/v1/lab-projects/{pid}/audits/summary").json()
+    assert body["audit_run_id"] == rerun["audit_run_id"]
+    assert body["total_checks"] == 3
+    assert body["pass_rate"] == pytest.approx(1 / 3)
+    assert body["by_status"] == {"PASS": 1, "WARNING": 1, "FAIL": 1}
+    assert body["by_stage"]["existence"] == {"PASS": 1, "WARNING": 0,
+                                             "FAIL": 0, "total": 1}
+    assert body["by_stage"]["pincite"] == {"PASS": 0, "WARNING": 1,
+                                           "FAIL": 0, "total": 1}
+    assert body["by_stage"]["support_match"]["FAIL"] == 1
+
+
 def test_rerun_without_body(client, tmp_path, monkeypatch):
     pid = _create(client)
     _seed_pair(tmp_path, pid)

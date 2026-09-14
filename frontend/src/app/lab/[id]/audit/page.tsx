@@ -21,7 +21,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { getAuditLatest, rerunAudit, type AuditRow } from "@/lib/api";
+import { getAuditLatest, getAuditSummary, rerunAudit, type AuditRow, type AuditSummary } from "@/lib/api";
 
 type StatusFilter = "" | "PASS" | "WARNING" | "FAIL";
 
@@ -36,6 +36,7 @@ function AuditBody() {
   const search = useSearchParams();
   const [rows, setRows] = useState<AuditRow[]>([]);
   const [runId, setRunId] = useState<string | null>(null);
+  const [summary, setSummary] = useState<AuditSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [rerunning, setRerunning] = useState(false);
@@ -53,6 +54,11 @@ function AuditBody() {
       });
       setRunId(res.audit_run_id);
       setRows(res.results);
+      try {
+        setSummary(await getAuditSummary(id));
+      } catch {
+        setSummary(null);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "failed to load");
     } finally {
@@ -90,6 +96,27 @@ function AuditBody() {
           </p>
         )}
       </div>
+
+      {summary && summary.total_checks > 0 && (
+        <section aria-label="Audit quality summary">
+          <p className="text-sm">
+            Quality:{" "}
+            <span className="font-semibold" data-testid="audit-pass-rate">
+              {`${Math.round((summary.pass_rate ?? 0) * 100)}% pass rate`}
+            </span>{" "}
+            <span className="text-muted-foreground">
+              ({summary.by_status.PASS}/{summary.total_checks} checks passed)
+            </span>
+          </p>
+          <ul className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
+            {Object.entries(summary.by_stage).map(([stage, cell]) => (
+              <li key={stage} className="rounded border px-2 py-1 font-mono">
+                {stage}: {cell.PASS}/{cell.total} passed
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <form onSubmit={(e) => e.preventDefault()} aria-label="Audit filters">
         <div className="flex flex-wrap items-end gap-4">
