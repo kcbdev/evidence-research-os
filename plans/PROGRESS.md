@@ -705,3 +705,38 @@ are Phase-1 backlog, executable after release).
   contract). Sort: internal surface, gate-proven → agentic. EVRSH-83
   Done with evidence comment.
 - Chained: PBI-074 → Active (pre-flight done; implementation next).
+
+## 2026-09-14 - PBI-074 code-complete, In Review (review: MANUAL — D7 veto)
+
+- Built (commits a7b5a24 + ed086e1): coverage_check (CORRECTED guide
+  type error: source-linkage, not source-vs-evidence ids; deterministic
+  R-coverage-check id; route_coverage) + meta_review (MAJOR_GAP loop,
+  round-charging, exhaustion short-circuit) + registry/routes; meta
+  exclusion (optional param, 4 call sites); prompt files; research +
+  ACADEMIC defaults wired (uniform pre-synthesis rule) with meta model
+  (= judge model, sanctioned — only non-council value available);
+  brainstorm/witness pipelines untouched. EVRSH-75 stays In Progress
+  with evidence comment.
+- Two REAL regressions caught by gates mid-flight, both fixed: (1) new
+  meta key in effective council tripped judge-overlap → every default
+  run 400d (fixed at get_graph + 3 sites; ideator deliberately stays
+  IN the check); (2) research-only wiring tied the academic-cost gate
+  6==6 (academic wired too — restored strict inequality + functional
+  parity). Both have regression tests.
+- Critic CHANGES-REQUESTED → 1 must-fix applied (route_coverage
+  exhaustion guard + test; keeps budget leak out). Confirmed sound:
+  meta==judge (D5 requires meta∉council only), brainstorm exclusion,
+  academic route validity, D7 handling. Declined with rationale:
+  first-line MAJOR_GAP check (substring is fail-closed; exact match
+  risks silent pass), coverage-id router pinning (pending always []
+  on arrival by invariant).
+- D7 VETO OWED (the chain pauses here): Task 59 needs a plan Scientist
+  call that was never built — addendum shipped verbatim + loadable +
+  pinned, activation deferred. Human decides: accept / demand
+  plan-realization PBI / revert. Sort rationale: code green +
+  critic-clean, but D7 is human judgment → manual by doctrine.
+- Gates: 59 targeted + 7 academic + 10 methodology + 227 units-split +
+  3 run-start, all green on final tree; frontend untouched (no gates
+  owed). Full-file halves blocked by hot harness race (same teardown
+  signature throughout; zero product frames; new-code files all green
+  in isolation/split).
