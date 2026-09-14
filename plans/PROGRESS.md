@@ -740,3 +740,20 @@ are Phase-1 backlog, executable after release).
   owed). Full-file halves blocked by hot harness race (same teardown
   signature throughout; zero product frames; new-code files all green
   in isolation/split).
+
+## 2026-09-14 - PBI-075 Done (review: agentic, APPROVE + 3 nits taken)
+
+- Built (commits 1447f25 + b8ccba2): cluster_objects (0.90) +
+  identical-behavior cluster_sources wrapper (0.92); duplicates/ dir +
+  write/read_duplicate_report (plain YAML, committed, schemas
+  untouched); _cluster_claims_ideas (multi-member only, empty kinds
+  skipped silently) under the existing non-fatal hook contract.
+- Gates: dedup/store 23 green (exact 0.91-split pin, hook reports,
+  guard + fault + allow-list tests); units 218+15 split-green;
+  methodology 10/10 green (equivalent tree). Full-file heat crashes
+  as documented (zero product frames throughout).
+- Critic APPROVE; all 3 nits taken (distinct-pairs guard case,
+  claims-branch fault test, kind allow-list traversal guard). Sort:
+  backend-only, gate-proven, no human judgment → agentic. EVRSH-73
+  Done with evidence comment.
+- Chained: PBI-076 → Active.
