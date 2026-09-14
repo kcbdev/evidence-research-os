@@ -419,9 +419,17 @@ def make_conflict_detection(lab_project_path: Path):
 def make_targeted_research(lab_project_path: Path):
     """Dispatch each pending task to its assigned agent only (not the full
     council). Transcripts land in debates/<task>.md (discardable scratch,
-    like plan/). Tasks are consumed; the loop-back recomputes conflicts."""
+    like plan/). Tasks are consumed; the loop-back recomputes conflicts.
+
+    PBI-071: dispatches run concurrently (one thread per pending task).
+    Workers do enrichment + the model call only; debate-file writes happen
+    single-threaded after the join, in pending order — same observable
+    behavior as the serial version, same PBI-011 construction (no store
+    writes under concurrency; debates/ is gitignored scratch anyway).
+    Budget charging (attempts summed, one round) is unchanged."""
 
     def targeted_research(state) -> dict:
+        from concurrent.futures import ThreadPoolExecutor
         from app.tools.keyword_index import keyword_search
         from app.tools.semantic_index import semantic_search
         store = LabProjectStore(lab_project_path, state["lab_project_id"])
@@ -430,8 +438,9 @@ def make_targeted_research(lab_project_path: Path):
         debates.mkdir(parents=True, exist_ok=True)
         pending = state.get("pending_tasks", []) or []
         project_dir = Path(lab_project_path) / state["lab_project_id"]
-        spent = 0
-        for task in pending:
+        lab_project_id = state["lab_project_id"]
+
+        def _dispatch(task):
             agent = task.assigned_agent if isinstance(task, Task) else task["assigned_agent"]
             tid = task.id if isinstance(task, Task) else task["id"]
             question = task.question if isinstance(task, Task) else task["question"]
@@ -452,7 +461,7 @@ def make_targeted_research(lab_project_path: Path):
             # Batch-review M2: the ORIGINAL task text is embedded, not
             # the keyword-enriched string — tiers stay independent.
             sem = semantic_search(project_dir, task_question, limit=5,
-                                  project_id=state["lab_project_id"])
+                                  project_id=lab_project_id)
             if sem:
                 context = "\n".join(f"- {h['id']} (d={h['distance']:.3f}): "
                                     f"{h['text'][:300]}" for h in sem)
@@ -461,6 +470,15 @@ def make_targeted_research(lab_project_path: Path):
             model = models.get(agent, next(iter(models.values())))
             text, attempts = call_model_resilient(
                 model, load_prompt(agent), question)
+            return tid, text, attempts
+
+        if len(pending) > 1:
+            with ThreadPoolExecutor(max_workers=len(pending)) as pool:
+                results = list(pool.map(_dispatch, pending))
+        else:
+            results = [_dispatch(task) for task in pending]
+        spent = 0
+        for tid, text, attempts in results:
             spent += attempts
             (debates / f"{tid}.md").write_text(text, encoding="utf-8")
         # Every dispatch AND every retry is a model call, plus one round:

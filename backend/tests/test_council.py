@@ -219,6 +219,42 @@ def test_targeted_counts_calls_and_round(tmp_path, monkeypatch):
     assert budget.calls_used == 0  # input copy, not mutation
 
 
+def test_targeted_dispatch_overlaps(tmp_path, monkeypatch):
+    # PBI-071: concurrency is proven by overlap, not wall-clock (no flaky
+    # timing asserts). Two dispatches must rendezvous inside the model
+    # call — serial execution would strand the first at the barrier until
+    # its timeout and fail.
+    import threading
+    _seed_project(tmp_path)
+    barrier = threading.Barrier(2, timeout=30)
+
+    def fake(model, system, user):
+        barrier.wait()
+        return "targeted finding", 2
+
+    monkeypatch.setattr("app.graph.nodes.call_model_resilient", fake)
+    monkeypatch.setattr("app.tools.keyword_index.keyword_search",
+                        lambda *a, **k: [])
+    monkeypatch.setattr("app.tools.semantic_index.semantic_search",
+                        lambda *a, **k: [])
+    from app.models.evidence import Task
+    budget = BudgetState(max_model_calls=100, max_research_rounds=5)
+    tasks = [Task(id="T-a", question="qa", reason="r",
+                  assigned_agent="investigator"),
+             Task(id="T-b", question="qb", reason="r",
+                  assigned_agent="skeptic")]
+    out = nodes.make_targeted_research(tmp_path)(
+        _state(budget=budget, pending_tasks=tasks))
+    assert out["pending_tasks"] == []
+    # Attempts summed across dispatches exactly as the serial version.
+    assert (out["budget"].calls_used, out["budget"].rounds_used) == (4, 1)
+    debates = tmp_path / "p" / "debates"
+    assert (debates / "T-a.md").read_text(encoding="utf-8") == \
+        "targeted finding"
+    assert (debates / "T-b.md").read_text(encoding="utf-8") == \
+        "targeted finding"
+
+
 def test_degenerate_findings_dropped(tmp_path, monkeypatch):
     # Live witness: a model wrote `CLAIM: ...` and the table showed
     # literal dots. Placeholders carry no prose — dropped, unnumbered.
