@@ -792,3 +792,25 @@ are Phase-1 backlog, executable after release).
   note, read-only proof test). Sort: internal debug surface → agentic.
   EVRSH-82 Done with evidence comment.
 - Chained: PBI-081 → Active.
+
+## 2026-09-14 - PBI-081 Done (review: agentic, APPROVE + 3 nits taken)
+
+- Built (commit 059e570): `GET audits/summary` (pure derivation over
+  the latest AuditRun — by-stage/by-status counts + PASS/total rate,
+  zeroed shape with null rate when empty; no schema/store change) +
+  Audits-view quality section (`Quality: N% pass rate` + per-stage
+  `X/Y passed` chips) + api.ts `AuditSummary`/`getAuditSummary`.
+  Run-view link correctly omitted (audits surface in the trace modal
+  + audit page only; both already linked — critic-verified).
+- Gates: backend 244 (units excl. hot files) + 5 audits incl. new
+  empty/exact/pincite pins; frontend 169/169 (32 files; 5 audit incl.
+  new summary + empty-absence pins), typecheck, build. Full-file
+  backend heat excluded per standing race precedent (zero product
+  frames; crashing files untouched by this diff).
+- Critic APPROVE, no must-fix; 3 nits taken (dead-branch simplify,
+  empty-state zeroed-summary + absence pin, pincite cell symmetry).
+  Declined with rationale: per-filter summary refetch (harmless at
+  single-operator scale), vanity grep-pin (holds by inspection).
+- Sort: internal operator surface, gate-proven, no human judgment →
+  agentic. EVRSH-74 Done with evidence comment.
+- Chained: PBI-082 → Active.

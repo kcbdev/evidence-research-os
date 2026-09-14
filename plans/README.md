@@ -98,7 +98,7 @@ stays `In Progress` until the batch review sorts it).
 | PBI-075 | Done (2026-09-14, agentic) | PBI-076 | Done (2026-09-14, agentic) |
 | PBI-077 | Done (2026-09-14, agentic) | PBI-078 | Proposed (manual: live validation) |
 | PBI-079 | Proposed (manual: contract witness) | PBI-080 | Blocked (needs search provider) |
-| PBI-081 | Proposed | PBI-082 | Proposed |
+| PBI-081 | Done (2026-09-14, agentic) | PBI-082 | Active |
 | PBI-083 | Proposed | | |
 
 Chain protocol (2026-09-10/11, user-directed, complete): PBIs executed
