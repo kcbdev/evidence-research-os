@@ -87,7 +87,12 @@ def list_claims(project_id: str, request: Request, status: str | None = None,
             row["consensus"] = store.compute_consensus(
                 store.read_claim(row["id"]))
         except FileNotFoundError:
-            continue  # index regenerated; row vanished mid-read
+            # Index regenerated mid-read: zero-weight shape keeps the
+            # ClaimRow.consensus contract total (the meter renders it
+            # as the empty state).
+            row["consensus"] = {"supporting_weight": 0,
+                                "opposing_weight": 0,
+                                "percent_support": None}
     return rows
 
 
