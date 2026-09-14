@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { addProductNote, getReport } from "@/lib/api";
 import Markdown from "@/components/Markdown";
+import StructureEditor from "@/components/StructureEditor";
 
 type Header = { level: number; text: string; index: number };
 
@@ -179,6 +180,8 @@ export default function OutputPage() {
           </Card>
         </article>
       </div>
+
+      <StructureEditor projectId={id} />
 
       <Card>
         <CardHeader>

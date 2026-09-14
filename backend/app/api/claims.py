@@ -123,6 +123,81 @@ def get_claim(project_id: str, claim_id: str, request: Request):
     }
 
 
+@router.get("/{project_id}/output/structure")
+def get_structure(project_id: str, request: Request):
+    """Recorded report structure (PBI-083): {sections:
+    [{title, claim_ids}]} or {sections: None} when the operator has
+    not arranged one. Absent or hand-corrupted files read as None
+    (synthesis falls back to legacy order) — never a 404 or 500."""
+    store = _store(_root(request), project_id)
+    try:
+        data = store.read_report_structure()
+        sections = (data or {}).get("sections")
+    except Exception:
+        return {"sections": None}
+    return {"sections": sections if isinstance(sections, list) else None}
+
+
+RESERVED_STRUCTURE_TITLES = ("Additional claims",)
+
+
+@router.put("/{project_id}/output/structure")
+def put_structure(project_id: str, request: Request, payload: dict):
+    """Save the report structure (ordering/inclusion only — claim
+    statements are never edited here: the payload carries ids, and
+    unknown ids 422 naming the offender). An empty section list
+    clears the recorded order (committed delete), restoring the
+    legacy render. Validated against the project's real claims;
+    persists as the output/structure.yaml run artifact (one write =
+    one commit); the next synthesis honors it."""
+    store = _store(_root(request), project_id)
+    sections = (payload or {}).get("sections")
+    if not isinstance(sections, list):
+        raise HTTPException(status_code=422,
+                            detail="sections must be a list")
+    if not sections:
+        store.clear_report_structure()
+        return {"sections": None}
+    known = {c.id for c in store.list_claims()}
+    clean = []
+    seen: set[str] = set()
+    for section in sections:
+        if not isinstance(section, dict):
+            raise HTTPException(status_code=422,
+                                detail="each section must be an object")
+        title = section.get("title")
+        ids = section.get("claim_ids")
+        if not isinstance(title, str) or not title.strip():
+            raise HTTPException(status_code=422,
+                                detail="each section needs a non-blank title")
+        if "\n" in title or "\r" in title:
+            raise HTTPException(status_code=422,
+                                detail=f"section {title!r}: "
+                                       "title must be a single line")
+        if title.strip() in RESERVED_STRUCTURE_TITLES:
+            raise HTTPException(status_code=422,
+                                detail=f"section {title!r}: title is "
+                                       "reserved for unplaced claims")
+        if not isinstance(ids, list) or not all(isinstance(i, str)
+                                                for i in ids):
+            raise HTTPException(status_code=422,
+                                detail=f"section {title!r}: "
+                                       "claim_ids must be a list of ids")
+        for cid in ids:
+            if cid not in known:
+                raise HTTPException(status_code=422,
+                                    detail=f"unknown claim id: {cid}")
+            if cid in seen:
+                raise HTTPException(status_code=422,
+                                    detail=f"duplicate claim id: {cid} "
+                                           "(each claim goes in one "
+                                           "section only)")
+            seen.add(cid)
+        clean.append({"title": title.strip(), "claim_ids": list(ids)})
+    store.write_report_structure(clean)
+    return {"sections": clean}
+
+
 @router.get("/{project_id}/decisions")
 def list_decisions(project_id: str, request: Request):
     """Episodic log (includes checkpoint approvals + terminal records)."""

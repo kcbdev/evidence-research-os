@@ -958,32 +958,98 @@ def make_meta_review(lab_project_path: Path):
     return meta_review
 
 
+def _render_claim_block(claim) -> list[str]:
+    """One adjudicated claim's report lines (shared by the legacy and
+    structure-ordered renders — the block is identical either way)."""
+    conf = (claim.confidence.overall if claim.confidence is not None
+            else 0.0)
+    return [f"### {claim.id} — {claim.status}",
+            "",
+            claim.statement,
+            "",
+            f"Confidence: {conf:.2f} | "
+            f"Adjudicated by: {claim.adjudicated_by}",
+            f"Supporting: {', '.join(claim.supporting_sources) or '—'} | "
+            f"Opposing: {', '.join(claim.opposing_sources) or '—'}",
+            ""]
+
+
+def _read_structure_order(store) -> list[dict] | None:
+    """Recorded claim→section order (PBI-083), or None when absent or
+    unreadable. Absent/unreadable reproduces legacy behavior exactly —
+    a hand-corrupted file must never break a run (the PUT endpoint
+    validates on write, so on-disk content is operator-approved).
+    Catches broadly on purpose: malformed YAML raises YAMLError (not
+    a ValueError) and wrong-shape YAML breaks attribute access."""
+    try:
+        data = store.read_report_structure()
+    except Exception:
+        return None
+    try:
+        sections = (data or {}).get("sections")
+        if not isinstance(sections, list):
+            return None
+        clean = []
+        for section in sections:
+            if not isinstance(section, dict):
+                continue
+            title = section.get("title")
+            ids = section.get("claim_ids") or []
+            if not title or not isinstance(ids, list):
+                continue
+            clean.append({"title": title,
+                          "claim_ids": [i for i in ids
+                                        if isinstance(i, str)]})
+        return clean or None
+    except Exception:
+        return None
+
+
 def make_synthesis(lab_project_path: Path):
     """Deterministic draft render from adjudicated claims (no LLM call:
     a draft must be complete and traceable, not eloquent — polish is a
-    later phase's job). Run artifact, written directly like plan/."""
+    later phase's job). Run artifact, written directly like plan/.
+
+    PBI-083: when output/structure.yaml records a claim→section order,
+    sections render verbatim in the recorded order with the recorded
+    membership; adjudicated claims listed nowhere render afterwards in
+    legacy order under "Additional claims" (never silently dropped);
+    ids that resolve to nothing adjudicated are skipped (the world
+    changed since the operator saved — pending claims still appear in
+    the pending section)."""
 
     def synthesis(state) -> dict:
         store = LabProjectStore(lab_project_path, state["lab_project_id"])
         meta = store.read_meta()
-        out = [f"# {meta.title}", "", f"Question: {meta.question}", "",
-               "## Adjudicated claims", ""]
+        out = [f"# {meta.title}", "", f"Question: {meta.question}", ""]
+        adjudicated = [c for c in store.list_claims()
+                       if c.adjudicated_by is not None]
         pending = [c for c in store.list_claims()
                    if c.adjudicated_by is None]
-        for claim in store.list_claims():
-            if claim.adjudicated_by is None:
-                continue
-            conf = (claim.confidence.overall if claim.confidence is not None
-                    else 0.0)
-            out.append(f"### {claim.id} — {claim.status}")
+        order = _read_structure_order(store)
+        if order is None:
+            out.append("## Adjudicated claims")
             out.append("")
-            out.append(claim.statement)
-            out.append("")
-            out.append(f"Confidence: {conf:.2f} | "
-                       f"Adjudicated by: {claim.adjudicated_by}")
-            out.append(f"Supporting: {', '.join(claim.supporting_sources) or '—'} | "
-                       f"Opposing: {', '.join(claim.opposing_sources) or '—'}")
-            out.append("")
+            for claim in adjudicated:
+                out.extend(_render_claim_block(claim))
+        else:
+            by_id = {c.id: c for c in adjudicated}
+            placed: set[str] = set()
+            for section in order:
+                out.append(f"## {section['title']}")
+                out.append("")
+                for cid in section["claim_ids"]:
+                    claim = by_id.get(cid)
+                    if claim is None or cid in placed:
+                        continue
+                    placed.add(cid)
+                    out.extend(_render_claim_block(claim))
+            rest = [c for c in adjudicated if c.id not in placed]
+            if rest:
+                out.append("## Additional claims")
+                out.append("")
+                for claim in rest:
+                    out.extend(_render_claim_block(claim))
         out.append("## Pending review (not cited above)")
         out.append("")
         out.append(", ".join(c.id for c in pending) or "(none)")

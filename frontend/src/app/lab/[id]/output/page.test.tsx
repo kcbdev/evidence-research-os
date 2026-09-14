@@ -29,6 +29,12 @@ describe("OutputPage", () => {
       if (url.includes("/product-notes")) {
         return { id: "N-001", lab_project_id: "p", note: "ship it", linked_area: "runfusion", created_at: "t" };
       }
+      if (url.includes("/claims")) {
+        return [];
+      }
+      if (url.includes("/output/structure")) {
+        return { sections: null };
+      }
       return { markdown: "# Title\n\n## Findings\n\nbody text", generated_at: "2026-09-10T00:00:00Z" };
     });
     render(<OutputPage />);

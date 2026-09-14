@@ -205,6 +205,39 @@ class LabProjectStore:
         p = self.path / "duplicates" / f"{kind}.yaml"
         return yaml.safe_load(p.read_text(encoding="utf-8"))
 
+    def write_report_structure(self, sections: list[dict]):
+        """Report structure (PBI-083): [{title, claim_ids}] — the
+        ordering/inclusion state for synthesis. A run artifact under
+        output/ (same treatment as plan/ per ADR-0001, not an evidence
+        object): plain YAML holding ids + titles only. Claim statements
+        are never stored here, so content editing is structurally
+        impossible. One write = one commit like every object write."""
+        from datetime import datetime, timezone
+        p = self.path / "output" / "structure.yaml"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(yaml.safe_dump(
+            {"sections": sections,
+             "generated_at": datetime.now(timezone.utc).isoformat()},
+            sort_keys=False), encoding="utf-8")
+        self._commit(p.relative_to(self.path),
+                     f"report structure ({len(sections)} sections)")
+
+    def read_report_structure(self) -> dict:
+        p = self.path / "output" / "structure.yaml"
+        return yaml.safe_load(p.read_text(encoding="utf-8"))
+
+    def clear_report_structure(self):
+        """Revert to the legacy render (PBI-083): remove the recorded
+        order so the next synthesis reproduces legacy behavior exactly.
+        Committed like every write; absent file is a no-op (still
+        returns the cleared shape)."""
+        p = self.path / "output" / "structure.yaml"
+        if not p.exists():
+            return
+        self.repo.index.remove([str(p.relative_to(self.path))],
+                               working_tree=True)
+        self.repo.index.commit("report structure cleared")
+
     def write_product_note(self, note: ProductNote):
         self._write("product", note.id, note, f"product note: {note.id}")
 

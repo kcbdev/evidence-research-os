@@ -59,6 +59,30 @@ export function getReport(id: string): Promise<{ markdown: string; generated_at:
   return get<{ markdown: string; generated_at: string }>(`/api/v1/lab-projects/${id}/output/report`);
 }
 
+export interface ReportSection {
+  title: string;
+  claim_ids: string[];
+}
+
+export function getReportStructure(projectId: string): Promise<{ sections: ReportSection[] | null }> {
+  return get<{ sections: ReportSection[] | null }>(`/api/v1/lab-projects/${projectId}/output/structure`);
+}
+
+export async function putReportStructure(
+  projectId: string,
+  sections: ReportSection[],
+): Promise<{ sections: ReportSection[] | null }> {
+  const res = await fetch(`${BASE}/api/v1/lab-projects/${projectId}/output/structure`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sections }),
+  });
+  if (!res.ok) {
+    throw new Error(`PUT structure: ${res.status} — ${await res.text()}`);
+  }
+  return (await res.json()) as { sections: ReportSection[] | null };
+}
+
 export interface DecisionEntry {
   id: string;
   what: string;
