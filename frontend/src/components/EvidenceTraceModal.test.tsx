@@ -15,7 +15,7 @@ const DETAIL = {
       evidence_type: "empirical", strength: "high",
     },
   ],
-  sources: [{ id: "S-1", url: "https://e.org/1", title: "T1", quality_tier: 2 }],
+  sources: [{ id: "S-1", url: "https://e.org/1", title: "T1", quality_tier: 2, kind: "primary_paper" }],
   consensus: { supporting_weight: 2, opposing_weight: 0, percent_support: 100.0 },
 };
 
@@ -79,5 +79,108 @@ describe("EvidenceTraceModal audit badges", () => {
     await screen.findByText("excerpt");
     expect(screen.queryByText(/Audit result/)).toBeNull();
     expect(screen.queryByText(/Citation problem/)).toBeNull();
+  });
+});
+
+describe("EvidenceTraceModal source viewer (PBI-082)", () => {
+  it("renders the cited passage highlighted under a source header", async () => {
+    render(<EvidenceTraceModal projectId="p" claimId="C-1" onClose={() => {}} />);
+    const passage = await screen.findByTestId("cited-passage-S-1");
+    expect(passage.tagName).toBe("MARK");
+    expect(passage.textContent).toBe("excerpt");
+    // Header: title link + kind badge + tier (no new fetch — the stub
+    // throws on any unexpected URL, so rendering proves cache-only).
+    expect(await screen.findByText("T1")).toBeDefined();
+    expect(await screen.findByText("primary_paper")).toBeDefined();
+    expect(await screen.findByText("(tier 2)")).toBeDefined();
+  });
+
+  it("degrades to title + tier when kind is absent", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const path = String(url);
+        if (path.includes("/audits/latest")) {
+          return { ok: true, json: async () => ({ audit_run_id: null, results: [] }) };
+        }
+        if (path.includes("/tasks")) {
+          return { ok: true, json: async () => [] };
+        }
+        return {
+          ok: true,
+          json: async () => ({
+            ...DETAIL,
+            sources: [{ id: "S-1", url: "https://e.org/1", title: "T1", quality_tier: 2 }],
+          }),
+        };
+      }),
+    );
+    render(<EvidenceTraceModal projectId="p" claimId="C-1" onClose={() => {}} />);
+    expect(await screen.findByText("T1")).toBeDefined();
+    expect(screen.queryByText("primary_paper")).toBeNull();
+    expect(await screen.findByTestId("cited-passage-S-1")).toBeDefined();
+  });
+
+  it("falls back to plain text when the source is missing", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const path = String(url);
+        if (path.includes("/audits/latest")) {
+          return { ok: true, json: async () => ({ audit_run_id: null, results: [] }) };
+        }
+        if (path.includes("/tasks")) {
+          return { ok: true, json: async () => [] };
+        }
+        return {
+          ok: true,
+          json: async () => ({
+            ...DETAIL,
+            evidence: [
+              {
+                id: "E-9", source_id: "S-9", location: {},
+                text_reference: "orphan excerpt", supports: ["C-1"],
+                evidence_type: "empirical", strength: "low",
+              },
+            ],
+            sources: [],
+          }),
+        };
+      }),
+    );
+    render(<EvidenceTraceModal projectId="p" claimId="C-1" onClose={() => {}} />);
+    expect(await screen.findByText("source S-9 missing")).toBeDefined();
+    const passage = await screen.findByTestId("cited-passage-S-9");
+    expect(passage.textContent).toBe("orphan excerpt");
+  });
+
+  it("renders a placeholder instead of a broken pane for empty excerpts", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const path = String(url);
+        if (path.includes("/audits/latest")) {
+          return { ok: true, json: async () => ({ audit_run_id: null, results: [] }) };
+        }
+        if (path.includes("/tasks")) {
+          return { ok: true, json: async () => [] };
+        }
+        return {
+          ok: true,
+          json: async () => ({
+            ...DETAIL,
+            evidence: [
+              {
+                id: "E-1", source_id: "S-1", location: { section: "R" },
+                text_reference: "", supports: ["C-1"],
+                evidence_type: "empirical", strength: "high",
+              },
+            ],
+          }),
+        };
+      }),
+    );
+    render(<EvidenceTraceModal projectId="p" claimId="C-1" onClose={() => {}} />);
+    expect(await screen.findByText("(no excerpt recorded)")).toBeDefined();
   });
 });

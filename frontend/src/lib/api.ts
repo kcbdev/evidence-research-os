@@ -293,6 +293,9 @@ export interface ClaimDetail {
     url: string;
     title: string;
     quality_tier: number;
+    // Shipped by the backend Source model; optional here because the
+    // type predates it (PBI-082 source-viewer header reads it at runtime).
+    kind?: string;
   }[];
   consensus: Consensus;
 }

@@ -15,6 +15,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { getAuditLatest, getClaimDetail, listTasks, type AuditRow, type ClaimDetail, type DelegatedTask } from "@/lib/api";
 import ClaimConfidenceBar from "./ClaimConfidenceBar";
 import ConsensusMeter from "./ConsensusMeter";
+import SourceViewer from "./SourceViewer";
 
 export default function EvidenceTraceModal({
   projectId,
@@ -178,30 +179,13 @@ export default function EvidenceTraceModal({
                           </Link>
                         )}
                       </p>
-                      <blockquote className="mt-1 border-l-2 border-zinc-300 pl-2 dark:border-zinc-600">
-                        {ev.text_reference}
-                      </blockquote>
-                      <p className="mt-1 text-muted-foreground">
-                        {ev.location.section ?? ""}{" "}
-                        {ev.location.page !== undefined &&
-                          `(p. ${ev.location.page})`}
-                        {src ? (
-                          <>
-                            {" — "}
-                            <a
-                              href={src.url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="underline"
-                            >
-                              {src.title}
-                            </a>{" "}
-                            (tier {src.quality_tier})
-                          </>
-                        ) : (
-                          <> — source {ev.source_id} missing</>
-                        )}
-                      </p>
+                      <SourceViewer
+                        source={src}
+                        sourceId={ev.source_id}
+                        passage={ev.text_reference}
+                        locationSection={ev.location.section}
+                        locationPage={ev.location.page}
+                      />
                     </li>
                   );
                 })}
