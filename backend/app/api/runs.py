@@ -494,6 +494,83 @@ def get_run(project_id: str, run_id: str):
         return _payload(rec)
 
 
+def _jsonable(value):
+    """Display-oriented JSON conversion for checkpoint channel values:
+    pydantic models via model_dump, datetimes ISO, containers recursed,
+    anything else repr'd (lossy but never fatal — this is a debugger)."""
+    from datetime import datetime
+    from pydantic import BaseModel
+    if isinstance(value, BaseModel):
+        return value.model_dump(mode="json")
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, dict):
+        return {str(k): _jsonable(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_jsonable(v) for v in value]
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    return repr(value)
+
+
+@router.get("/{project_id}/runs/{run_id}/checkpoints/{node_id}")
+def get_checkpoint_state(project_id: str, run_id: str, node_id: str,
+                         request: Request, occurrence: int = 1):
+    """Read-only time-travel (PBI-077): channel state right after the
+    Nth execution of node_id in this run (occurrence=1 is the first).
+    Node attribution comes from the checkpointer's own versions_seen
+    diff between consecutive tuples — never guessed from event order.
+    No new write path: one SELECT connection, closed before return.
+    404 when the run/project mismatches, the run has no checkpoints,
+    the node never ran, or the occurrence is out of range."""
+    rec = _record(run_id)
+    if rec["project_id"] != project_id:
+        raise HTTPException(status_code=404, detail="run not found")
+    if occurrence < 1:
+        raise HTTPException(status_code=422,
+                            detail="occurrence must be >= 1")
+    import sqlite3
+    from langgraph.checkpoint.sqlite import SqliteSaver
+    db_path = Path(_root(request)) / "checkpoint.sqlite"
+    if not db_path.is_file():
+        raise HTTPException(status_code=404,
+                            detail="no checkpoints for this run")
+    conn = sqlite3.connect(str(db_path), check_same_thread=False)
+    try:
+        saver = SqliteSaver(conn)
+        tuples = list(saver.list(
+            {"configurable": {"thread_id": run_id}}))
+    finally:
+        conn.close()
+    ordered = sorted(
+        tuples,
+        key=lambda t: (t.metadata.get("step", 0),
+                       t.checkpoint.get("ts", "")))
+    prev_seen: dict = {}
+    hits = []
+    for tup in ordered:
+        seen = tup.checkpoint.get("versions_seen") or {}
+        ran = sorted(k for k, v in seen.items() if prev_seen.get(k) != v)
+        prev_seen = seen
+        for node in ran:
+            if node == node_id:
+                hits.append(tup)
+    if not hits:
+        raise HTTPException(
+            status_code=404,
+            detail=f"no checkpoint for node {node_id!r} in this run")
+    if occurrence > len(hits):
+        raise HTTPException(
+            status_code=404,
+            detail=f"node {node_id!r} ran {len(hits)} time(s), "
+                   f"occurrence {occurrence} out of range")
+    tup = hits[occurrence - 1]
+    return {"node": node_id, "occurrence": occurrence,
+            "step": tup.metadata.get("step"),
+            "at": tup.checkpoint.get("ts"),
+            "state": _jsonable(tup.checkpoint.get("channel_values") or {})}
+
+
 @router.get("/{project_id}/runs/{run_id}/stream")
 async def stream_run(project_id: str, run_id: str):
     """SSE stream. Shape per event: {event: <type>, data: <JSON>} where

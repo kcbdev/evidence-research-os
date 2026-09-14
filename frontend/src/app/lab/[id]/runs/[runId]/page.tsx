@@ -215,7 +215,7 @@ export default function RunView() {
           <CardTitle>Activity</CardTitle>
         </CardHeader>
         <CardContent>
-          <RunActivityFeed events={events} />
+          <RunActivityFeed events={events} projectId={id} runId={runId} />
         </CardContent>
       </Card>
 

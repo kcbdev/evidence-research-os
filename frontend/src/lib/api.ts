@@ -168,6 +168,25 @@ export function getRun(projectId: string, runId: string): Promise<RunStatus> {
   );
 }
 
+export interface CheckpointState {
+  node: string;
+  occurrence: number;
+  step: number | null;
+  at: string | null;
+  state: Record<string, unknown>;
+}
+
+export function getCheckpoint(
+  projectId: string,
+  runId: string,
+  node: string,
+  occurrence: number,
+): Promise<CheckpointState> {
+  return get<CheckpointState>(
+    `/api/v1/lab-projects/${projectId}/runs/${runId}/checkpoints/${encodeURIComponent(node)}?occurrence=${occurrence}`,
+  );
+}
+
 export async function retryRun(
   projectId: string,
   runId: string,
