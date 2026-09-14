@@ -241,7 +241,9 @@ def test_coverage_check_tasks_the_gap(tmp_path, monkeypatch):
     task = store.read_task("R-coverage-check")
     assert "E-2" in task.question and task.reason == "coverage_check"
     assert task.assigned_agent == "scientist"
-    assert route_coverage(out) == "targeted_research"
+    # Routers read full channel state at runtime (budget always present).
+    assert route_coverage({**out, "budget": BudgetState()}) == \
+        "targeted_research"
 
 
 def test_coverage_check_clean_sweep_passes_through(tmp_path, monkeypatch):
@@ -251,7 +253,8 @@ def test_coverage_check_clean_sweep_passes_through(tmp_path, monkeypatch):
     out = nodes.make_coverage_check(tmp_path)(_state())
     assert out == {}
     assert store.list_tasks() == []
-    assert route_coverage({"pending_tasks": []}) == "synthesis"
+    assert route_coverage({"pending_tasks": [],
+                           "budget": BudgetState()}) == "synthesis"
 
 
 def test_meta_review_pass_and_fail(tmp_path, monkeypatch):
@@ -291,6 +294,17 @@ def test_route_meta_exhausted_short_circuits():
                         calls_used=2)
     assert route_meta({"meta_review_passed": False,
                        "budget": spent}) == "citation_audit"
+
+
+def test_route_coverage_exhausted_short_circuits():
+    from app.models.evidence import Task as EvidenceTask
+    spent = BudgetState(max_model_calls=2, max_research_rounds=5,
+                        calls_used=2)
+    pending = {"pending_tasks": [EvidenceTask(
+        id="R-coverage-check", question="q", reason="coverage_check",
+        assigned_agent="scientist")],
+        "budget": spent}
+    assert route_coverage(pending) == "synthesis"
 
 
 def test_meta_overlap_refused():

@@ -61,8 +61,10 @@ def route_audit(s):
 
 
 def route_coverage(s):
-    """PBI-074: coverage findings re-enter research; a clean sweep
-    proceeds to synthesis. Reads pending (the node appends there)."""
+    """PBI-074: coverage findings re-enter research; a clean sweep (or
+    an exhausted budget — never spend past limits) proceeds."""
+    if is_exhausted(s):
+        return "synthesis"
     return "targeted_research" if s.get("pending_tasks") else "synthesis"
 
 
