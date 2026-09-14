@@ -216,7 +216,9 @@ def _runs_db(root: Path) -> sqlite3.Connection:
     cols = {r[1] for r in db.execute("PRAGMA table_info(runs)")}
     for col, ctype in (("mode", "TEXT"), ("started_at", "TEXT"),
                        ("duration_s", "REAL"),
-                       ("methodology_id", "TEXT")):  # PBI-056
+                       ("methodology_id", "TEXT"),  # PBI-056
+                       ("search_scope", "TEXT"),  # PBI-073
+                       ("pinned_sources_json", "TEXT")):  # PBI-073
         if col not in cols:
             db.execute(f"ALTER TABLE runs ADD COLUMN {col} {ctype}")
     db.commit()
@@ -241,13 +243,16 @@ def _save_run(root: Path, rec: dict):
         snapshot = (rec["run_id"], rec["project_id"], rec["status"],
                     json.dumps(rec["events"]), rec["error"],
                     now.isoformat(), mode, started, duration,
-                    rec.get("methodology_id"))
+                    rec.get("methodology_id"),
+                    rec.get("search_scope", "open_web"),
+                    json.dumps(rec.get("pinned_sources") or []))
     db = _runs_db(root)
     try:
         db.execute("INSERT OR REPLACE INTO runs "
                    "(run_id, project_id, status, events_json, error, "
                    "updated_at, mode, started_at, duration_s, "
-                   "methodology_id) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                   "methodology_id, search_scope, pinned_sources_json) "
+                   "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                    snapshot)
         db.commit()
     finally:
@@ -268,7 +273,8 @@ def rehydrate_runs(root: Path) -> int:
         try:
             rows = db.execute(
                 "SELECT run_id, project_id, status, events_json, error, "
-                "mode, started_at, duration_s, methodology_id "
+                "mode, started_at, duration_s, methodology_id, "
+                "search_scope, pinned_sources_json "
                 "FROM runs").fetchall()
         finally:
             db.close()
@@ -276,12 +282,21 @@ def rehydrate_runs(root: Path) -> int:
         return 0  # file-level corruption: never crash startup
     revived = 0
     for run_id, project_id, status, events_json, error, mode, \
-            started_at, duration_s, methodology_id in rows:
+            started_at, duration_s, methodology_id, search_scope, \
+            pinned_json in rows:
         try:
             events = json.loads(events_json or "[]")
             assert isinstance(events, list)
         except Exception:
             continue  # corrupt row: skip, never crash startup
+        try:
+            pinned = json.loads(pinned_json or "[]")
+            assert isinstance(pinned, list)
+        except Exception:
+            # Corrupt field: display falls back to open; resumed
+            # behavior stays pinned via the checkpointed graph state,
+            # which is authoritative (this record is the display copy).
+            pinned = []
         if status == "running":
             status = "interrupted"
         with _lock:
@@ -292,7 +307,9 @@ def rehydrate_runs(root: Path) -> int:
                              "mode": mode or "research",
                              "started_at": started_at,
                              "duration_s": duration_s,
-                             "methodology_id": methodology_id}
+                             "methodology_id": methodology_id,
+                             "search_scope": search_scope or "open_web",
+                             "pinned_sources": pinned}
         revived += 1
     return revived
 
@@ -305,7 +322,9 @@ def _payload(rec: dict) -> dict:
             "mode": rec.get("mode", "research"),
             "started_at": rec.get("started_at"),
             "duration_s": rec.get("duration_s"),
-            "methodology_id": rec.get("methodology_id")}
+            "methodology_id": rec.get("methodology_id"),
+            "search_scope": rec.get("search_scope", "open_web"),
+            "pinned_sources": rec.get("pinned_sources") or []}
 
 
 def _pump(run_id: str, initial=None):
@@ -366,6 +385,27 @@ def start_run(project_id: str, payload: dict, request: Request):
     if mode not in ("research", "brainstorm", "academic"):
         raise HTTPException(status_code=422,
                             detail=f"unknown mode: {mode!r}")
+    # PBI-073: per-run retrieval scoping. Scope is validated + recorded;
+    # enforcement waits on a search provider (PBI-080 — no filtering
+    # theater: the stored value discloses what was asked, nothing more).
+    search_scope = (payload or {}).get("search_scope", "open_web")
+    if search_scope not in ("open_web", "academic_only",
+                            "peer_reviewed_only"):
+        raise HTTPException(status_code=422,
+                            detail=f"unknown search_scope: {search_scope!r}")
+    # Pinned sources are fail-closed references like methodology ids:
+    # unknown ids 404 before any thread/record exists.
+    pinned_sources = (payload or {}).get("pinned_sources") or []
+    if not isinstance(pinned_sources, list) or any(
+            not isinstance(s, str) for s in pinned_sources):
+        raise HTTPException(status_code=422,
+                            detail="pinned_sources must be a list of ids")
+    for sid in pinned_sources:
+        try:
+            store.read_source(sid)
+        except FileNotFoundError:
+            raise HTTPException(status_code=404,
+                                detail=f"unknown pinned source: {sid}")
     methodology = resolve_methodology(
         mode, (payload or {}).get("methodology_id"),
         meta.methodology_id)
@@ -391,6 +431,8 @@ def start_run(project_id: str, payload: dict, request: Request):
         "escalate": False, "audit_passed": False,
         "needs_human_approval": False, "session_id": run_id,
         "first_pass": {},
+        "search_scope": search_scope,
+        "pinned_sources": list(pinned_sources),
     }
     with _lock:
         _runs[run_id] = {"run_id": run_id, "project_id": project_id,
@@ -398,6 +440,8 @@ def start_run(project_id: str, payload: dict, request: Request):
                          "graph": graph, "initial": initial,
                          "root": str(root), "mode": mode,
                          "methodology_id": methodology.id,
+                         "search_scope": search_scope,
+                         "pinned_sources": list(pinned_sources),
                          "started_at": started_at, "duration_s": None}
     _save_run(root, _runs[run_id])
     threading.Thread(target=_pump, args=(run_id,), kwargs={"initial": initial},

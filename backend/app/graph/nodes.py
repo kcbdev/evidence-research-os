@@ -168,13 +168,20 @@ def make_independent_first_pass(lab_project_path: Path):
     output (spec anti-pattern). Models come from project.yaml (single
     source of truth) at run time."""
 
-    async def _run_all(question: str, models: dict) -> dict:
+    async def _run_all(question: str, models: dict,
+                       pinned_block: str = "") -> dict:
         async def _one(role: str) -> tuple[str, str, int]:
+            user = question + "\n" + FINDING_FORMAT
+            # PBI-073: closed corpus — the investigator's URL-space is
+            # constrained to the pinned set at the prompt level;
+            # extraction enforces it structurally (no outside minting).
+            if role == "investigator" and pinned_block:
+                user = question + "\n" + pinned_block + "\n" + FINDING_FORMAT
             text, attempts = await asyncio.to_thread(
                 call_model_resilient,
                 models[role],
                 load_prompt(role),
-                question + "\n" + FINDING_FORMAT,
+                user,
             )
             return role, text, attempts
 
@@ -187,11 +194,26 @@ def make_independent_first_pass(lab_project_path: Path):
             return _brainstorm_pass(Path(lab_project_path), state)
         store = LabProjectStore(lab_project_path, state["lab_project_id"])
         models, _judge = _models(state, store)
+        # Pinned ids were validated at run start; a mid-run deletion
+        # merely drops that line (tolerated, never fatal mid-flight).
+        pinned_block = ""
+        for sid in state.get("pinned_sources") or []:
+            try:
+                src = store.read_source(sid)
+            except FileNotFoundError:
+                continue
+            pinned_block += f"- [{src.id}] {src.title} ({src.url})\n"
+        if pinned_block:
+            pinned_block = (
+                "Closed corpus for this run — cite ONLY these sources "
+                "(exact URLs below). Evidence lines citing any other URL "
+                "are dropped at extraction:\n" + pinned_block)
         # Sync-node only: LangGraph runs sync nodes in a worker thread with
         # no running loop, so asyncio.run is safe. Never await this node
         # directly from async code (would raise "asyncio.run() cannot be
         # called from a running event loop").
-        results = asyncio.run(_run_all(state["active_question"], models))
+        results = asyncio.run(_run_all(state["active_question"], models,
+                                       pinned_block))
         findings = {role: text for role, (text, _) in results.items()}
         spent = sum(attempts for _, (_, attempts) in results.items())
         # Route through the PBI-007 helper (no dead imports): consume on a
@@ -324,10 +346,21 @@ def make_evidence_extraction(lab_project_path: Path):
         # Global URL registry (preloaded with existing sources): the
         # max_sources cap spans roles AND prior runs, not per role.
         url_to_source = {s.url: s.id for s in store.list_sources()}
+        # PBI-073: closed corpus — evidence citing outside URLs is
+        # dropped before minting, so a pinned run can never grow new
+        # sources (discovery is skipped by construction, not by trust).
+        allowed_urls = None
+        if state.get("pinned_sources"):
+            allowed_urls = set()
+            for sid in state["pinned_sources"]:
+                try:
+                    allowed_urls.add(store.read_source(sid).url)
+                except FileNotFoundError:
+                    continue  # validated at start; see first_pass note
         for role in ROLES:
             events, _skipped = parse_findings(findings.get(role, ""))
             _extract_role(store, role, events, per_claim, max_sources,
-                          url_to_source)
+                          url_to_source, allowed_urls)
         return {}
 
     return evidence_extraction
@@ -335,7 +368,8 @@ def make_evidence_extraction(lab_project_path: Path):
 
 def _extract_role(store: LabProjectStore, role: str, events: list,
                   per_claim: int, max_sources: int,
-                  url_to_source: dict[str, str]):
+                  url_to_source: dict[str, str],
+                  allowed_urls: set[str] | None = None):
     ci = ei = 0
     current_claim: str | None = None
     claimed_evidence = 0
@@ -356,6 +390,9 @@ def _extract_role(store: LabProjectStore, role: str, events: list,
             _, excerpt, url, loc, etype = event
             if not _has_substance(excerpt):
                 continue
+            if allowed_urls is not None and url not in allowed_urls:
+                continue  # closed corpus (PBI-073): outside excerpts
+                # never mint sources — dropped like over-cap lines.
             if url not in url_to_source:
                 if len(url_to_source) >= max_sources:
                     continue

@@ -145,6 +145,8 @@ export async function startRun(
     mode?: string;
     budget?: { max_model_calls?: number; max_research_rounds?: number };
     methodology_id?: string;
+    search_scope?: string;
+    pinned_sources?: string[];
   } = {},
 ): Promise<{ run_id: string; status: string; methodology_id: string }> {
   const res = await fetch(`${BASE}/api/v1/lab-projects/${projectId}/runs`, {

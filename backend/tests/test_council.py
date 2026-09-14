@@ -356,3 +356,52 @@ def test_contradiction_loop_terminates_on_rounds(tmp_path, monkeypatch):
     assert result["budget"].rounds_used == 1
     debates = list((tmp_path / "p" / "debates").glob("T-*.md"))
     assert len(debates) == 1 and "Sunlight raises" in debates[0].read_text(encoding="utf-8")
+
+
+def test_pinned_extraction_drops_outside_urls(tmp_path, monkeypatch):
+    # PBI-073: closed corpus is structural — outside excerpts never mint
+    # sources, pinned excerpts link the existing source.
+    from app.models.evidence import Source
+    _mock_llm(monkeypatch)
+    store = _seed_project(tmp_path)
+    store.write_source(Source(id="S-pin", kind="primary_paper",
+                              url="https://e.org/pinned", title="pinned",
+                              retrieved_at=TS, quality_tier=1))
+    nodes.make_evidence_extraction(tmp_path)(_state(
+        first_pass={"scientist": "",
+                    "investigator": (
+                        "CLAIM: Pinned finding with substance here\n"
+                        "EVIDENCE: Pinned excerpt text || "
+                        "https://e.org/pinned || Results\n"
+                        "EVIDENCE: Outside excerpt text || "
+                        "https://e.org/outside || Results\n"),
+                    "skeptic": ""},
+        pinned_sources=["S-pin"]))
+    assert [s.id for s in store.list_sources()] == ["S-pin"]
+    assert [(e.id, e.source_id) for e in store.list_evidence()] == [
+        ("E-investigator-001", "S-pin")]
+
+
+def test_pinned_constrains_investigator_prompt(tmp_path, monkeypatch):
+    # PBI-073: the pinned set rides the investigator's user message only.
+    from app.models.evidence import Source
+    store = _seed_project(tmp_path)
+    store.write_source(Source(id="S-pin", kind="primary_paper",
+                              url="https://e.org/pinned", title="pinned",
+                              retrieved_at=TS, quality_tier=1))
+    seen = {}
+
+    def fake(model, system, user):
+        # Key by model id (COUNCIL values are distinct per role):
+        # system texts name-drop other roles ("Investigator" appears in
+        # the scientist prompt), so substring matching misattributes.
+        seen[model] = user
+        return "", 1
+
+    monkeypatch.setattr("app.graph.nodes.call_model_resilient", fake)
+    nodes.make_independent_first_pass(tmp_path)(
+        _state(pinned_sources=["S-pin"]))
+    investigator = seen["m-inv"]
+    assert "Closed corpus" in investigator
+    assert "https://e.org/pinned" in investigator
+    assert "Closed corpus" not in seen["m-sci"]

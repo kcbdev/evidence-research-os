@@ -596,3 +596,32 @@ def test_edit_with_tampered_config_400s_without_phantom(client, tmp_path):
     assert client.get(
         f"/api/v1/lab-projects/{pid}/output/report").json()["markdown"] \
         == draft_before
+
+
+# --- PBI-073: run-start retrieval scoping ---
+
+def test_run_start_validates_scope_and_pins(client, tmp_path):
+    pid = _create(client)
+    runs_url = f"/api/v1/lab-projects/{pid}/runs"
+    assert client.post(runs_url,
+                       json={"search_scope": "nope"}).status_code == 422
+    assert client.post(runs_url,
+                       json={"pinned_sources": "S-1"}).status_code == 422
+    assert client.post(runs_url,
+                       json={"pinned_sources": ["S-ghost"]}).status_code \
+        == 404
+
+
+def test_run_records_scope_and_pins(client, tmp_path):
+    from app.models.evidence import Source
+    pid = _create(client)
+    LabProjectStore(tmp_path, pid).write_source(Source(
+        id="S-1", kind="primary_paper", url="https://e.org/1", title="t1",
+        retrieved_at="2026-09-05T10:00:00Z", quality_tier=1))
+    rid = client.post(f"/api/v1/lab-projects/{pid}/runs",
+                      json={"search_scope": "peer_reviewed_only",
+                            "pinned_sources": ["S-1"]}).json()["run_id"]
+    _wait_for(client, pid, rid, {"awaiting_approval", "done"})
+    body = client.get(f"/api/v1/lab-projects/{pid}/runs/{rid}").json()
+    assert body["search_scope"] == "peer_reviewed_only"
+    assert body["pinned_sources"] == ["S-1"]

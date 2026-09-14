@@ -19,3 +19,9 @@ class LabProjectState(TypedDict):
     # judge}); nodes prefer this over project.yaml. Absent in ad-hoc
     # states (unit-called nodes fall back to project.yaml).
     models: NotRequired[dict]
+    # PBI-073: per-run retrieval scoping, frozen at start like models.
+    # search_scope is recorded but not yet enforced (no search provider
+    # exists — filtering is PBI-080); pinned_sources IS enforced
+    # (closed-corpus extraction). Absent in ad-hoc states.
+    search_scope: NotRequired[str]
+    pinned_sources: NotRequired[list[str]]

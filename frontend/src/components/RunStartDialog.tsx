@@ -12,10 +12,24 @@ import {
 } from "@/components/ui/dialog";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { startRun } from "@/lib/api";
 import MethodologyPicker from "@/components/MethodologyPicker";
 
 const MODES = ["research", "brainstorm", "academic"] as const;
+
+// PBI-073: per-run retrieval scoping. The value is validated + recorded
+// server-side; scope filtering itself waits on a search provider (PBI-080),
+// so the dialog discloses scope as a run option, nothing more.
+const SCOPES = ["open_web", "academic_only", "peer_reviewed_only"] as const;
 
 export default function RunStartDialog({
   projectId,
@@ -41,6 +55,7 @@ export default function RunStartDialog({
   const [maxCalls, setMaxCalls] = useState("");
   const [maxRounds, setMaxRounds] = useState("");
   const [methodologyId, setMethodologyId] = useState("");
+  const [scope, setScope] = useState<string>("open_web");
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
 
@@ -62,6 +77,7 @@ export default function RunStartDialog({
         mode,
         ...(Object.keys(budget).length > 0 ? { budget } : {}),
         ...(methodologyId ? { methodology_id: methodologyId } : {}),
+        search_scope: scope,
       });
       setOpen(false);
       onStarted(run.run_id);
@@ -116,6 +132,24 @@ export default function RunStartDialog({
                 onChange={setMethodologyId}
               />
             )}
+            <Field>
+              <FieldLabel htmlFor="rs-scope">Search scope</FieldLabel>
+              <Select value={scope} onValueChange={(v) => setScope(v ?? "open_web")}>
+                <SelectTrigger id="rs-scope" aria-label="Search scope" className="min-h-[44px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectLabel>Search scope</SelectLabel>
+                    {SCOPES.map((s) => (
+                      <SelectItem key={s} value={s}>
+                        {s}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </Field>
             <div>
               <Button
                 type="button"
