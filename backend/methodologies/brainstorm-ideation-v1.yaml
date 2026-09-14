@@ -20,6 +20,8 @@ workflow:
     - skeptic
   - id: novelty_check
     node: novelty_check
+  - id: tournament_ranking
+    node: tournament_ranking
   - id: adversarial_review
     node: adversarial_review
   - id: evidence_adjudication

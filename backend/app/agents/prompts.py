@@ -18,6 +18,7 @@ _ROLE_FILES = {
     # is kept verbatim for the plan-realization PBI — never silently
     # dropped, never pasted nowhere.
     "scientist-planning-addendum": "scientist_planning_addendum.md",
+    "tournament_judge": "tournament_judge.md",  # PBI-076: pairwise judge
 }
 
 _SKEPTIC_RUBRICS = {

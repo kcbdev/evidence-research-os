@@ -442,6 +442,7 @@ export interface Idea {
   novelty_check: { status: string; against: string[] } | null;
   proposed_experiment: { hypothesis: string; falsification_condition: string; feasibility: string } | null;
   status: "proposed" | "under_skeptic_review" | "promoted_to_claim" | "rejected";
+  elo_score: number;
 }
 
 export function getIdeas(projectId: string, status?: string): Promise<Idea[]> {

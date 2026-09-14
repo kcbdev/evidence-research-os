@@ -40,6 +40,48 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+// PBI-076: one card component serves both views (Kanban columns and the
+// Ranked flat list) — identical content by construction, never two
+// card implementations drifting apart.
+function IdeaCard({ idea, onOpen }: { idea: Idea; onOpen: (idea: Idea) => void }) {
+  return (
+    <Card
+      key={idea.id}
+      role="button"
+      tabIndex={0}
+      aria-label={`Open idea ${idea.id}`}
+      className="cursor-pointer hover:shadow-md transition-shadow"
+      onClick={() => onOpen(idea)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen(idea);
+        }
+      }}
+    >
+      <CardContent className="p-3">
+        <div className="flex items-start justify-between gap-2 mb-2">
+          <StatusBadge status={idea.status} />
+          <Badge variant="outline" className="text-xs tabular-nums" aria-label={`Elo score ${Math.round(idea.elo_score)}`}>
+            Elo {Math.round(idea.elo_score)}
+          </Badge>
+        </div>
+        <p className="text-sm text-foreground line-clamp-2">{truncate(idea.statement, 120)}</p>
+        {idea.novelty_check && (
+          <Badge variant="outline" className="text-xs mt-2">
+            Novelty: {idea.novelty_check.status}
+          </Badge>
+        )}
+        {idea.proposed_experiment && (
+          <p className="text-xs text-muted-foreground mt-2 line-clamp-1">
+            Falsification: {truncate(idea.proposed_experiment.falsification_condition, 80)}
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function IdeasPage() {
   const router = useRouter();
   const params = useParams();
@@ -53,6 +95,8 @@ export default function IdeasPage() {
   const [promoting, setPromoting] = useState(false);
   const [promotedClaim, setPromotedClaim] = useState<string | null>(null);
   const [startingRun, setStartingRun] = useState(false);
+  // PBI-076: Kanban columns vs flat Elo-descending list, same cards.
+  const [view, setView] = useState<"kanban" | "ranked">("kanban");
 
   const loadIdeas = useCallback(async () => {
     setLoading(true);
@@ -124,6 +168,8 @@ export default function IdeasPage() {
     return ideas.filter((i) => i.status === status);
   }
 
+  const ranked = [...ideas].sort((a, b) => b.elo_score - a.elo_score);
+
   if (loading) {
     return (
       <div className="flex flex-col gap-2 p-4" aria-label="Loading">
@@ -171,6 +217,27 @@ export default function IdeasPage() {
         </Link>
         <h1 className="mt-2 text-2xl font-semibold">Ideas</h1>
       </div>
+      <div className="flex gap-2" role="group" aria-label="Ideas view">
+        {(["kanban", "ranked"] as const).map((v) => (
+          <Button
+            key={v}
+            variant={view === v ? "default" : "outline"}
+            size="sm"
+            className="min-h-[44px]"
+            aria-pressed={view === v}
+            onClick={() => setView(v)}
+          >
+            {v === "kanban" ? "Kanban" : "Ranked"}
+          </Button>
+        ))}
+      </div>
+      {view === "ranked" ? (
+        <div className="flex flex-col gap-2" role="group" aria-label="Ranked ideas">
+          {ranked.map((idea) => (
+            <IdeaCard key={idea.id} idea={idea} onOpen={openDetail} />
+          ))}
+        </div>
+      ) : (
       <div className="flex gap-4 overflow-x-auto pb-2">
         {COLUMNS.map((col) => (
           <div key={col.key} className="min-w-64 flex-1 flex flex-col bg-card border rounded-lg overflow-hidden">
@@ -185,37 +252,7 @@ export default function IdeasPage() {
             <div className="flex-1 p-2 overflow-y-auto">
               <div className="space-y-2 min-h-50">
                 {getIdeasByStatus(col.key).map((idea) => (
-                  <Card
-                    key={idea.id}
-                    role="button"
-                    tabIndex={0}
-                    aria-label={`Open idea ${idea.id}`}
-                    className="cursor-pointer hover:shadow-md transition-shadow"
-                    onClick={() => openDetail(idea)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        openDetail(idea);
-                      }
-                    }}
-                  >
-                    <CardContent className="p-3">
-                      <div className="flex items-start justify-between gap-2 mb-2">
-                        <StatusBadge status={idea.status} />
-                      </div>
-                      <p className="text-sm text-foreground line-clamp-2">{truncate(idea.statement, 120)}</p>
-                      {idea.novelty_check && (
-                        <Badge variant="outline" className="text-xs mt-2">
-                          Novelty: {idea.novelty_check.status}
-                        </Badge>
-                      )}
-                      {idea.proposed_experiment && (
-                        <p className="text-xs text-muted-foreground mt-2 line-clamp-1">
-                          Falsification: {truncate(idea.proposed_experiment.falsification_condition, 80)}
-                        </p>
-                      )}
-                    </CardContent>
-                  </Card>
+                  <IdeaCard key={idea.id} idea={idea} onOpen={openDetail} />
                 ))}
                 {getIdeasByStatus(col.key).length === 0 && (
                   <div className="text-center text-muted-foreground text-xs py-8">
@@ -227,6 +264,7 @@ export default function IdeasPage() {
           </div>
         ))}
       </div>
+      )}
 
       {/* Detail Modal */}
       <Dialog open={detailOpen} onOpenChange={setDetailOpen}>

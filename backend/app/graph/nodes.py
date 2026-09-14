@@ -854,6 +854,31 @@ def make_reproducibility_audit(lab_project_path: Path):
     return reproducibility_audit
 
 
+def make_tournament_ranking(lab_project_path: Path):
+    """Pairwise Elo ranking for brainstorm ideas (PBI-076, guide Task 54).
+
+    Only runs when the store holds 2+ ideas, else a passthrough (no
+    budget touch, no writes). Pairwise judgments are charged as model
+    calls; updated elo_scores persist via the store (one commit each,
+    like every object write)."""
+
+    def tournament_ranking(state) -> dict:
+        from app.agents.tournament import run_tournament
+        store = LabProjectStore(lab_project_path, state["lab_project_id"])
+        _council, judge = _models(state, store)
+        ideas = store.list_ideas()
+        if len(ideas) < 2:
+            return {}
+        updated, spent = run_tournament(ideas, judge)
+        for idea in updated:
+            store.write_idea(idea)
+        tmp = {"budget": state["budget"].model_copy()}
+        consume_calls(tmp, spent)
+        return {"budget": tmp["budget"]}
+
+    return tournament_ranking
+
+
 def make_coverage_check(lab_project_path: Path):
     """Unused-evidence sweep (PBI-074, guide Task 50).
 

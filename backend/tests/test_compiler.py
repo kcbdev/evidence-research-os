@@ -61,6 +61,7 @@ BRAINSTORM_STAGES = [
     _stage("plan", "plan"),
     _stage("independent_first_pass", "independent_first_pass"),
     _stage("novelty_check", "novelty_check"),
+    _stage("tournament_ranking", "tournament_ranking"),  # PBI-076
     _stage("adversarial_review", "adversarial_review"),
     _stage("evidence_adjudication", "evidence_adjudication"),
     _stage("synthesis", "synthesis"),

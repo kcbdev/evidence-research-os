@@ -153,3 +153,21 @@ def test_patch_unknown_idea_404(client, tmp_path):
     resp = client.patch(f"/api/v1/lab-projects/{pid}/ideas/I-999",
                         json={"status": "rejected"})
     assert resp.status_code == 404
+
+
+def test_list_ideas_sort_elo(client, tmp_path):
+    # PBI-076: sort=elo orders by Elo desc; unknown sort 422s; the key
+    # rides every row by default.
+    from app.models.evidence import Idea as IdeaModel
+    pid = _create(client)
+    store = LabProjectStore(tmp_path, pid)
+    store.write_idea(IdeaModel(id="I-001", statement="a", elo_score=1200.0))
+    store.write_idea(IdeaModel(id="I-002", statement="b", elo_score=1350.0))
+    store.write_idea(IdeaModel(id="I-003", statement="c", elo_score=1216.0))
+    resp = client.get(f"/api/v1/lab-projects/{pid}/ideas",
+                      params={"sort": "elo"})
+    assert resp.status_code == 200
+    assert [i["id"] for i in resp.json()] == ["I-002", "I-003", "I-001"]
+    assert all("elo_score" in i for i in resp.json())
+    assert client.get(f"/api/v1/lab-projects/{pid}/ideas",
+                      params={"sort": "bogus"}).status_code == 422

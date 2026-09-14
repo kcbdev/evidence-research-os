@@ -13,12 +13,19 @@ router = APIRouter()
 
 
 @router.get("/{project_id}/ideas")
-def list_ideas(project_id: str, request: Request, status: str | None = None):
-    """List ideas, optionally filtered by status."""
+def list_ideas(project_id: str, request: Request,
+               status: str | None = None, sort: str | None = None):
+    """List ideas, optionally filtered by status. sort=elo orders by
+    Elo score descending (tournament ranking, PBI-076)."""
     store = _store(_root(request), project_id)
     ideas = store.list_ideas()
     if status is not None:
         ideas = [i for i in ideas if i.status == status]
+    if sort == "elo":
+        ideas.sort(key=lambda i: i.elo_score, reverse=True)
+    elif sort is not None:
+        raise HTTPException(status_code=422,
+                            detail=f"unknown sort: {sort!r}")
     return [i.model_dump(mode="json") for i in ideas]
 
 

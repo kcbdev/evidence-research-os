@@ -96,6 +96,9 @@ class Idea(BaseModel):
     # PBI-035: the skeptic's per-idea verdict line (None = unreviewed
     # or unparseable — status still flips; transcript holds the rest).
     skeptic_notes: Optional[str] = None
+    # PBI-076: pairwise tournament rating. Default keeps old YAMLs
+    # readable (1200.0 = unranked baseline, never displayed as earned).
+    elo_score: float = 1200.0
 
 
 class Task(BaseModel):

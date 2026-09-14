@@ -13,6 +13,7 @@ const IDEAS = [
       feasibility: "high",
     },
     status: "under_skeptic_review",
+    elo_score: 1216.0,
   },
   {
     id: "I-002",
@@ -20,6 +21,7 @@ const IDEAS = [
     novelty_check: null,
     proposed_experiment: null,
     status: "proposed",
+    elo_score: 1350.0,
   },
 ];
 
@@ -94,5 +96,24 @@ describe("IdeasPage", () => {
     );
     render(<IdeasPage />);
     expect(await screen.findByText("Couldn’t load ideas")).toBeDefined();
+  });
+
+  it("toggles between Kanban columns and the Elo-descending ranked list", async () => {
+    stubFetch(() => IDEAS);
+    render(<IdeasPage />);
+    await screen.findByText("Under Skeptic Review");
+    // Kanban default: both cards present with Elo badges.
+    expect(screen.getByText("Elo 1216")).toBeDefined();
+    expect(screen.getByText("Elo 1350")).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Ranked" }));
+    const ranked = await screen.findByRole("group", { name: "Ranked ideas" });
+    const cards = within(ranked).getAllByRole("button", { name: /Open idea/ });
+    // Same cards, Elo-descending: I-002 (1350) before I-001 (1216).
+    expect(cards.map((c) => c.getAttribute("aria-label"))).toEqual([
+      "Open idea I-002",
+      "Open idea I-001",
+    ]);
+    fireEvent.click(screen.getByRole("button", { name: "Kanban" }));
+    expect(await screen.findByText("Under Skeptic Review")).toBeDefined();
   });
 });

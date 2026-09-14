@@ -28,6 +28,7 @@ NODE_REGISTRY = {
     "evidence_extraction": nodes.make_evidence_extraction,
     "conflict_detection": nodes.make_conflict_detection,
     "novelty_check": nodes.make_novelty_check,
+    "tournament_ranking": nodes.make_tournament_ranking,  # PBI-076
     "targeted_research": nodes.make_targeted_research,
     "adversarial_review": nodes.make_adversarial_review,
     "evidence_adjudication": nodes.make_evidence_adjudication,
