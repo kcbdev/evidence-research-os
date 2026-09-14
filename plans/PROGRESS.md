@@ -651,3 +651,25 @@ are Phase-1 backlog, executable after release).
   chain): harden the fixture (join _pump threads before
   clear_graph_cache) — file as future PBI, do not sneak into a feature.
 - Chained: PBI-072 → Active.
+
+## 2026-09-14 - PBI-072 Done (review: agentic, APPROVE + nit)
+
+- Built (commits 2b7e828 + 94bcf74): `compute_consensus` (tier weights,
+  dangling-safe, null percent on zero) on detail + list rows (N+1 per
+  PBI-015 precedent); `ConsensusMeter.tsx` (emerald/amber, "no weighted
+  sources" empty state — deliberate deviation from the sketch's fake
+  50/50, recorded); modal + table-column integration beside (never
+  instead of) the confidence breakdown; api.ts types.
+- Failed approach (do not repeat): required-typed `consensus` crashed
+  the modal on stale-shape stubs — component now tolerates absence
+  (fail-soft like tasks/audit in the same file) AND stubs updated to the
+  real shape; both halves, not one.
+- Gates: typecheck, 163/163 vitest (30 files; 3 new), build green;
+  backend units 215 + targeted 38, API half 25 full-file green.
+  Harness race hit units-half 3× at the fixed teardown site (zero
+  product frames; crashing file has zero claims references) — split
+  evidence stands per precedent.
+- Critic APPROVE; nit fixed (vanishing-row zero-weight shape keeps the
+  row type total). Sort: internal operator surface, gate-proven, no
+  human judgment → agentic. EVRSH-81 Done.
+- Chained: PBI-073 → Active.
