@@ -886,3 +886,20 @@ are Phase-1 backlog, executable after release).
 - Deferred witnesses now owing post-deploy (all manual): PBI-005
   prod eyeball, PBI-037 Phase-2, PBI-061 5b, PBI-070 builder
   scratch-project, PBI-078 table, PBI-079 contract + §6 scenario.
+
+## 2026-09-14 - Deploy: Phase-6 live on prod (057c20e)
+
+- Operator approved push + deploy. Pushed `main` 769cb02..057c20e
+  to `origin/main` (60 commits). Webhook fired nothing (as usual) —
+  explicit deploys per coolify-ops: backend `h4av6igw2e7l83d5255ygquo`
+  finished 17:26Z, frontend `bwr8h2j9c9lfpykoklbimfg5` finished
+  17:29Z, both on commit 057c20e ("PBI-078: stage…"). Sequenced, never
+  concurrent (small-host OOM rule).
+- HTTP verify: `evidence-api.kcb.ma/api/v1/lab-projects` → `[]`
+  (reachable, valid empty list); `evidence.kcb.ma` serves the app
+  shell (dashboard + search + methodologies nav).
+- Env keys (names only): backend carries LAB_PROJECTS_ROOT +
+  FRONTEND_URL — OPENROUTER_API_KEY still absent. Human must set it
+  in the Coolify UI (secret discipline: never via chat), then the
+  PBI-078 7-row table + PBI-079 contract/§6 witnesses can run.
+  No code changes in this entry.
