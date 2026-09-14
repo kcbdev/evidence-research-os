@@ -814,3 +814,25 @@ are Phase-1 backlog, executable after release).
 - Sort: internal operator surface, gate-proven, no human judgment →
   agentic. EVRSH-74 Done with evidence comment.
 - Chained: PBI-082 → Active.
+
+## 2026-09-14 - PBI-082 Done (review: agentic, APPROVE + 2 nits taken)
+
+- Built (commit 206c819, frontend-only, backend untouched): new
+  `SourceViewer.tsx` (source header — title link + kind badge + tier —
+  with the cited passage in `<mark>` in place; missing source still
+  renders the passage; empty excerpt renders a placeholder, never a
+  broken pane) + modal rewired per-evidence + `ClaimDetail.sources`
+  `kind?` widening (verified runtime-present via model_dump, not
+  invented). Richer cached-text display correctly NOT built (no seam:
+  Evidence/Source carry no body text) — plain excerpt is the explicit
+  fallback per the refinement rule, stated in the docstring.
+- Gates: typecheck, 173/173 vitest (32 files; 8 modal incl. 4 new:
+  highlight/header, missing-source, empty-excerpt, kind-absent),
+  build green. No-new-fetch proven behaviorally (stub throws on any
+  unexpected URL) + grep-confirmed. Backend gates not owed (zero
+  backend files).
+- Critic APPROVE, no must-fix; 2 nits taken (whitespace, kind-absent
+  pin). Declined: backend-literal kind union (would drift; string is
+  honest). Sort: internal operator surface → agentic. EVRSH-78 Done
+  with evidence comment.
+- Chained: PBI-083 → Active.
