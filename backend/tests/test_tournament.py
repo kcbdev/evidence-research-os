@@ -65,23 +65,18 @@ def test_tournament_skips_unparseable_but_charges():
     assert all(i.elo_score == 1200.0 for i in out)
 
 
-def test_judge_pairwise_parse(monkeypatch):
-    monkeypatch.setattr(
-        "app.agents.tournament.call_model_resilient",
-        lambda *a, **k: ("WINNER: I-002\nsecond is stronger", 2))
-    winner, attempts = judge_pairwise(_idea("I-001"), _idea("I-002"),
-                                      "m-judge")
+def test_judge_pairwise_parse():
+    # call_fn seam: no monkeypatching needed for pure parse cases.
+    winner, attempts = judge_pairwise(
+        _idea("I-001"), _idea("I-002"), "m-judge",
+        call_fn=lambda *a, **k: ("WINNER: I-002\nsecond is stronger", 2))
     assert (winner, attempts) == ("I-002", 2)
-    monkeypatch.setattr(
-        "app.agents.tournament.call_model_resilient",
-        lambda *a, **k: ("WINNER: I-ghost\nunknown", 1))
-    assert judge_pairwise(_idea("I-001"), _idea("I-002"),
-                          "m-judge") == (None, 1)
-    monkeypatch.setattr(
-        "app.agents.tournament.call_model_resilient",
-        lambda *a, **k: ("no verdict here", 1))
-    assert judge_pairwise(_idea("I-001"), _idea("I-002"),
-                          "m-judge") == (None, 1)
+    assert judge_pairwise(
+        _idea("I-001"), _idea("I-002"), "m-judge",
+        call_fn=lambda *a, **k: ("WINNER: I-ghost\nunknown", 1)) == (None, 1)
+    assert judge_pairwise(
+        _idea("I-001"), _idea("I-002"), "m-judge",
+        call_fn=lambda *a, **k: ("no verdict here", 1)) == (None, 1)
 
 
 def _seed(tmp_path, monkeypatch):
@@ -121,9 +116,9 @@ def test_node_writes_back_scores_and_charges(tmp_path, monkeypatch):
     store = _seed(tmp_path, monkeypatch)
     store.write_idea(_idea("I-001", "alpha angle here"))
     store.write_idea(_idea("I-002", "beta angle here"))
-    # judge_pairwise binds call_model_resilient in the tournament
-    # namespace (same pattern as nodes.py) — patch it there.
-    monkeypatch.setattr("app.agents.tournament.call_model_resilient",
+    # The node routes calls through the nodes namespace (house mock
+    # point) — patch it here, not the tournament module.
+    monkeypatch.setattr("app.graph.nodes.call_model_resilient",
                         lambda *a, **k: ("WINNER: I-001\nstronger", 1))
     budget = BudgetState(max_model_calls=100, max_research_rounds=5)
     out = nodes.make_tournament_ranking(tmp_path)(_state(budget=budget))

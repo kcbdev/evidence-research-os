@@ -863,13 +863,22 @@ def make_tournament_ranking(lab_project_path: Path):
     like every object write)."""
 
     def tournament_ranking(state) -> dict:
-        from app.agents.tournament import run_tournament
+        from app.agents.tournament import judge_pairwise, run_tournament
         store = LabProjectStore(lab_project_path, state["lab_project_id"])
         _council, judge = _models(state, store)
         ideas = store.list_ideas()
         if len(ideas) < 2:
             return {}
-        updated, spent = run_tournament(ideas, judge)
+
+        def _judge(a, b, model_id):
+            # Route the call through THIS module's namespace so the
+            # single house mock point (app.graph.nodes.call_model_resilient)
+            # covers tournament calls — a separate binding stranded every
+            # existing brainstorm mock (caught by test_topology_splits).
+            return judge_pairwise(a, b, model_id,
+                                  call_fn=call_model_resilient)
+
+        updated, spent = run_tournament(ideas, judge, judge_fn=_judge)
         for idea in updated:
             store.write_idea(idea)
         tmp = {"budget": state["budget"].model_copy()}

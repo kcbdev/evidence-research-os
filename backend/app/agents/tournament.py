@@ -24,17 +24,26 @@ def _pair_text(a, b) -> str:
             f"IDEA {b.id}: {b.statement}\n")
 
 
-def judge_pairwise(a, b, model_id: str) -> tuple[str | None, int]:
-    """Returns (winner_id or None, attempts). None = unparseable or
-    unknown id (fail-safe skip, still charged)."""
-    text, attempts = call_model_resilient(
-        model_id, load_prompt("tournament_judge"), _pair_text(a, b))
-    for line in text.splitlines():
+def parse_pairwise(text: str, a, b) -> str | None:
+    """Winner id or None (missing/empty/unknown — fail-safe skip). Pure,
+    unit-testable without any model seam."""
+    for line in (text or "").splitlines():
         if line.strip().startswith("WINNER:"):
-            winner = line.split(":", 1)[1].strip().split()[0] \
-                if line.split(":", 1)[1].strip() else ""
-            return (winner if winner in (a.id, b.id) else None), attempts
-    return None, attempts
+            rest = line.split(":", 1)[1].strip()
+            winner = rest.split()[0] if rest else ""
+            return winner if winner in (a.id, b.id) else None
+    return None
+
+
+def judge_pairwise(a, b, model_id: str, call_fn=None) -> tuple[str | None, int]:
+    """Returns (winner_id or None, attempts). call_fn injects the model
+    boundary — production passes the nodes-namespace caller so the
+    single house mock point (app.graph.nodes.call_model_resilient)
+    covers tournament calls too; direct use falls back to the client."""
+    call = call_fn if call_fn is not None else call_model_resilient
+    text, attempts = call(
+        model_id, load_prompt("tournament_judge"), _pair_text(a, b))
+    return parse_pairwise(text, a, b), attempts
 
 
 def run_tournament(ideas: list, model_id: str, rounds: int = 3,
