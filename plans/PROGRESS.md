@@ -863,5 +863,26 @@ are Phase-1 backlog, executable after release).
   precedent (Popen handle warning only, zero failures).
 - Sort: internal operator surface, gate-proven, critic-clean after
   fixes → agentic. EVRSH-72 Done with evidence comment.
-- Chained: Phase-6 code complete — PBI-078/079 staged for human live
-  validation (need deploy + OPENROUTER_API_KEY).
+- Chained: PBI-078 → Active (staged, manual — needs deploy + key).
+
+## 2026-09-14 - Phase-6 code complete; PBI-078 staged (manual, needs deploy + key)
+
+- All Phase-6 build PBIs Done: 071 (concurrency), 072 (consensus),
+  073 (scope/pins), 074 (coverage/meta, D7 accepted), 075 (dedup),
+  076 (tournament), 077 (time-travel), 081 (pass-rate), 082 (viewer),
+  083 (structure). PBI-080 stays Blocked (needs search provider).
+- PBI-078 → Active (staged): 7-row live table + Phases 1–5
+  re-validation per D4. PBI-079 stays Proposed (needs 078 green).
+  Both are manual — no code until witnesses run; defects file
+  follow-up PBIs.
+- Deploy pre-flight (push + deploy GATED on operator approval):
+  working tree clean; `main` 60 ahead of `origin/main` (no local
+  prod ref); remote `kcbdev/evidence-research-os` reachable.
+  Blockers: (1) push approval; (2) backend env lacks
+  OPENROUTER_API_KEY (set in Coolify before witnesses); (3) webhook
+  unreliable → push → list_deployments → explicit deploy backend
+  then frontend → poll → HTTP verify evidence.kcb.ma +
+  evidence-api.kcb.ma/api/v1/lab-projects.
+- Deferred witnesses now owing post-deploy (all manual): PBI-005
+  prod eyeball, PBI-037 Phase-2, PBI-061 5b, PBI-070 builder
+  scratch-project, PBI-078 table, PBI-079 contract + §6 scenario.

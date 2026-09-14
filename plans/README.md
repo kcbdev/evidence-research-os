@@ -96,7 +96,7 @@ stays `In Progress` until the batch review sorts it).
 | PBI-071 | Done (2026-09-14, agentic) | PBI-072 | Done (2026-09-14, agentic) |
 | PBI-073 | Done (2026-09-14, agentic) | PBI-074 | Done (2026-09-14, manual: D7 accepted) |
 | PBI-075 | Done (2026-09-14, agentic) | PBI-076 | Done (2026-09-14, agentic) |
-| PBI-077 | Done (2026-09-14, agentic) | PBI-078 | Proposed (manual: live validation) |
+| PBI-077 | Done (2026-09-14, agentic) | PBI-078 | Active (manual: live validation, staged — needs deploy + key) |
 | PBI-079 | Proposed (manual: contract witness) | PBI-080 | Blocked (needs search provider) |
 | PBI-081 | Done (2026-09-14, agentic) | PBI-082 | Done (2026-09-14, agentic) |
 | PBI-083 | Done (2026-09-14, agentic) | | |
