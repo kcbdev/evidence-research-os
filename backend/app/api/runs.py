@@ -403,7 +403,9 @@ def start_run(project_id: str, payload: dict, request: Request):
     for sid in pinned_sources:
         try:
             store.read_source(sid)
-        except FileNotFoundError:
+        except Exception:
+            # Any read failure (missing, wrong type, corrupt YAML) is an
+            # unknown pinned source: fail closed like methodology ids.
             raise HTTPException(status_code=404,
                                 detail=f"unknown pinned source: {sid}")
     methodology = resolve_methodology(

@@ -612,6 +612,17 @@ def test_run_start_validates_scope_and_pins(client, tmp_path):
         == 404
 
 
+def test_run_start_pin_rejects_wrong_type_id(client, tmp_path):
+    # PBI-073 review: an existing non-source id (claim) is still an
+    # unknown pinned source (404), never a 500.
+    from app.models.evidence import Claim
+    pid = _create(client)
+    LabProjectStore(tmp_path, pid).write_claim(Claim(id="C-1",
+                                                     statement="s"))
+    assert client.post(f"/api/v1/lab-projects/{pid}/runs",
+                       json={"pinned_sources": ["C-1"]}).status_code == 404
+
+
 def test_run_records_scope_and_pins(client, tmp_path):
     from app.models.evidence import Source
     pid = _create(client)
