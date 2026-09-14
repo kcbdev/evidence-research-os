@@ -92,7 +92,14 @@ stays `In Progress` until the batch review sorts it).
 | PBI-063 | Done (2026-09-12, agentic) | PBI-064 | Done (2026-09-12, agentic) |
 | PBI-065 | Done (2026-09-12, agentic) | PBI-066 | Done (2026-09-12, agentic) |
 | PBI-067 | Done (2026-09-13, agentic) | PBI-068 | Done (2026-09-13, agentic) |
-| PBI-069 | Done (2026-09-13, agentic) | PBI-070 | In Review (manual: scratch-project witness) |
+| PBI-069 | Done (2026-09-13, agentic) | PBI-070 | In Review (manual: scratch-project witness, deferred to online) |
+| PBI-071 | Proposed | PBI-072 | Proposed |
+| PBI-073 | Proposed | PBI-074 | Proposed |
+| PBI-075 | Proposed | PBI-076 | Proposed |
+| PBI-077 | Proposed | PBI-078 | Proposed (manual: live validation) |
+| PBI-079 | Proposed (manual: contract witness) | PBI-080 | Blocked (needs search provider) |
+| PBI-081 | Proposed | PBI-082 | Proposed |
+| PBI-083 | Proposed | | |
 
 Chain protocol (2026-09-10/11, user-directed, complete): PBIs executed
 back-to-back on deterministic gates; adversarial reviews batched at the
@@ -327,3 +334,97 @@ is gitignored as a derived artifact; it auto-syncs on file change.
   by PBI number, not creation order: 063→63, 064→69, 065→70, 066→65,
   067→66, 068→67, 069→68, 070→64 (identifier `kcb/EVRSH-N`). Each
   card's Context carries its link.
+
+## Execution order — Phase 6 analog enhancements (PBI-071–083, planned 2026-09-14)
+
+Spec: `specs/phase-6-analog-enhancements/spec.md`. Inputs:
+`DOCS/Evidence-Research-OS-Phase6-Analog-Enhancements.md` (Tasks 46–59,
+Steps 1–7) + `DOCS/Evidence-Research-OS-Outcome-Contract-v1.md`
+(verification instrument, not a build guide). Next PBI number was 071
+(070 last). No milestone hierarchy — ordering only. Prior manual
+witnesses (PBI-005 prod eyeball, PBI-037 Phase-2, PBI-061 5b, PBI-070
+builder) are deferred to online post-deploy testing per operator
+decision 2026-09-14; PBI-051 stays Blocked (needs Keystatic spec).
+
+71. PBI-071 — Concurrent targeted_research (no deps; backend-only,
+    `nodes.py` factory seam per Spec D1)
+72. PBI-072 — Consensus computation + ConsensusMeter UI (no deps;
+    parallel-safe with 071/073 — disjoint files)
+73. PBI-073 — Run-start extensions: search_scope + pinned_sources
+    (no deps; owns `runs.py::start_run` — PBI-077 sequences after it)
+74. PBI-074 — Reasoning additions: coverage_check + Meta-Reviewer +
+    perspective addendum + judge-exclusion extension (needs 071;
+    same-file chain on `nodes.py`)
+75. PBI-075 — Claim/idea dedup reports (needs 074; same-file chain on
+    the `final_output` hook)
+76. PBI-076 — Tournament ranking + Ranked Ideas view (needs 074;
+    registry/compiler wiring sequencing)
+77. PBI-077 — Time-travel run debugging (needs 073; same-file chain on
+    `runs.py`)
+78. PBI-078 — Phase-6 cumulative validation, human-gated (needs
+    071–077; re-runs Phases 1–5 done-conditions per Spec D4)
+79. PBI-079 — Outcome-Contract coherence + §6 scenario, human-gated
+    (needs 078)
+80. PBI-080 — Search-scope filtering + per-run tool gating, BLOCKED
+    (needs search provider; PBI-051 precedent — no code until unblock)
+81. PBI-081 — Audit pass-rate quality metric (no deps; extraction gap,
+    parallel-safe)
+82. PBI-082 — Highlighted source viewer in trace modal (no deps;
+    extraction gap, frontend-only, parallel-safe)
+83. PBI-083 — Pre-synthesis structure editor (needs 076; same-file chain
+    on the synthesis area)
+
+## Dependency graph — Phase 6
+
+```text
+071 -+-> 074 -+-> 075
+     |         +-> 076 -+-> 083
+     |                   v
+072 (free)          078 -> 079
+     |
+073 -> 077 -------------+
+081 (free)  082 (free)
+080 (blocked: needs search provider)
+```
+
+Same-file chains (sequenced, never parallel): `nodes.py`
+(071-targeted_research → 074-new-nodes → 075-hook), `runs.py`
+(073-start_run → 077-endpoint), registry/compiler wiring (074 → 076).
+Parallel-safe openers: {071, 072, 073} (disjoint files).
+`.codegraph/` index live — execution used `codegraph_explore` for measured
+blast radius (verified: agents/* per-agent modules and tools/search.py do
+NOT exist — Spec D1/D2 record the real seams).
+
+## Gate plan — Phase 6 (extends the above, unchanged commands)
+
+- Deterministic gates: backend halves (`uv run pytest tests/ -q
+  --ignore=tests/test_api_runs.py` + `uv run pytest
+  tests/test_api_runs.py -q`, workdir `backend/`), frontend
+  `typecheck` + `vitest run` + `next build`. No PBI starts until its
+  gate is runnable (Ralph Loop).
+- Review gates: adversarial vs the Phase-6 spec + `ARCHITECTURE.md`;
+  PBI-074 gets a loop-safety review (new conditional edges terminate);
+  PBI-076 gets a determinism review (injected RNG/judge seams, no live
+  calls in tests); PBI-077 gets a read-only review (endpoint writes
+  nothing); PBI-083 gets a synthesis-contract review (recorded order
+  honored verbatim, absence reproduces legacy behavior, no content
+  editing affordance). PBI-081–083 verify independently of PBI-078.
+- Human gates: PBI-078 (7-row live validation + regression), PBI-079
+  (contract rows + §6 scenario). Both stay In Review until signed.
+- Watch items: mocked-concurrency tests must prove overlap, not timing
+  (no flaky wall-clock asserts); Elo tests pin via injected judge/RNG;
+  checkpoint endpoint resolves the per-project path the way the run
+  subsystem does (no new storage).
+
+## Tooling (adopted this plan — Specs/PBIs may cite)
+
+- Capability discovery 2026-09-14: the `skills` CLI exists (prior plans
+  recorded it absent — corrected); no new skills or packages adopted
+  (asyncio/stdlib + existing deps cover all Phase-6 work; `tdd` and
+  `fastapi` agent skills already global). No third-party planning skills;
+  methodology stays ASDLC-only.
+- Plane sync: push-create (2026-09-14, Phase 6 plan): 13 × Todo, one per
+  PBI-071–083. Parallel creation interleaved sequence_ids — map by PBI
+  number, not creation order: 071→71, 072→81, 073→83, 074→75, 075→73,
+  076→80, 077→82, 078→76, 079→79, 080→77, 081→74, 082→78, 083→72
+  (identifier `kcb/EVRSH-N`). Each card's Context carries its link.
