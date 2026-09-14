@@ -16,6 +16,7 @@ const DETAIL = {
     },
   ],
   sources: [{ id: "S-1", url: "https://e.org/1", title: "T1", quality_tier: 2 }],
+  consensus: { supporting_weight: 2, opposing_weight: 0, percent_support: 100.0 },
 };
 
 const AUDIT = [
@@ -53,6 +54,11 @@ describe("EvidenceTraceModal audit badges", () => {
   it("shows claim-level sweep failures as a header alert", async () => {
     render(<EvidenceTraceModal projectId="p" claimId="C-1" onClose={() => {}} />);
     expect(await screen.findByText("Citation problem: existence FAIL")).toBeDefined();
+  });
+
+  it("renders the consensus meter beside the confidence breakdown", async () => {
+    render(<EvidenceTraceModal projectId="p" claimId="C-1" onClose={() => {}} />);
+    expect(await screen.findByRole("img", { name: /Consensus 100\.0% supporting/ })).toBeDefined();
   });
 
   it("renders no badges when no audit has run", async () => {

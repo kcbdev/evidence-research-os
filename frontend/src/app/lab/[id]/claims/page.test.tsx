@@ -9,6 +9,7 @@ const ROWS = [
     confidence: 0.9,
     opposition: 0,
     statement: "strong claim",
+    consensus: { supporting_weight: 2, opposing_weight: 0, percent_support: 100.0 },
   },
   {
     id: "C-low",
@@ -16,6 +17,7 @@ const ROWS = [
     confidence: 0.3,
     opposition: 2,
     statement: "weak claim",
+    consensus: { supporting_weight: 6, opposing_weight: 2, percent_support: 75.0 },
   },
 ];
 
@@ -49,6 +51,7 @@ const DETAIL = {
   sources: [
     { id: "S-2", url: "https://e.org/2", title: "Source Two", quality_tier: 6 },
   ],
+  consensus: { supporting_weight: 6, opposing_weight: 2, percent_support: 75.0 },
 };
 
 let searchParams = new URLSearchParams();
@@ -165,6 +168,7 @@ describe("ClaimsPage", () => {
               },
               evidence: [],
               sources: [],
+              consensus: { supporting_weight: 0, opposing_weight: 0, percent_support: null },
             }),
           };
         }
@@ -183,6 +187,8 @@ describe("ClaimsPage", () => {
       within(dialog).getByText("No targeted research tasked for this claim."),
     ).toBeDefined();
     expect(within(dialog).getByText("weak claim")).toBeDefined();
+    // Sourceless claim: the meter renders the absence, not a split.
+    expect(within(dialog).getByText("no weighted sources")).toBeDefined();
   });
 
   it("tasks fetch failure leaves the trace standing", async () => {
@@ -210,6 +216,7 @@ describe("ClaimsPage", () => {
               },
               evidence: [],
               sources: [],
+              consensus: { supporting_weight: 0, opposing_weight: 0, percent_support: null },
             }),
           };
         }

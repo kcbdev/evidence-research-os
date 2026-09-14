@@ -231,6 +231,13 @@ export interface ClaimRow {
   confidence: number;
   opposition: number;
   statement: string;
+  consensus: Consensus;
+}
+
+export interface Consensus {
+  supporting_weight: number;
+  opposing_weight: number;
+  percent_support: number | null;
 }
 
 export interface Confidence {
@@ -266,6 +273,7 @@ export interface ClaimDetail {
     title: string;
     quality_tier: number;
   }[];
+  consensus: Consensus;
 }
 
 export interface ClaimFilters {

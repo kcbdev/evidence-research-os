@@ -77,8 +77,18 @@ def list_claims(project_id: str, request: Request, status: str | None = None,
     db_path = rebuild_claims_index(store.path)
     statuses = [s.strip() for s in status.split(",") if s.strip()] \
         if status else None
-    return _query(db_path, statuses, min_confidence, max_confidence,
+    rows = _query(db_path, statuses, min_confidence, max_confidence,
                   contradictions_only)
+    # PBI-072: consensus rides each row (per-claim store reads — N+1 is
+    # irrelevant at MVP scale per the PBI-015 precedent; the table needs
+    # weights the flat index does not carry).
+    for row in rows:
+        try:
+            row["consensus"] = store.compute_consensus(
+                store.read_claim(row["id"]))
+        except FileNotFoundError:
+            continue  # index regenerated; row vanished mid-read
+    return rows
 
 
 @router.get("/{project_id}/claims/{claim_id}")
@@ -104,6 +114,7 @@ def get_claim(project_id: str, claim_id: str, request: Request):
         "claim": claim.model_dump(mode="json"),
         "evidence": [e.model_dump(mode="json") for e in evidence],
         "sources": [s.model_dump(mode="json") for s in sources],
+        "consensus": store.compute_consensus(claim),
     }
 
 

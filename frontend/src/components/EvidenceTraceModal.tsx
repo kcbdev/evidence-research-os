@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getAuditLatest, getClaimDetail, listTasks, type AuditRow, type ClaimDetail, type DelegatedTask } from "@/lib/api";
 import ClaimConfidenceBar from "./ClaimConfidenceBar";
+import ConsensusMeter from "./ConsensusMeter";
 
 export default function EvidenceTraceModal({
   projectId,
@@ -121,6 +122,7 @@ export default function EvidenceTraceModal({
               {detail.claim.adjudicated_by ?? "pending"}
             </p>
             <ClaimConfidenceBar confidence={detail.claim.confidence} />
+            <ConsensusMeter consensus={detail.consensus} />
             <section>
               <h3 className="font-medium">
                 Evidence ({detail.evidence.length})

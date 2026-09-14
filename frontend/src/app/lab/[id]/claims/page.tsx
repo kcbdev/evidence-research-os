@@ -31,6 +31,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { listClaims, type ClaimRow } from "@/lib/api";
+import ConsensusMeter from "@/components/ConsensusMeter";
 import ContradictionBadge from "@/components/ContradictionBadge";
 import EvidenceTraceModal from "@/components/EvidenceTraceModal";
 
@@ -210,6 +211,7 @@ function ClaimsBody() {
                 </Button>
               </TableHead>
               <TableHead>Flags</TableHead>
+              <TableHead>Consensus</TableHead>
               <TableHead>Statement</TableHead>
             </TableRow>
           </TableHeader>
@@ -235,6 +237,9 @@ function ClaimsBody() {
                     claimId={row.id}
                     onOpen={setOpenClaim}
                   />
+                </TableCell>
+                <TableCell>
+                  <ConsensusMeter consensus={row.consensus} />
                 </TableCell>
                 <TableCell>{row.statement}</TableCell>
               </TableRow>

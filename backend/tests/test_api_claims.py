@@ -94,6 +94,39 @@ def test_claim_detail_trace(seeded):
     assert client.get("/api/v1/lab-projects/p/claims/C-nope").status_code == 404
 
 
+def test_consensus_weights_and_rows(seeded):
+    # PBI-072: tier-weighted split on detail + list rows. C-high: support
+    # S-1 (tier 2) → 100%. C-low: support S-2 (tier 6), oppose S-1
+    # (tier 2) → 75%.
+    client, _ = seeded
+    assert client.get(
+        "/api/v1/lab-projects/p/claims/C-high").json()["consensus"] == {
+            "supporting_weight": 2, "opposing_weight": 0,
+            "percent_support": 100.0}
+    assert client.get(
+        "/api/v1/lab-projects/p/claims/C-low").json()["consensus"] == {
+            "supporting_weight": 6, "opposing_weight": 2,
+            "percent_support": 75.0}
+    rows = {r["id"]: r["consensus"] for r in client.get(
+        "/api/v1/lab-projects/p/claims").json()}
+    assert rows["C-high"]["percent_support"] == 100.0
+    assert rows["C-low"] == {"supporting_weight": 6,
+                             "opposing_weight": 2, "percent_support": 75.0}
+
+
+def test_consensus_skips_dangling_sources(seeded):
+    # PBI-072: a ghost source id never 500s the consensus — skipped like
+    # the trace's absent-source rendering; all-ghost → null percent.
+    client, store = seeded
+    store.write_claim(Claim(id="C-ghost", statement="g",
+                            supporting_sources=["S-nope"],
+                            opposing_sources=["S-nada"]))
+    body = client.get("/api/v1/lab-projects/p/claims/C-ghost").json()
+    assert body["consensus"] == {"supporting_weight": 0,
+                                 "opposing_weight": 0,
+                                 "percent_support": None}
+
+
 def test_view_regenerates_not_maintained(seeded):
     client, store = seeded
     assert len(client.get("/api/v1/lab-projects/p/claims").json()) == 2

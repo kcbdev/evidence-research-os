@@ -103,6 +103,30 @@ class LabProjectStore:
     def list_claims(self) -> list[Claim]:
         return self._list("claims", Claim)
 
+    def compute_consensus(self, claim: Claim) -> dict:
+        """Quality-tier weight split (PBI-072, guide Task 47): supporting
+        vs opposing source tiers + percent_support (None when no weight).
+        Dangling source ids are skipped — get_claim already serves them
+        as absent, and consensus must never 500 where the trace renders."""
+        def _weight(ids: list[str]) -> int:
+            total = 0
+            for sid in ids:
+                try:
+                    total += self.read_source(sid).quality_tier
+                except FileNotFoundError:
+                    continue  # dangling link: absent, not fatal
+            return total
+
+        support = _weight(claim.supporting_sources)
+        oppose = _weight(claim.opposing_sources)
+        total = support + oppose
+        return {
+            "supporting_weight": support,
+            "opposing_weight": oppose,
+            "percent_support": round(support / total * 100, 1)
+            if total else None,
+        }
+
     def write_evidence(self, e: Evidence):
         self._write("evidence", e.id, e, f"evidence: {e.id}")
 
