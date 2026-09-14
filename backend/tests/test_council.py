@@ -226,7 +226,7 @@ def test_targeted_dispatch_overlaps(tmp_path, monkeypatch):
     # its timeout and fail.
     import threading
     _seed_project(tmp_path)
-    barrier = threading.Barrier(2, timeout=30)
+    barrier = threading.Barrier(2, timeout=10)
 
     def fake(model, system, user):
         barrier.wait()
@@ -253,6 +253,39 @@ def test_targeted_dispatch_overlaps(tmp_path, monkeypatch):
         "targeted finding"
     assert (debates / "T-b.md").read_text(encoding="utf-8") == \
         "targeted finding"
+
+
+def test_targeted_warms_stale_index_before_pool(tmp_path, monkeypatch):
+    # PBI-071 review: both search helpers rebuild their derived indexes
+    # lazily on stale. With a missing index and 2 tasks, the node must
+    # still enrich both dispatches (single-threaded warm-up, workers read)
+    # — no writer-lock contention, no dropped context. Real search
+    # functions here (the overlap test above mocks them to []).
+    from app.models.evidence import Claim, Task
+    store = _seed_project(tmp_path)
+    store.write_claim(Claim(id="C-001",
+                            statement="Vitamin D supports bone density"))
+    store.write_claim(Claim(id="C-002",
+                            statement="Sunlight raises vitamin D levels"))
+    seen = []
+
+    def fake(model, system, user):
+        seen.append(user)
+        return "targeted finding", 1
+
+    monkeypatch.setattr("app.graph.nodes.call_model_resilient", fake)
+    monkeypatch.setattr("app.tools.semantic_index.embed",
+                        lambda text: [0.1, 0.2, 0.3])
+    budget = BudgetState(max_model_calls=100, max_research_rounds=5)
+    tasks = [Task(id="T-a", question="does vitamin D help bones?",
+                  reason="r", assigned_agent="investigator"),
+             Task(id="T-b", question="sunlight and vitamin D levels?",
+                  reason="r", assigned_agent="skeptic")]
+    out = nodes.make_targeted_research(tmp_path)(
+        _state(budget=budget, pending_tasks=tasks))
+    assert out["pending_tasks"] == []
+    assert len(seen) == 2
+    assert all("Related prior findings" in user for user in seen)
 
 
 def test_degenerate_findings_dropped(tmp_path, monkeypatch):

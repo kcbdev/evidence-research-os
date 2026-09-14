@@ -24,6 +24,7 @@ PBI-011 design notes:
   build.py): an exhausted budget mid-loop ends at final_output.
 """
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 import yaml
@@ -422,14 +423,16 @@ def make_targeted_research(lab_project_path: Path):
     like plan/). Tasks are consumed; the loop-back recomputes conflicts.
 
     PBI-071: dispatches run concurrently (one thread per pending task).
-    Workers do enrichment + the model call only; debate-file writes happen
-    single-threaded after the join, in pending order — same observable
-    behavior as the serial version, same PBI-011 construction (no store
-    writes under concurrency; debates/ is gitignored scratch anyway).
-    Budget charging (attempts summed, one round) is unchanged."""
+    Workers do index reads + the model call only; debate-file writes
+    happen single-threaded after the join, in pending order — same
+    observable behavior as the serial version, same PBI-011 construction.
+    Both search helpers rebuild their derived indexes lazily on stale, so
+    freshness is warmed single-threaded before the pool (concurrent
+    rebuilds would contend on the tantivy writer lock / lancedb
+    delete+add); workers are pure readers. Budget charging (attempts
+    summed, one round) is unchanged."""
 
     def targeted_research(state) -> dict:
-        from concurrent.futures import ThreadPoolExecutor
         from app.tools.keyword_index import keyword_search
         from app.tools.semantic_index import semantic_search
         store = LabProjectStore(lab_project_path, state["lab_project_id"])
@@ -440,11 +443,7 @@ def make_targeted_research(lab_project_path: Path):
         project_dir = Path(lab_project_path) / state["lab_project_id"]
         lab_project_id = state["lab_project_id"]
 
-        def _dispatch(task):
-            agent = task.assigned_agent if isinstance(task, Task) else task["assigned_agent"]
-            tid = task.id if isinstance(task, Task) else task["id"]
-            question = task.question if isinstance(task, Task) else task["question"]
-            task_question = question  # pristine: Tier-3 embeds this (M2)
+        def _enrich(question: str, task_question: str) -> str:
             # PBI-041: Tier-2 retrieval — prior-art hits ride along as
             # context so targeted work builds on the index, not just the
             # task text. Fail-loud: a broken index must surface, never
@@ -467,13 +466,32 @@ def make_targeted_research(lab_project_path: Path):
                                     f"{h['text'][:300]}" for h in sem)
                 question = (f"{question}\n\nRelated prior findings "
                             f"(semantic index):\n{context}")
+            return question
+
+        def _task_texts(task):
+            question = task.question if isinstance(task, Task) else task["question"]
+            return question, question  # pristine: Tier-3 embeds this (M2)
+
+        def _dispatch(task):
+            agent = task.assigned_agent if isinstance(task, Task) else task["assigned_agent"]
+            tid = task.id if isinstance(task, Task) else task["id"]
+            question, task_question = _task_texts(task)
+            question = _enrich(question, task_question)
             model = models.get(agent, next(iter(models.values())))
             text, attempts = call_model_resilient(
                 model, load_prompt(agent), question)
             return tid, text, attempts
 
         if len(pending) > 1:
-            with ThreadPoolExecutor(max_workers=len(pending)) as pool:
+            # PBI-071 review: both search helpers rebuild their derived
+            # indexes lazily when stale — concurrent rebuilds would
+            # contend, so warm freshness once, single-threaded, before the
+            # pool (staleness is project-level, not per-query, so one
+            # probe suffices; result discarded). Workers afterwards are
+            # pure readers (+ model calls).
+            _enrich(*_task_texts(pending[0]))
+            with ThreadPoolExecutor(
+                    max_workers=min(32, len(pending))) as pool:
                 results = list(pool.map(_dispatch, pending))
         else:
             results = [_dispatch(task) for task in pending]
