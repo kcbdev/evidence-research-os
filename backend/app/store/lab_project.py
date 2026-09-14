@@ -191,6 +191,8 @@ class LabProjectStore:
         a model: Claim/Idea schemas stay untouched by design), one
         write = one commit like every other object write."""
         from datetime import datetime, timezone
+        if kind not in ("claims", "ideas"):
+            raise ValueError(f"unknown duplicate report kind: {kind!r}")
         p = self.path / "duplicates" / f"{kind}.yaml"
         p.write_text(yaml.safe_dump(
             {"kind": kind, "clusters": clusters,

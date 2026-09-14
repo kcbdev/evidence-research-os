@@ -6,6 +6,7 @@ Embeddings are injected fakes (deterministic); the hook test drives the
 real final_output node with the seam mocked (no download).
 """
 import math
+import pytest
 from app.graph import nodes
 from app.models.evidence import (BudgetState, Claim, Idea, ProjectMeta,
                                  Source)
@@ -162,3 +163,31 @@ def test_no_report_without_duplicates(tmp_path, monkeypatch):
     nodes.make_final_output(tmp_path)(_state())
     assert not (store.path / "duplicates" / "claims.yaml").exists()
     assert not (store.path / "duplicates" / "ideas.yaml").exists()
+
+
+def test_distinct_pairs_write_no_report(tmp_path, monkeypatch):
+    # PBI-075: 2+ items with zero merges also write nothing (the guard
+    # is multi-member clusters, not item count).
+    store = _seed(tmp_path, monkeypatch)
+    store.write_claim(Claim(id="C-1", statement="microbe supports bones"))
+    store.write_claim(Claim(id="C-2", statement="quantum forbids all"))
+    nodes.make_final_output(tmp_path)(_state())
+    assert not (store.path / "duplicates" / "claims.yaml").exists()
+
+
+def test_claims_hook_failure_recorded_not_fatal(tmp_path, monkeypatch):
+    # PBI-075: the extended hook keeps the PBI-043 contract — a failure
+    # in the new branch records D-dedup, never flips the run.
+    store = _seed(tmp_path, monkeypatch)
+    monkeypatch.setattr("app.graph.nodes._cluster_claims_ideas",
+                        lambda store: (_ for _ in ()).throw(
+                            RuntimeError("embed gone")))
+    nodes.make_final_output(tmp_path)(_state())
+    assert store.read_decision("D-terminal-s-d").what == "Run ended: completed"
+    assert store.read_decision("D-dedup-s-d").what == "Dedup clustering skipped"
+
+
+def test_duplicate_report_kind_allow_list(tmp_path, monkeypatch):
+    store = _seed(tmp_path, monkeypatch)
+    with pytest.raises(ValueError, match="unknown duplicate report kind"):
+        store.write_duplicate_report("../escape", {"A": ["A", "B"]})
