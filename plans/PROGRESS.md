@@ -911,3 +911,18 @@ are Phase-1 backlog, executable after release).
   comments (PBI, branch, commits, gates + adversarial outcomes).
   EVRSH-76 moved Todo → In Progress with manual staging comment
   (key + deploy state + how-to-review). Local cards and Plane agree.
+
+## 2026-09-14 - OPENROUTER_API_KEY set on prod backend via API
+
+- Operator supplied a restricted test key and pointed at the Coolify
+  env endpoint (MCP has no setter). Used `COOLIFY_ACCESS_TOKEN`
+  from session env against `POST /api/v1/applications/{backend}/envs`:
+  OPENROUTER_API_KEY created runtime-only, literal, non-preview.
+  The call auto-created a preview duplicate — removed via
+  `DELETE .../envs/{preview_uuid}` (secret stays production-only).
+  Key value never on disk, never committed, never echoed.
+- Redeployed backend explicitly (`zndqzmaooslkhtcwnele4gpf`,
+  finished on 569e2aa) to activate the env; frontend untouched.
+  HTTP verify: `/api/v1/lab-projects` returns the 3 real projects.
+- PBI-078/079 witnesses are now unblocked — operator runs the live
+  table against prod; sign-off stays human.
